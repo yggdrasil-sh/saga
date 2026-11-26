@@ -532,3 +532,81 @@ Seiten“ und die Hilfen für die offene Seite.
 - **Begriffe:** „Auftrag“ (etwas, das die KI erledigt) und „Aufgabe“ (Eintrag der Aufgabenliste) sind verschieden:
   en **Job**/„Jobs“ vs. *Task*, es **Encargo**/„Encargos“ vs. *Tarea* (ru „Поручение“ vs. „Задача“). „Requests“ scheidet
   aus, weil „Anfragen/Tag“ (Kontingent) im Englischen schon „requests“ heißt. Systemtexte kommen fertig vom Server.
+
+## 12. Mitteilungen und Aktionen (2.6, Bugs-DB 2270 K-C – Abbruchpunkt B, `jobpush1`)
+
+Rückmeldungen zu Aufträgen kommen als Mitteilung aufs Gerät, mit Knöpfen direkt in der Mitteilung (Konzept K14/K15).
+Nutzlast, Felder, Kategorien, Android-Kanäle und Knopf-Regel: [`APP-API.md`](APP-API.md) „Push-Nutzlast 3 und Aufträge
+(`jobpush1`)“; Testvektoren `tests/vectors/push_kollegin.json`. Hier: Glocke, Aktions-Token, Endpunkt `act`, Ruhe.
+
+### 12.1 Glocke
+
+Jeder Übergang mit Mitteilung (APP-API.md, Tabelle „Arten und Übergänge“) legt auch einen Eintrag in der Glocke an –
+unabhängig von Push, „Nicht stören“ und „Gerade nicht“ (die Glocke bekommt immer alles): `GET /api/notifications` →
+`{kind: "job.done"|"job.needs_you"|"job.failed", text: "Erledigt: Grillkohle besorgen", url: "/saga?tab=jobs&job=42",
+job: 42, …}` (`text` = `t1`, Systemtext in der Sprache der Anfrage). Ein neuer Eintrag desselben Auftrags ersetzt den
+alten; bei `abgebrochen`/`zurueckgenommen` verschwinden die Einträge des Auftrags (`notification.changed` `removed`).
+
+### 12.2 Aktions-Token (`atok`)
+
+- Je Abo und Mitteilung ein Token je Knopf (`actions: [{a, t}]`), zufällig (`secrets.token_urlsafe(18)`, 24 Zeichen
+  Base64url), **einmalig**; in der Datenbank steht nur `sha256(t)` (Tabelle `ai_act_token`).
+- Gebunden an: Konto, Auftrag, Abo (und damit Gerät), `plan_v` + `plan_hash`, Aktion, Ablauf. Ablauf 24 h; bei
+  „braucht dich“ bis zur Frist des Auftrags (`due_at`), höchstens 14 Tage.
+- Nur auf E2E-Wegen und nur mit Abo-`caps` `actions`. `approve`/`undo` nur, wenn auch `detail` mitgeht (was man nicht
+  sieht, bestätigt man nicht): `approve` nur bei `wartet_ok` mit ausschließlich `read`/`own`-Schritten, alle
+  `undo_class: undo`; `undo` nur bei `erledigt`, wenn sich alle Änderungen zurücknehmen lassen (nicht `delete_only`,
+  nicht `final`). Abo entfernt oder Konto gelöscht → Token weg.
+
+### 12.3 `POST /api/ai/jobs/{id}/act`
+
+```json
+POST /api/ai/jobs/42/act   {"action": "undo", "atok": "WuKANryrN8RlH60qY3vFUDoR", "pv": 2}
+→ 200 {"ok": true, "action": "undo", "state": "zurueckgenommen"}
+```
+
+**Zugänge:** Geräte-Schlüssel `Authorization: Bearer hkd_…` (Apps im Hintergrund, auch ohne Sitzung) oder Sitzung mit
+`X-Saga: 1` (Web, Service Worker, Hülle). Ein Token mit Gerät gilt nur für **dieses** Gerät; ein Token ohne Gerät
+(Browser-Abo) nur mit Sitzung. Widget-Schlüssel `hk_…` nur `later`/`quiet`. `sga_`, MCP, OAuth: `403` (RT-42).
+
+| Aktion | Wirkung | Antwort 200 |
+|---|---|---|
+| `approve` | „Passt, los“ – wie `POST …/approve` mit `plan_v`/`plan_hash` aus dem Token (Einwilligung nötig) | `{state: "laeuft"}` |
+| `undo` | „Rückgängig“ – dieselbe Rücknahme wie `POST …/undo` (ganz), wartet ≤ 3 s auf einen laufenden Schritt | `{state: "zurueckgenommen"}` |
+| `later` | „Später“ – dieselbe Mitteilung (Zustand beim Zustellen neu geprüft) nach 3 h erneut, höchstens 2× | `{state, at}` |
+| `quiet` | „Gerade nicht“ – keine `job.*`-Mitteilungen bis zum nächsten 07:00 Kontozeit; wartende `job.*` entfallen; Glocke bekommt weiter alles | `{state, until}` |
+| `open` | nichts (ohne Token) | `{url}` |
+| `retry`, `reply`, `ideas_off` | reserviert | `409 {code: "open"}` |
+
+**Fehler** (geprüft in dieser Reihenfolge; nur `200` verbraucht den Token):
+
+| Status | `code` | Bedeutung | App |
+|---|---|---|---|
+| `403` | `key` | Schlüssel darf das nicht (`hk_` mit `approve`/`undo`, `sga_`/OAuth) | App öffnen |
+| `404` | – | Auftrag gibt es nicht (mehr) bzw. gehört einem anderen Konto | Mitteilung entfernen |
+| `403` | `cap` | Fähigkeit `ai` fehlt inzwischen | App öffnen |
+| `410` | `used` / `expired` / `gone` | Token schon benutzt, abgelaufen, unbekannt (Abo weg) oder für eine andere Aktion/einen anderen Auftrag | Hinweis „Bitte in Saga ansehen“ |
+| `403` | `device` | Token gehört zu einem anderen Gerät bzw. braucht eine Sitzung | App öffnen |
+| `409` | `stale` | `pv` bzw. Plan seit der Mitteilung geändert | Hinweis „Bitte in Saga ansehen“ → `saga://job/<id>` |
+| `409` | `state` | Zustand passt nicht mehr (anderswo schon freigegeben, abgebrochen …) | wie `stale` |
+| `409` | `changed` | Rücknahme nicht möglich: Ziel seitdem geändert (wie `…/undo`) | wie `stale` |
+| `409` | `open` | geht nur in der App (z. B. Schritt nach außen, reservierte Aktion) | wie `stale` |
+
+`409` trägt `url` (`/saga?tab=jobs&job=<id>`). Nach `200` entfernt die App die Mitteilung. Netzfehler: einmal
+wiederholen, dann wie `409` (eine zweite Freigabe mit demselben Token ist harmlos: `410`).
+
+### 12.4 Ruhe „Gerade nicht“ und Einstellungen
+
+- `GET/PUT /api/ai/prefs` (Abschnitt 9/11.5): `notify_content` `unlocked` (Standard) | `never` – „Inhalt in
+  Mitteilungen“: bei `never` kein `detail` (und damit kein `approve`/`undo`) auf keinem Gerät. Neu `notify_quiet_until`
+  (Zahl, Unix-Zeit, oder `null`): bis dann keine `job.*`-Mitteilungen; `PUT {"notify_quiet_until": null}` = „Wieder an“.
+- „Mitteilungen von {Persona}“ = Bereich `jobs` in `PUT /api/push` `cats`.
+- Kontozeit = Zeitzone der Ruhezeiten (`/api/push` `prefs.quiet.tz`), sonst die des Servers; „bis 07:00“ heißt das
+  nächste 07:00 nach jetzt (Wanduhr, auch über die Zeitumstellung; Beispiele in den Vektoren `quiet`).
+
+### 12.5 Server intern (für andere Bereiche)
+
+- Jeder Zustandswechsel eines Auftrags feuert in derselben Transaktion `bus.fire("job.state", c, job_id=, uid=, kind=,
+  old=, new=, reason=)` (`saga.jobs._to`); `saga.ai_notify` hört nur auf Aufträge der Kollegin.
+- Ruhe-Helfer `saga.ai_saga.set_quiet(uid, where, until)` / `quiet_until(uid, where)` mit `where` `push` (K-C) bzw.
+  `today` (Tageszeile, K-D); `until` `None` bzw. in der Vergangenheit = aus. Zeit aus `testclock.now()`.

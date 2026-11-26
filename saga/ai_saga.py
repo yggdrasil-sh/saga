@@ -522,6 +522,78 @@ def prefs_put(uid, b, conn):
     return None
 
 
+# --- Ruhe "Gerade nicht" (2.6, 2270 K-C; K-D nutzt where="today") ---------------------------------------------------
+# Eigener Eintrag user_kv "ai_quiet" {where: bis} (nicht in "ai_prefs": dort schreiben K-H/K-I ganze Objekte). Zeit aus
+# testclock.now(); abgelaufene Eintraege zaehlen als aus und werden beim naechsten Setzen weggeraeumt.
+QUIET_KV = "ai_quiet"
+QUIET_WHERE = ("push", "today")
+QUIET_MAX = 14 * 86400           # s: laenger geht "Gerade nicht" nie
+
+
+def _quiet_raw(conn, uid):
+    r = conn.execute("SELECT v FROM user_kv WHERE uid=? AND k=?", (uid, QUIET_KV)).fetchone()
+    try:
+        d = json.loads(r[0]) if r and r[0] else {}
+    except ValueError:
+        d = {}
+    return {k: float(v) for k, v in d.items() if k in QUIET_WHERE and isinstance(v, (int, float))} if isinstance(d, dict) else {}
+
+
+def quiet_until(uid, where, conn=None):
+    """Bis wann ist es fuer uid an der Stelle where ("push" | "today") ruhig -> Unix-Zeit oder None (nicht ruhig)."""
+    if where not in QUIET_WHERE:
+        raise ValueError(f"unbekannte Stelle: {where!r}")
+    if conn is None:
+        with _db() as c:
+            return quiet_until(uid, where, c)
+    from saga import testclock
+    v = _quiet_raw(conn, uid).get(where)
+    return v if v is not None and v > testclock.now() else None
+
+
+def set_quiet(uid, where, until, conn=None):
+    """Ruhe an der Stelle where bis until (Unix-Zeit; None bzw. Vergangenheit = wieder an) -> wirksames until oder None.
+    Hoechstens QUIET_MAX ab jetzt. Mit conn in dessen Transaktion, sonst eigene."""
+    if where not in QUIET_WHERE:
+        raise ValueError(f"unbekannte Stelle: {where!r}")
+    if conn is None:
+        with _db() as c, c:
+            return set_quiet(uid, where, until, c)
+    from saga import testclock
+    now = testclock.now()
+    raw = {k: v for k, v in _quiet_raw(conn, uid).items() if v > now}
+    until = min(float(until), now + QUIET_MAX) if until is not None else None
+    if until is not None and until > now:
+        raw[where] = until
+    else:
+        raw.pop(where, None)
+        until = None
+    if raw:
+        conn.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, ?, ?)", (uid, QUIET_KV, json.dumps(raw, sort_keys=True)))
+    else:
+        conn.execute("DELETE FROM user_kv WHERE uid=? AND k=?", (uid, QUIET_KV))
+    return until
+
+
+def next_local(hour, tz=None, now=None):
+    """Naechstes hh:00 (Wanduhr) in der Zeitzone tz (Name; leer/unbekannt = Server-TIMEZONE), strikt nach now ->
+    Unix-Zeit. "Gerade nicht" = next_local(7, Kontozeit). Gegenprobe: tests/vectors/push_kollegin.json quiet."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from saga import testclock
+    now = testclock.now() if now is None else now
+    try:
+        z = ZoneInfo(tz) if tz else TZ
+    except Exception:  # noqa: BLE001 - unbekannte Zone: Zeitzone des Servers
+        z = TZ
+    d = datetime.fromtimestamp(now, z)
+    cand = d.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if cand <= d:
+        n = d + timedelta(days=1)
+        cand = datetime(n.year, n.month, n.day, hour, tzinfo=z)
+    return int(cand.timestamp())
+
+
 def _set_history(conn, uid, on):
     """Verlauf an/aus (wie PUT /api/ai/settings): aus = gespeicherter Verlauf weg, Gespraech nur noch 24 h."""
     now = time.time()

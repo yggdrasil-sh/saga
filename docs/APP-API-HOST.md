@@ -198,12 +198,15 @@ Kaltstart dieselbe Tabelle nativ anwenden (Server-Adresse + Pfad laden) oder ers
 | `saga://new?db=<id>&view=<v>&k=<geheim>` | Datenbank-Widget „+“ | `/notes#<id>`. Anlegen macht die Hülle selbst: mit gültigem `k` (`AppConfig.linkSecret`, wie `RootView.createFromLink`) ohne Rückfrage, sonst nach Rückfrage. Vorgaben aus den Filtern der Ansicht `view` (is/eq/checked) liest sie über `GET /api/app/rows/<db>` mit `hk_…`; angelegt wird über die **Web-Sitzung** (`POST /api/notes` `{title: "", parent_id: <db>, props}`, Cookie aus dem WebView-Speicher, Kopf `X-Saga: 1`, bei `401` einmal `/app/resume` und wiederholen) – einen `hk_`-Endpunkt zum Anlegen gibt es nicht. Danach `/notes#<neu>`; bei Fehler Hinweis und `/notes#<db>` |
 | `saga://settings[/<bereich>]` | (neu, ⌘, bzw. Tray) | `/notes?settings=<bereich>` (`account`, `security`, `push`/`notify`, `pages`, `calendar`, `bookmarks`, `immich`, `nextcloud`, `apps`, `api`, `backup`, `help`, `lang`); ohne gültigen Bereich `account` |
 | `saga://chats` | Linux | `/chats` |
+| `saga://saga` | (2.6, K-I) Ort „Saga“ | `/saga` |
+| `saga://jobs` | (2.6, K-C) Mitteilung eines Auftrags auf einem Klartext-Weg (ohne Kennung) | `/saga?tab=jobs` |
+| `saga://job/<id>` | (2.6, K-C) Mitteilung eines Auftrags: Tippen, „Ansehen“, Hinweis nach `409`/`410` von `act` | `/saga?tab=jobs&job=<id>` – Reiter „Aufträge“ mit geöffnetem Detail (`<id>` nur Ziffern, sonst `/saga?tab=jobs`). Korrigiert den Vorschlag `/notes?v=jobs` aus dem Konzept §8.3 |
 | `saga://auth?code=…` | Rückkehr der Browser-Anmeldung | **nur Hülle** (`/app/exchange`) → `null` |
 | `saga://pair?u=…&c=…` | QR-Kopplung | **nur Hülle**, immer mit Rückfrage → `null` |
 | sonst | – | `null` (nichts tun) |
 
 Vorhandene Web-Adressen dazu: `/notes#<id>` (Seite), `/notes?v=tasks|events`, `/notes?new=blank`, `?settings=<bereich>`
-(auf `/`, `/notes`, `/chats`), `/chats#…`.
+(auf `/`, `/notes`, `/chats`), `/chats#…`, `/saga[?tab=jobs[&job=<id>]]`.
 
 ## 7. Anmeldung in der Hülle (Server unverändert)
 

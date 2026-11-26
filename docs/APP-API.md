@@ -3932,6 +3932,100 @@ VoIP kommt nur für `call`/`call.group`.
 
 **Abos ohne Schlüssel** (Apps 2.5) laufen nur über einen eigenen APNs-Schlüssel des Servers, nie über das Relais.
 
+## Push-Nutzlast 3 und Aufträge (2.6, Bugs-DB 2270 K-C, `jobpush1`)
+
+Mitteilungen der Kollegin (Persona in den Beispielen „Marin“) zu **Aufträgen** (Abschnitt 10 in
+[`APP-API-KI.md`](APP-API-KI.md)): „braucht dich“, „erledigt“, „hat nicht geklappt“ – mit Knöpfen direkt in der
+Mitteilung. Der Inhalt (Auftragstitel, Ergebnis) reist **nur** Ende-zu-Ende verschlüsselt; sichtbar für Push-Dienste,
+Relais, ntfy und den Sperrbildschirm ohne Vorschau ist nur ein neutraler Satz. Ablauf, Aktionen und Fehlercodes:
+`APP-API-KI.md` Abschnitt 12. Additiv, ohne Migration, `MIN_APP` unverändert; alle anderen Arten bleiben `v: 2`.
+
+**Erkennen:** `/api/version` → `features` enthält `jobpush1`; `GET /api/push` → `server.payload: 3`,
+`server.sub_caps` enthält zusätzlich `"detail"` und `"actions"` (ältere Server: fehlt – keine `job.*`-Mitteilungen).
+
+**Testvektoren:** `tests/vectors/push_kollegin.json` (`tools/kollegin_push_vectors.py gen|check`, Format
+`saga-push-kollegin/1`) mit denselben App-Schlüsseln wie `push_e2e.json`. Apps prüfen damit ohne Server: Entschlüsseln je
+Weg, Felder, Kategorie, Android-Kanal, Knöpfe nach K15, Klartext-Wege ohne Kennung, Texte t1/t2 in de/en/es/ru/th.
+
+### Arten und Übergänge
+
+| Übergang (`job.state`) | Art | `state` | Glocke | Push |
+|---|---|---|---|---|
+| → `wartet_dich` | `job.needs_you` | `needs` | ja | ja |
+| → `wartet_ok`, nur wenn der Auftrag **nicht** aus dem Ort „Saga“ kam (`source ≠ saga`) | `job.needs_you` | `needs` | ja | ja |
+| → `erledigt` | `job.done` | `done` | ja | ja, außer ≤ 60 s nach „Passt, los“ (dann sieht die Person es gerade) |
+| → `fehlgeschlagen` | `job.failed` | `failed` | ja | ja |
+| → `abgebrochen`, `zurueckgenommen` bzw. aus `wartet_dich` heraus | `job.changed` | – | alte Einträge des Auftrags weg | still `update` + `removed` (nur E2E-Abos mit `update`) |
+
+Bereich in `PUT /api/push` `cats`: **`jobs`** (Standard an, Kanal `notify` für „Nicht stören“). Nie VoIP: ein
+`apns-voip`-Abo bekommt keine `job.*`. Während „Nicht stören“ zählt die Sammelmeldung Aufträge mit:
+`digest: {messages, calls, other, jobs}` – `jobs` ist in `other` **enthalten** (ältere Apps zeigen weiter „3 weitere
+Mitteilungen“), der Satz `body` sagt „… 2 Rückmeldungen von Marin, 1 weitere Mitteilung“.
+
+### Felder (zusätzlich zu Nutzlast 2)
+
+| Feld | Inhalt | E2E-Wege | Klartext-Wege |
+|---|---|---|---|
+| `v` | `3` | ✓ | ✓ |
+| `title` | neutral: „{Persona} · KI – braucht dich“ (`needs`) bzw. „{Persona} · KI – Rückmeldung“ (`done`, `failed`) | ✓ | ✓ |
+| `body` | „In Saga ansehen“ | ✓ | ✓ |
+| `state` | `needs` \| `done` \| `failed` | ✓ | ✓ |
+| `url` | `/saga?tab=jobs&job=<id>` | ✓ | `/saga?tab=jobs` |
+| `tag` | `job-<id>` (ersetzt je Auftrag) | ✓ | `saga-job` |
+| `group_key`, `thread` | `job:<id>`, `job-<id>` | ✓ | – |
+| `job`, `pv` | Kennung des Auftrags, Planversion (`plan_v`, für `act`) | ✓ | – |
+| `silent` | wie Nutzlast 2 (Beschäftigt „ohne Ton“) | ✓ | ✓ |
+| `detail` | `{b, f?, lang, t1, t2}` – nur wenn Abo-`caps` `detail` **und** Einstellung „Inhalt in Mitteilungen“ ≠ „nie“ | ✓ | – |
+| `actions` | `[{a, t}]` – Aktion und Einmal-Token (`atok`), nur mit Abo-`caps` `actions` | ✓ | – |
+
+**E2E-Wege** = Web Push, UnifiedPush mit Schlüsseln, eigene Verbindung `stream`, APNs **nur**, wenn wirklich
+verschlüsselt wird (über das Relais immer; auf dem eigenen APNs-Weg nur mit `push.apns_e2e_direct`). **Klartext-Wege** =
+ntfy, UnifiedPush ohne Schlüssel und der eigene APNs-Weg ohne E2E: dort weder Kennung noch Inhalt noch Knöpfe.
+
+- **`detail`:** `t1` = „Erledigt: {Titel}“ / „Wartet auf dich: {Titel}“ / „Hat nicht geklappt: {Titel}“ (Titel höchstens
+  60 Grapheme, sonst 59 + „…“); `t2` = Satz der Persona (Kanal `push`, ≤ 100 Grapheme, ohne Modell, ohne Zitate Dritter).
+  Beide baut der **Server** in der Sprache des Abos (`lang`) – Apps zeigen sie unverändert (Titel der Mitteilung = `t1`,
+  Text = `t2`). `b` (Baustein: `report`, `fail`, `plan`) und `f` (Lücken) gehen für spätere Apps mit; heute nicht
+  auswerten. `wording`/`to` sind für Schritte nach außen reserviert (K-E).
+- **Größe:** innerer Text höchstens 2400 Byte; sonst entfällt zuerst `detail.f`, dann wird `t2` gekürzt. Auf **allen**
+  E2E-Wegen wird bei `job.*` aufgefüllt wie bei APNs (512/1024/2048 Byte, RFC 8188) – die Länge verrät den Titel nicht.
+- **Topic/collapse-id:** Web Push `Topic`, `stream`-Topic und `apns-collapse-id` sind bei `job.*` immer undurchsichtig:
+  `"c" + Base64url(HMAC-SHA256(auth, "saga-collapse/1|" + tag))[:22]` (bei `job.changed` mit `"u" + tag`). `Urgency:
+  high` nur bei `needs`.
+- **APNs:** sichtbarer Teil unverändert nur Loc-Keys (`SAGA_PUSH_TITLE`/`SAGA_PUSH_BODY`), **keine** `category` im `aps`
+  (das Relais lehnt sie ab) – die Notification Service Extension setzt `categoryIdentifier` (unten),
+  `threadIdentifier = job-<id>`, Ton nur ohne `silent`. Kann sie nicht entschlüsseln: Platzhalter ohne Knöpfe.
+
+### Kategorien, Knöpfe und Kanäle (alle Plattformen gleich)
+
+Die Kategorie ergibt sich aus `state` und den mitgeschickten Token (`actions[].a`):
+
+| Kategorie | wann | Knöpfe (Reihenfolge) |
+|---|---|---|
+| `saga.job.needs` | `needs` ohne `approve` | `open` · `later` |
+| `saga.job.needs.ok` | `needs` mit `approve` (Plan nur mit eigenen, rückgängigen Schritten) | `approve` · `open` · `later` |
+| `saga.job.done` | `done` mit `undo` (alle Änderungen rückgängig machbar) | `undo` · `quiet` |
+| `saga.job.done.plain` | `done` ohne `undo` | `quiet` |
+| `saga.job.failed` | `failed` | `open` |
+
+Aktionen: `approve` „Passt, los“, `undo` „Rückgängig“, `later` „Später“, `quiet` „Gerade nicht“, `open` „Ansehen“
+(ohne Token, öffnet `saga://job/<id>`). Ein Knopf ohne Token im Abo erscheint nicht (`open` immer). **K15:**
+`approve`/`undo` nur entsperrt (iOS `.authenticationRequired`, Android `setAuthenticationRequired(true)` ab API 31;
+darunter nie), nie ohne sichtbaren Inhalt (kein `detail` oder Vorschau verborgen), nie auf Uhr/Auto (Wear, CarPlay,
+Android Auto: nur `later`/`quiet`), nie im Web (Service Worker: nur `later`/`quiet` + „Ansehen“). Kein Textfeld. Die
+genaue Matrix (Kategorie × Gerät × gesperrt × Inhalt) steht in den Vektoren (`k15`). Apple Watch spiegelt iOS-Knöpfe;
+das ist in 2.6 hingenommen (nur eigene, rückgängige Schritte).
+
+Android-Kanäle (fest, nie umbenennen), Gruppe `G_NOTIFY`: `saga.jobs.needs.v1` „Braucht dich“ (hoch, `needs`) und
+`saga.jobs.feedback.v1` „Rückmeldungen“ (normal, `done` und `failed`); `BigTextStyle`, `VISIBILITY_PRIVATE` mit neutraler
+`publicVersion`. Schaltet die Person beide Kanäle ab, meldet die App `cats.jobs = false`.
+
+### Abo
+
+`POST /api/push/subscriptions` `caps` nimmt zusätzlich `"detail"` und `"actions"` an (alle Typen; wirksam nur auf
+E2E-Wegen). Apps melden z. B. Android `["update", "widgets", "detail", "actions"]`, iOS `["widgets", "detail",
+"actions"]`, Browser `["detail", "actions"]` (weiter ohne `update`, siehe Nutzlast 2).
+
 ## Widgets sofort aktuell: Widget-Push, Einzelseite, `cover_v` (2.6, Bugs-DB 2188)
 
 Homescreen-Widgets (iOS WidgetKit, Android Glance) zeigen Änderungen von anderen Geräten sofort: Der Server schickt

@@ -21,6 +21,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Neu
 
+- **Mitteilungen von der KI zu Aufträgen – Vertrag** (2270 K-C, ohne Migration): Schnittstelle für „braucht dich“,
+  „erledigt“ und „hat nicht geklappt“ mit Knöpfen in der Mitteilung (Push-Nutzlast 3, `jobpush1`, docs/APP-API.md und
+  docs/APP-API-KI.md Abschnitt 12), Testvektoren `tests/vectors/push_kollegin.json` für die Apps, gemeinsames Ereignis
+  `job.state` und Ruhe „Gerade nicht“ (`ai_saga.set_quiet`) für Mitteilungen und Tageszeile. (2270)
 - **Kontakte ins Adressbuch des Handys** (Bugs-DB 2027b, Doku): Anleitung (de/en/es) und `docs/APP-API.md` beschreiben
   „Zu Kontakten hinzufügen“ in den Apps – einzeln, ohne Kontakte-Berechtigung, ohne Abgleich, ohne Saga-Adresse.
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte

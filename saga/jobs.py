@@ -269,16 +269,22 @@ def _to(c, job_id, old, new, t, reason=None, where="", args=(), sets="", sargs=(
         _event(c, job_id, "state", t, frm=old, to=new, reason=_code(reason))
         if new == "laeuft":
             c.after_commit(wake)
-        _live(c, job_id)
+        r = _live(c, job_id)
+        # 2.6 (2270 K-C): gemeinsames Ereignis fuer andere Bereiche (saga.ai_notify: Glocke/Push, K-D: Tageszeile) - in
+        # DIESER Transaktion; Zuhoerer arbeiten selbst per c.after_commit (jobs bleibt KI-neutral, keine neue Sperre)
+        if r:
+            bus.fire("job.state", c, job_id=job_id, uid=r[0], kind=r[4], old=old, new=new, reason=_code(reason))
     return bool(n)
 
 
 def _live(c, job_id):
-    """K-B: Live-Ereignis ai.job.changed {id, state, sub, plan_v} an die Besitzerin (nach dem Commit, nur Kennungen)."""
-    r = c.execute("SELECT uid, state, sub, plan_v FROM job WHERE id=?", (job_id,)).fetchone()
+    """K-B: Live-Ereignis ai.job.changed {id, state, sub, plan_v} an die Besitzerin (nach dem Commit, nur Kennungen).
+    -> Zeile (uid, state, sub, plan_v, kind) oder None."""
+    r = c.execute("SELECT uid, state, sub, plan_v, kind FROM job WHERE id=?", (job_id,)).fetchone()
     if r:
         bus.emit_after(c, "direct", {"uids": [r[0]], "typ": "ai.job.changed",
                                      "data": {"id": job_id, "state": r[1], "sub": r[2], "plan_v": r[3]}})
+    return r
 
 
 def changed_after(job_id, c=None):

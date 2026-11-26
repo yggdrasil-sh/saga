@@ -1,0 +1,4437 @@
+{
+ "format": "saga-push-kollegin/1",
+ "note": "Erzeugt von tools/kollegin_push_vectors.py gen - nicht von Hand aendern. Vertrag: docs/APP-API.md (Push-Nutzlast 3), docs/APP-API-KI.md Abschnitt 12, docs/PUSH-RELAY.md. Schluessel = tests/vectors/push_e2e.json keys.",
+ "params": {
+  "payload_v": 3,
+  "kinds": {
+   "needs": "job.needs_you",
+   "done": "job.done",
+   "failed": "job.failed"
+  },
+  "update_kind": "job.changed",
+  "cat": "jobs",
+  "kanal": "notify",
+  "group_of_state": {
+   "wartet_dich": "needs",
+   "wartet_ok": "needs",
+   "erledigt": "done",
+   "fehlgeschlagen": "failed"
+  },
+  "silent_states": [
+   "abgebrochen",
+   "zurueckgenommen"
+  ],
+  "persona": "Marin",
+  "base_url": "https://saga.example.org",
+  "now": 1798761600,
+  "e2e_max": 2400,
+  "pad_steps": [
+   512,
+   1024,
+   2048
+  ],
+  "pad_round": 512,
+  "ttl": 14400,
+  "t1_max": 60,
+  "t2_max": 100,
+  "e2e_ways": [
+   "webpush",
+   "unifiedpush",
+   "stream",
+   "apns"
+  ],
+  "plain_ways": [
+   "ntfy",
+   "unifiedpush-plain",
+   "apns-plain"
+  ],
+  "never": [
+   "apns-voip"
+  ],
+  "ids": {
+   "tag": "job-{id}",
+   "group_key": "job:{id}",
+   "thread": "job-{id}",
+   "url": "/saga?tab=jobs&job={id}",
+   "plain_tag": "saga-job",
+   "plain_url": "/saga?tab=jobs"
+  },
+  "token": {
+   "bytes": 18,
+   "len": 24,
+   "alphabet": "base64url",
+   "db": "sha256 hex",
+   "ttl_s": 86400,
+   "needs_until": "due_at",
+   "max_s": 1209600
+  },
+  "later_s": 10800,
+  "later_max": 2,
+  "quiet_hour": 7,
+  "quiet_tz": "push.quiet.tz, sonst Server-TIMEZONE",
+  "done_window_s": 60,
+  "sub_caps": [
+   "update",
+   "widgets",
+   "detail",
+   "actions"
+  ]
+ },
+ "keys": {
+  "ua_priv": "p1s0SDw5_J_2gKEXWGcKZC0HiP7-NMQSk4jO5xNjoo8",
+  "ua_pub": "BLHYxOr728enKRt5TD1CYvVNF0BuwiXR47U-gZNaQx5JZQmFYte8eAOzMYpk_-MURJmJiNUcbgtqdWav6xdJWJs",
+  "auth": "HEpVhwSc41SZINSabJrLHg",
+  "k": "rJ1YACNZ"
+ },
+ "texts": {
+  "de": {
+   "title": {
+    "needs": "Marin · KI – braucht dich",
+    "feedback": "Marin · KI – Rückmeldung"
+   },
+   "body": "In Saga ansehen",
+   "t1": {
+    "needs": "Wartet auf dich: Grillkohle besorgen",
+    "done": "Erledigt: Grillkohle besorgen",
+    "failed": "Hat nicht geklappt: Grillkohle besorgen"
+   },
+   "t2": {
+    "done": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender.",
+    "done.row": "Auf „Einkaufsliste“ eingetragen.",
+    "needs.recht": "Dafür fehlt mir jetzt das Recht. Der Auftrag wartet. Geändert wurde nichts.",
+    "needs.plan": "Der Plan steht und wartet auf ein OK.",
+    "failed.konflikt": "Eine Seite wurde inzwischen geändert – überschrieben habe ich nichts. Geändert wurde nichts."
+   },
+   "hint": "Bitte in Saga ansehen",
+   "buttons": {
+    "approve": "Passt, los",
+    "undo": "Rückgängig",
+    "later": "Später",
+    "quiet": "Gerade nicht",
+    "open": "Ansehen"
+   },
+   "channels": {
+    "saga.jobs.needs.v1": "Braucht dich",
+    "saga.jobs.feedback.v1": "Rückmeldungen"
+   }
+  },
+  "en": {
+   "title": {
+    "needs": "Marin · AI – needs you",
+    "feedback": "Marin · AI – update"
+   },
+   "body": "View in Saga",
+   "t1": {
+    "needs": "Needs you: Grillkohle besorgen",
+    "done": "Done: Grillkohle besorgen",
+    "failed": "Didn't work: Grillkohle besorgen"
+   },
+   "t2": {
+    "done": "Task “Grillkohle besorgen” added. “Grillabend” is in the calendar.",
+    "done.row": "Added to “Einkaufsliste”.",
+    "needs.recht": "I'm no longer allowed to do this. The job is waiting. Nothing was changed.",
+    "needs.plan": "The plan is ready and waiting for an OK.",
+    "failed.konflikt": "A page was changed in the meantime – I didn't overwrite anything. Nothing was changed."
+   },
+   "hint": "Please take a look in Saga",
+   "buttons": {
+    "approve": "Go ahead",
+    "undo": "Undo",
+    "later": "Later",
+    "quiet": "Not now",
+    "open": "View"
+   },
+   "channels": {
+    "saga.jobs.needs.v1": "Needs you",
+    "saga.jobs.feedback.v1": "Updates"
+   }
+  },
+  "es": {
+   "title": {
+    "needs": "Marin · IA – te necesita",
+    "feedback": "Marin · IA – novedades"
+   },
+   "body": "Ver en Saga",
+   "t1": {
+    "needs": "Te necesita: Grillkohle besorgen",
+    "done": "Hecho: Grillkohle besorgen",
+    "failed": "No ha funcionado: Grillkohle besorgen"
+   },
+   "t2": {
+    "done": "Tarea «Grillkohle besorgen» creada. «Grillabend» está en el calendario.",
+    "done.row": "Apuntado en «Einkaufsliste».",
+    "needs.recht": "Ya no tengo permiso para esto. El encargo está en espera. No se ha cambiado nada.",
+    "needs.plan": "El plan está listo y espera un OK.",
+    "failed.konflikt": "Una página ha cambiado mientras tanto; no he sobrescrito nada. No se ha cambiado nada."
+   },
+   "hint": "Échale un vistazo en Saga",
+   "buttons": {
+    "approve": "Adelante",
+    "undo": "Deshacer",
+    "later": "Más tarde",
+    "quiet": "Ahora no",
+    "open": "Ver"
+   },
+   "channels": {
+    "saga.jobs.needs.v1": "Te necesita",
+    "saga.jobs.feedback.v1": "Novedades"
+   }
+  },
+  "ru": {
+   "title": {
+    "needs": "Marin · ИИ – ждёт тебя",
+    "feedback": "Marin · ИИ – новости"
+   },
+   "body": "Открыть в Saga",
+   "t1": {
+    "needs": "Ждёт тебя: Grillkohle besorgen",
+    "done": "Готово: Grillkohle besorgen",
+    "failed": "Не получилось: Grillkohle besorgen"
+   },
+   "t2": {
+    "done": "Задача «Grillkohle besorgen» создана. «Grillabend» – в календаре.",
+    "done.row": "Внесено на странице «Einkaufsliste».",
+    "needs.recht": "Для этого больше нет прав. Задание ждёт. Ничего не изменено.",
+    "needs.plan": "План готов и ждёт подтверждения.",
+    "failed.konflikt": "Одна из страниц за это время изменилась – ничего не перезаписано. Ничего не изменено."
+   },
+   "hint": "Посмотри в Saga",
+   "buttons": {
+    "approve": "Давай",
+    "undo": "Отменить",
+    "later": "Позже",
+    "quiet": "Не сейчас",
+    "open": "Открыть"
+   },
+   "channels": {
+    "saga.jobs.needs.v1": "Ждёт тебя",
+    "saga.jobs.feedback.v1": "Новости"
+   }
+  },
+  "th": {
+   "title": {
+    "needs": "Marin · AI – ต้องการคุณ",
+    "feedback": "Marin · AI – อัปเดต"
+   },
+   "body": "ดูใน Saga",
+   "t1": {
+    "needs": "ต้องการคุณ: Grillkohle besorgen",
+    "done": "เสร็จแล้ว: Grillkohle besorgen",
+    "failed": "ไม่สำเร็จ: Grillkohle besorgen",
+    "done.long": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…"
+   },
+   "t2": {
+    "done": "สร้างงาน “Grillkohle besorgen” แล้วค่ะ “Grillabend” อยู่ในปฏิทินแล้วค่ะ",
+    "done.row": "บันทึกไว้ในหน้า “Einkaufsliste” แล้วค่ะ",
+    "needs.recht": "ตอนนี้ไม่มีสิทธิ์ทำสิ่งนี้แล้ว งานนี้กำลังรออยู่ค่ะ ไม่มีการเปลี่ยนแปลงใดๆค่ะ",
+    "needs.plan": "แผนพร้อมแล้ว รอการยืนยัน",
+    "failed.konflikt": "มีหน้าหนึ่งถูกแก้ไขไปแล้วในระหว่างนี้ จึงไม่ได้เขียนทับอะไรค่ะ ไม่มีการเปลี่ยนแปลงใดๆค่ะ"
+   },
+   "hint": "โปรดดูใน Saga",
+   "buttons": {
+    "approve": "ตกลง ทำเลย",
+    "undo": "เลิกทำ",
+    "later": "ภายหลัง",
+    "quiet": "ไม่ใช่ตอนนี้",
+    "open": "ดู"
+   },
+   "channels": {
+    "saga.jobs.needs.v1": "ต้องการคุณ",
+    "saga.jobs.feedback.v1": "อัปเดต"
+   }
+  }
+ },
+ "categories": [
+  {
+   "id": "saga.job.needs",
+   "buttons": [
+    "open",
+    "later"
+   ],
+   "group": "needs"
+  },
+  {
+   "id": "saga.job.needs.ok",
+   "buttons": [
+    "approve",
+    "open",
+    "later"
+   ],
+   "group": "needs"
+  },
+  {
+   "id": "saga.job.done",
+   "buttons": [
+    "undo",
+    "quiet"
+   ],
+   "group": "done"
+  },
+  {
+   "id": "saga.job.done.plain",
+   "buttons": [
+    "quiet"
+   ],
+   "group": "done"
+  },
+  {
+   "id": "saga.job.failed",
+   "buttons": [
+    "open"
+   ],
+   "group": "failed"
+  }
+ ],
+ "android_channels": [
+  {
+   "id": "saga.jobs.needs.v1",
+   "name": "Braucht dich",
+   "importance": "high",
+   "group": "G_NOTIFY",
+   "states": [
+    "needs"
+   ]
+  },
+  {
+   "id": "saga.jobs.feedback.v1",
+   "name": "Rückmeldungen",
+   "importance": "default",
+   "group": "G_NOTIFY",
+   "states": [
+    "done",
+    "failed"
+   ]
+  }
+ ],
+ "actions": [
+  {
+   "a": "approve",
+   "token": true,
+   "auth": true,
+   "foreground": false
+  },
+  {
+   "a": "undo",
+   "token": true,
+   "auth": true,
+   "foreground": false
+  },
+  {
+   "a": "later",
+   "token": true,
+   "auth": false,
+   "foreground": false
+  },
+  {
+   "a": "quiet",
+   "token": true,
+   "auth": false,
+   "foreground": false
+  },
+  {
+   "a": "open",
+   "token": false,
+   "auth": false,
+   "foreground": true
+  }
+ ],
+ "reserved_actions": [
+  "retry",
+  "reply",
+  "ideas_off"
+ ],
+ "devices": [
+  "phone",
+  "phone_noauth",
+  "watch",
+  "car",
+  "web"
+ ],
+ "cases": [
+  {
+   "name": "done_undo_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2,
+    "detail": {
+     "b": "report",
+     "f": {
+      "changes": [
+       {
+        "kind": "task",
+        "title": "Grillkohle besorgen"
+       },
+       {
+        "kind": "event",
+        "title": "Grillabend"
+       }
+      ]
+     },
+     "lang": "de",
+     "t1": "Erledigt: Grillkohle besorgen",
+     "t2": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "actions": [
+     {
+      "a": "undo",
+      "t": "WuKANryrN8RlH60qY3vFUDoR"
+     },
+     {
+      "a": "quiet",
+      "t": "SnCmk-jBJ7cMO_j7HGL7NenM"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"f\":{\"changes\":[{\"kind\":\"task\",\"title\":\"Grillkohle besorgen\"},{\"kind\":\"event\",\"title\":\"Grillabend\"}]},\"lang\":\"de\",\"t1\":\"Erledigt: Grillkohle besorgen\",\"t2\":\"Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender.\"},\"actions\":[{\"a\":\"undo\",\"t\":\"WuKANryrN8RlH60qY3vFUDoR\"},{\"a\":\"quiet\",\"t\":\"SnCmk-jBJ7cMO_j7HGL7NenM\"}]}",
+   "plain_len": 595,
+   "pad_to": 1024,
+   "salt": "-YTls3onFftbuUDwDWOKGA",
+   "as_priv": "yjLzoG8ALfj0nWAozdpgdpmf15DM5-5Ohn3Yn6ggEy4",
+   "body": "-YTls3onFftbuUDwDWOKGAAAEABBBE29LQKONdyiOSJ17ARMkmZsfs_VJjm5GMB6K4ETWpcO9lVG6soAzq20d53GkB4dEYtXLwP2sIHCgTACoz8n75gPgF3VlEnCFGQELBZtLuCaOfRtFbyN4k17u9V5hus1FfjV116nZceSNK8HMSGl2YxekPjveK_HenEYe1ROazG8S46z4GzKdqMQwuUl5tsRX1kLmgGcHTNCTClmDeZaIHMNJKtsoyFtgWP8rZNCNnPhFSYTll22vzd6A3ndqmF9gnYR2JbXvJ09ZL_1C6eqinUOgwxxOinB05kjj3jOBQnkmTVqqeDZtludoZnq0EZ-c9TookEcDxbPOOFYMhkBOZapO8Rgx3LjCWy1oIP7LdMGi0qQtanMvIUO5M8SZF76YvE3Rdu7RpP-eRuvpLGZFWVwvjqLhRtmwkOqBjYywX0hXrxlFQtBz2rdGTNzyqbCLZ5NflPUUask49s8lwH4gSOUWYrOhPN5pdcmhiSYICKmqMjnJdfpmnv466E6hupDoiwciBqqqFaOPU2Yakvavjh6yjKGos5LLsaRQ1LvNedLV--j1w_0DWuDGKDt3LeSmdgI7Rk-5tHN2DKUHULeaR2p-smHyunvpnFV42EWGwmHJAuDBrFtKTN5GQ0PE-Z2OTw1-4d_WOjw5jJidJ2DiM1f9hmWBO57N_f6wvLIORdONfCdjZ76f6halRbxnh7Vre3ngiDyNRaZgOIhTva8ztPHBQUqdhY6ObY5_I5aa4KVVhlyIXl80JeuUEsHHzIlL8HPC-JR8ZR7_jIErLgbJUPPWasQnaZz9ydhQMdpWwUFPxuoi6MiWvvSco-BTy5vNVrHxTHfgkNZZ5FPqr5_oCY5bVUxaDjDveCqakV71CDpIB9EDFKSCQ4zWIfXWEPZS5ENVmiDQE9UUD7IfYNVauhrOAqHeD3q2N5aJzLepGyn6hVfXBc-bKzoKFZxz7jfmBG2mZCjlckXUgCd6H5acYMTIuuaXny0CBZhAWLh2s5VzSxx6c_j9wsbhg67aTX9bFRifVCMKAQpZaAc_ztLkOnM6G-rZeWryb_J_Yt-MUp8J5fi5NQmQuAz2J73wZuCI3vq33sXQ_F-atxJ23cJZXl9pvMEmYm5WU4nR0I3amz-k2iDcQAMxFRoD26vnOtE7X6ki_7YiCb-wUCRRKqZVmKmgpP5P85ofMjiQTXrJ0gRZGHJbmvTlo0Z1Cqym-o85wxPwuuejPEaA3XLspaxKKr2HcW-Bw5sebQtq4T_Ef8rNcUO8Zpj4WS39zfbhhu0KgJyJx5j4Cv3uVWMM3OSPlOoUB6oTTEf3BJmLhykVLRwAMWbhqjvvX1UMxbQa2r7eZtHUtw7lun3vg6fyEXyGKVJB0BR_SXvnGviWB5jz_Z38eLJTb572TmFlo719nf7bsHERy16B7p5-BDQwHOdXM0OzCjfCf2yY8ftMRhWIGEFMyxh1Unr0k0yzcWokjxPeQ",
+   "body_len": 1126,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "normal",
+     "Topic": "cTPChTfCTBtBpKItsh-JcC_"
+    }
+   },
+   "expect": {
+    "category": "saga.job.done",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Erledigt: Grillkohle besorgen",
+     "body": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "buttons_unlocked_phone": [
+     "undo",
+     "quiet"
+    ],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "done_undo_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2,
+    "detail": {
+     "b": "report",
+     "f": {
+      "changes": [
+       {
+        "kind": "task",
+        "title": "Grillkohle besorgen"
+       },
+       {
+        "kind": "event",
+        "title": "Grillabend"
+       }
+      ]
+     },
+     "lang": "de",
+     "t1": "Erledigt: Grillkohle besorgen",
+     "t2": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "actions": [
+     {
+      "a": "undo",
+      "t": "WuKANryrN8RlH60qY3vFUDoR"
+     },
+     {
+      "a": "quiet",
+      "t": "SnCmk-jBJ7cMO_j7HGL7NenM"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"f\":{\"changes\":[{\"kind\":\"task\",\"title\":\"Grillkohle besorgen\"},{\"kind\":\"event\",\"title\":\"Grillabend\"}]},\"lang\":\"de\",\"t1\":\"Erledigt: Grillkohle besorgen\",\"t2\":\"Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender.\"},\"actions\":[{\"a\":\"undo\",\"t\":\"WuKANryrN8RlH60qY3vFUDoR\"},{\"a\":\"quiet\",\"t\":\"SnCmk-jBJ7cMO_j7HGL7NenM\"}]}",
+   "plain_len": 595,
+   "pad_to": 1024,
+   "salt": "4Xzh0JHrIhppwW2IeZ0zzg",
+   "as_priv": "h9yocWs8q_rX-EWmP698qythbS-s39Q4L_b2RSJKO9E",
+   "body": "4Xzh0JHrIhppwW2IeZ0zzgAAEABBBAKY0q55D4D6tFeL6AcavUu6vqzfroEXinV2iI0EGeNnFyGZEv4_0iJyyNGQtqaeuUmkcLLJz6kGE_FDQOZYJ6VtnLbCMNycbLdhU1Bi72lqKGflsmjwvNdUzgGF-oah9hHB84OCThwdD-IZkUhKEKMX1nuhLM0WSXC7DuQdbTdWlbEACsWMAH_PC6-xQe_M2T4CG7nfRsBl_pUEJj5buzcviI8Eo3CtVwRPadxIAlsCmwuLlVazwCkkDURCq695T-hGe5WR-u-Ec2J2EBiFhsZna4oGO8TZEYsFl9ROarg2gbDwWTjG8arGi1yd3ohTHCu3dVR7SHrz9ws4qpxX8nRmMFr6zaKsYToN81Z-sHwJDenx7y4oi3sfVF2GkzUD4OSDuTzMG0PQgo1RvEIXPWdIC5AsqzOsfuxul0RVXswm83yj69JEhUPWSojY_OSB7tvp_mwpERcf01Ze5v8pPh3LA-IYkC9Ph_F837SLJanoyC2Znujg_JUSG0RUz8kSOO_7KWm_OxtMTC-V1YTuYzHJtcMvM2guUS3LpvrfrVWc6HBNgDspP72x0xcGFIs-tKifcSfFjhDiN8eh7phpLGh1lCoS5Rbnh29QiXs-2TiDu8NJxIFqIaql40jHgk_R1TP3WDm8Wf099hyAS8ezmIrE3lxCXWolV5v9tR5gtzeHEb1S4Xrax6V3ASXGjjlFDJXKKKBLEaYQciF0cVlISex6oYtmAoStJT5KxnRB8am9lObZUoMcg99UP8ImzjwOeNBpduyM8fww-S4LfQy0SdTC5tuPzb6CBXmYZ9UYnW3SY0u5voaWxYOIwOpbSAfOe3ooh0Tl4lZqeT2ITlJCxtoFsMNt8h_GfIzOXHcqONJ852NNR0EZNrjs3X0x-cV2ZVuauA-RaJLlZ4BAckQwp5GL0oWvemiQFXFsazQbQJth1CgLBMeQF4PDpaPnCHMj6dptBF-TI3LzrvAICge-u7l6YcToiRMlbvo9MogY3YVg9a8fLEmvG0wiBqREsiCOHInt1fxXrRaLUkwtLVz5ajoilRv4m4tRWE18xD2sD-six75jRvH7YX6Kck9a5UWNsyis9bVMcGYm5Q-DjtFF1_JIZh9-EamDJeGkEfbnh06nr_qOCzJpI0GT3MXT9AE5zaf-iCaWp9OAPAi_nNywic8rj39Y0LOo9r3liprbm-S2LG4YpBJxd6EPWbYnXM8qga-Jdf7lHjeEf8zJCTGeWoLHcVC7RlxhZazaHnObhqZ9jAK7wGOE198gOwISH-tsdGotgL0tJYkxt8IzUAonBCnEnemQsHDST9oif-1huwLmxB9_yq5EDqhGReHq5F4EVEzZxu82r-mFPLKivBSKSJeqAnMAHNF0MJoN1tKDt3Vc7AaEjLcLDhdcVLW3WDehD6qsaiJgln4EZC59pMNM-i2gB0uip4bduw2EBo2n2_nWd5z2rILRKSQSbVoRiZs2gA",
+   "body_len": 1126,
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "ttl": 14400,
+    "expiration": 1798776000,
+    "rate": "alert",
+    "collapse_tag": "job-42",
+    "collapse_id": "cTPChTfCTBtBpKItsh-JcC_",
+    "aps": {
+     "alert": {
+      "title-loc-key": "SAGA_PUSH_TITLE",
+      "loc-key": "SAGA_PUSH_BODY"
+     },
+     "mutable-content": 1,
+     "sound": "default"
+    },
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title-loc-key": "SAGA_PUSH_TITLE",
+       "loc-key": "SAGA_PUSH_BODY"
+      },
+      "mutable-content": 1,
+      "sound": "default"
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "4Xzh0JHrIhppwW2IeZ0zzgAAEABBBAKY0q55D4D6tFeL6AcavUu6vqzfroEXinV2iI0EGeNnFyGZEv4_0iJyyNGQtqaeuUmkcLLJz6kGE_FDQOZYJ6VtnLbCMNycbLdhU1Bi72lqKGflsmjwvNdUzgGF-oah9hHB84OCThwdD-IZkUhKEKMX1nuhLM0WSXC7DuQdbTdWlbEACsWMAH_PC6-xQe_M2T4CG7nfRsBl_pUEJj5buzcviI8Eo3CtVwRPadxIAlsCmwuLlVazwCkkDURCq695T-hGe5WR-u-Ec2J2EBiFhsZna4oGO8TZEYsFl9ROarg2gbDwWTjG8arGi1yd3ohTHCu3dVR7SHrz9ws4qpxX8nRmMFr6zaKsYToN81Z-sHwJDenx7y4oi3sfVF2GkzUD4OSDuTzMG0PQgo1RvEIXPWdIC5AsqzOsfuxul0RVXswm83yj69JEhUPWSojY_OSB7tvp_mwpERcf01Ze5v8pPh3LA-IYkC9Ph_F837SLJanoyC2Znujg_JUSG0RUz8kSOO_7KWm_OxtMTC-V1YTuYzHJtcMvM2guUS3LpvrfrVWc6HBNgDspP72x0xcGFIs-tKifcSfFjhDiN8eh7phpLGh1lCoS5Rbnh29QiXs-2TiDu8NJxIFqIaql40jHgk_R1TP3WDm8Wf099hyAS8ezmIrE3lxCXWolV5v9tR5gtzeHEb1S4Xrax6V3ASXGjjlFDJXKKKBLEaYQciF0cVlISex6oYtmAoStJT5KxnRB8am9lObZUoMcg99UP8ImzjwOeNBpduyM8fww-S4LfQy0SdTC5tuPzb6CBXmYZ9UYnW3SY0u5voaWxYOIwOpbSAfOe3ooh0Tl4lZqeT2ITlJCxtoFsMNt8h_GfIzOXHcqONJ852NNR0EZNrjs3X0x-cV2ZVuauA-RaJLlZ4BAckQwp5GL0oWvemiQFXFsazQbQJth1CgLBMeQF4PDpaPnCHMj6dptBF-TI3LzrvAICge-u7l6YcToiRMlbvo9MogY3YVg9a8fLEmvG0wiBqREsiCOHInt1fxXrRaLUkwtLVz5ajoilRv4m4tRWE18xD2sD-six75jRvH7YX6Kck9a5UWNsyis9bVMcGYm5Q-DjtFF1_JIZh9-EamDJeGkEfbnh06nr_qOCzJpI0GT3MXT9AE5zaf-iCaWp9OAPAi_nNywic8rj39Y0LOo9r3liprbm-S2LG4YpBJxd6EPWbYnXM8qga-Jdf7lHjeEf8zJCTGeWoLHcVC7RlxhZazaHnObhqZ9jAK7wGOE198gOwISH-tsdGotgL0tJYkxt8IzUAonBCnEnemQsHDST9oif-1huwLmxB9_yq5EDqhGReHq5F4EVEzZxu82r-mFPLKivBSKSJeqAnMAHNF0MJoN1tKDt3Vc7AaEjLcLDhdcVLW3WDehD6qsaiJgln4EZC59pMNM-i2gB0uip4bduw2EBo2n2_nWd5z2rILRKSQSbVoRiZs2gA"
+     }
+    }
+   },
+   "expect": {
+    "category": "saga.job.done",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Erledigt: Grillkohle besorgen",
+     "body": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "buttons_unlocked_phone": [
+     "undo",
+     "quiet"
+    ],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "done_undo_stream",
+   "way": "stream",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2,
+    "detail": {
+     "b": "report",
+     "f": {
+      "changes": [
+       {
+        "kind": "task",
+        "title": "Grillkohle besorgen"
+       },
+       {
+        "kind": "event",
+        "title": "Grillabend"
+       }
+      ]
+     },
+     "lang": "de",
+     "t1": "Erledigt: Grillkohle besorgen",
+     "t2": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "actions": [
+     {
+      "a": "undo",
+      "t": "WuKANryrN8RlH60qY3vFUDoR"
+     },
+     {
+      "a": "quiet",
+      "t": "SnCmk-jBJ7cMO_j7HGL7NenM"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"f\":{\"changes\":[{\"kind\":\"task\",\"title\":\"Grillkohle besorgen\"},{\"kind\":\"event\",\"title\":\"Grillabend\"}]},\"lang\":\"de\",\"t1\":\"Erledigt: Grillkohle besorgen\",\"t2\":\"Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender.\"},\"actions\":[{\"a\":\"undo\",\"t\":\"WuKANryrN8RlH60qY3vFUDoR\"},{\"a\":\"quiet\",\"t\":\"SnCmk-jBJ7cMO_j7HGL7NenM\"}]}",
+   "plain_len": 595,
+   "pad_to": 1024,
+   "salt": "FfAyJSaskN38VRnU2cIHNg",
+   "as_priv": "PG6snTtjmZXmqjpZLOJWXDYfNkBhfhdqD13vl4L6KDM",
+   "body": "FfAyJSaskN38VRnU2cIHNgAAEABBBI2fOzqHd5DmBfazBB7adNLL7qj58zCnDsEpKfsbhpZl6KOJCJF1h9Y0TCCHsMlc14-tzXdoeuGncvvsIvk1hBFMiwzdh8vMO8Z8EMqwktsqBZaRbygllWV7VaDrsejp7F06MZs7EZhA_xY28zrD1jPyPobgECUdCWv1zIxDXF6HSyLbzGMyClVxhc98yfnvygpbYPvORwNonwbLGzHqDYOKmEfD5tJLAreTK0znreeyy6Uy81SiQ_Onu4-mCSSku1YI66B-8-4iNNdACgs0Vy-Czh7cxXiCa7v7QAxaRJdHtS9KEjK9NbnT9g18czS0ZJzDovpS_ArSViKXvTc9tRqBei-U3BxMbC9HAsN3EkzHBEGh-BV7Shta7nqZysRbfDrRB5Kvxnnn-yrKlNAfrTxlJgMWZYiKcpLtaMyjWEmhT6b0-6hNXnq1fkRc8mgIHsRshRBxkt_QgcgfsR_S7qLlLfkurREw-z-lkdEHX1shiMAf4-pGNpDtnPnBe-hoG_D5Qvq-q7MxEG1tyZqPjx7D4Zg-u7moA1zkOCws0DjqDEZSigOy8jgYjoIAR2cTae8JOef7WQ9NE3P3q7TkwMBbkInfL1hlist_nn0-b5t_UZT-r9jaFa3KVh6GuyqVzXq8mxZuguUrKxnnJnuKyvfWAMK0KbY6M7Q78sC0traM0LukB-X_pFSTWlpsx-9hrcEJB5mNGi-E3AJGZWpPBW8Ai3gQCjusVzZm39rgiIbOI1PFj9OOyJr8_ikD38OBJcRuJgMhjcLWjTQcVGl5XD3V50BuKW8rpHwk5K4iBZ0aKiDwqcYhuLwd02TbqT2u6CxRTnRwyhEt0uNHVG3z8vvEfMrkJ2pfY84D-rQhxWsVFoEbvnR1r1corI-lZJDyhPUHAi5JYS778m_Tsc8iTXJV-1VmB4IzC0NOUv7geudUGFUrVFlOwzwtmu1MyBjfFHzLmuWHdXK-riYv85w-l1TBOGYHkvoFRsLrHOVum2aEHjQjOrpbV3mDcnj9Oq8XV6IuvnRZXL-vuxGCnf0ZlQM29wCrdKnlfTBWLQ5b6a6vhGPia-eWz0o71056l_P32dBpO8NxsWzP5vOfj8lHmQSyy2--Ja6qlbiq2TQQkquisfG6At2APh2u1Vpg6ligR17Y85gyVKoVCueqy6SyEJEUv4x1o--e7D2ngyOpO3zwRPLjPHt7NNHdxq1znIvwPu3z3mr-gwNaFB2ZnoFTZ8kanWak5eNzcpdsOkl6J3uVMaBYXqfKJz396_Oczh_E2wrYnASr2sikNPxFBr97CbyqklG3WM-9ktHFevX99Nj5qzl1s200XtX4rubB4nKf-Mp9KGqQBUJrAixX8-2LRrs8rB_eCGRUrWNQ_hp1Yro5hWffZ1ZYP-Dd1b7j6dU97_3a0eibvK-64q53BBBMeN_-GzEWG0aGTj7Arek3-ZJJkaPUJrKB_X3JFWyi3pgUWw",
+   "body_len": 1126,
+   "transport": {
+    "topic": "cTPChTfCTBtBpKItsh-JcC_",
+    "ttl": 14400
+   },
+   "expect": {
+    "category": "saga.job.done",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Erledigt: Grillkohle besorgen",
+     "body": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "buttons_unlocked_phone": [
+     "undo",
+     "quiet"
+    ],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "done_deleteonly_unifiedpush",
+   "way": "unifiedpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 43,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "own",
+      "undo_class": "delete_only"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=43",
+    "tag": "job-43",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:43",
+    "thread": "job-43",
+    "job": 43,
+    "state": "done",
+    "pv": 2,
+    "detail": {
+     "b": "report",
+     "f": {
+      "changes": [
+       {
+        "kind": "note",
+        "title": "Einkaufsliste"
+       }
+      ]
+     },
+     "lang": "de",
+     "t1": "Erledigt: Grillkohle besorgen",
+     "t2": "Auf „Einkaufsliste“ eingetragen."
+    },
+    "actions": [
+     {
+      "a": "quiet",
+      "t": "FPgV8b7HHDi8WSbiRfdepd-7"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=43\",\"tag\":\"job-43\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:43\",\"thread\":\"job-43\",\"job\":43,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"f\":{\"changes\":[{\"kind\":\"note\",\"title\":\"Einkaufsliste\"}]},\"lang\":\"de\",\"t1\":\"Erledigt: Grillkohle besorgen\",\"t2\":\"Auf „Einkaufsliste“ eingetragen.\"},\"actions\":[{\"a\":\"quiet\",\"t\":\"FPgV8b7HHDi8WSbiRfdepd-7\"}]}",
+   "plain_len": 464,
+   "pad_to": 512,
+   "salt": "tHcDgj6H2TFbeq-auReAHQ",
+   "as_priv": "QMjKh-oF5bZa1X4Cdyom8RlClvs50ywpoP9FTfhInEg",
+   "body": "tHcDgj6H2TFbeq-auReAHQAAEABBBORgofrFEIBzm4cI6I-0i9jmyohdyd6uPaBNTG9wyMAYdjYTAxCWJni3V9jKsXAyOncjqz8rEWcDuoRH6NvGcBe8JVpiXe4sZ2TQjeO6iUtI37j6q_b6on8wTLn1Rj7OMrR15pCPfNYidTWtL_HEJqnJqdhKEiQAzSwJLpjb2uXuDML61rlYnMDR-dYiXuylvItFet7zml1Hg7wOr361iIqg64WVwbBw_AP1dZ8G80y-lfxsvPOLsiLoCM-ZMVAeeTi1nPozPinq-qVjRbGs6yZhXRCyN2lvguPKp_dM0ctwe97OZkPSxACW7wpBMERJYyRpV0GlRbT1HJJwqqueF5FZM3KIAwhg4ZyczBwlEswMqwgDClNMGRsS5PCscQM2f2wGmmkJaJE6uJhK4PIes3_Miu5yCEy5fypqhDmsi2nYJfajDEP3BoCnZfO4ROTM0l6pu-lxb2Q4tPigYLFEiYMZu8O5zXezxiv6RXo68v5oPdyBxcTxM_QM6_6V4d4ytahIwT_6X31e2TJBOY_7n0fFt_x1cTyRxsMMSbitgCuXmuk7yz10VEO5sLS2zvuz4z_V4HoPH1TOLaUQVA6kGff2j4-CWZc0wl60hhwgjgJ_iJUiBW_OyJXx_sE78l_hMbhyLKJiV14tE6P5tLH4BPasr68YFANrNEiZQNIMIe3cLRUP_tXt9CPBWD3phiRj-O3gtaZdaHSGKl5yy6BMMwLYwuglSm3FUXYxzSZCCsgz8TgmTKlA9fZKggXkJG9riZA4OE2cg99Oe2lIbS_FHbM",
+   "body_len": 614,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "normal",
+     "Topic": "crUR59HT2uVbFXxlHXiZy9d"
+    }
+   },
+   "expect": {
+    "category": "saga.job.done.plain",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-43",
+    "notification_tag": "job-43",
+    "text": {
+     "title": "Erledigt: Grillkohle besorgen",
+     "body": "Auf „Einkaufsliste“ eingetragen."
+    },
+    "buttons_unlocked_phone": [
+     "quiet"
+    ],
+    "deeplink": "saga://job/43"
+   }
+  },
+  {
+   "name": "needs_ok_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 44,
+    "state": "wartet_ok",
+    "source": "share",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – braucht dich",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=44",
+    "tag": "job-44",
+    "kind": "job.needs_you",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:44",
+    "thread": "job-44",
+    "job": 44,
+    "state": "needs",
+    "pv": 2,
+    "detail": {
+     "b": "plan",
+     "f": {
+      "n": 2
+     },
+     "lang": "de",
+     "t1": "Wartet auf dich: Grillkohle besorgen",
+     "t2": "Der Plan steht und wartet auf ein OK."
+    },
+    "actions": [
+     {
+      "a": "approve",
+      "t": "XCCga6gLN0-reonq7mQ29xlK"
+     },
+     {
+      "a": "later",
+      "t": "Wd1C6V0H7uzy7LjSOQD9rRuA"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – braucht dich\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=44\",\"tag\":\"job-44\",\"kind\":\"job.needs_you\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:44\",\"thread\":\"job-44\",\"job\":44,\"state\":\"needs\",\"pv\":2,\"detail\":{\"b\":\"plan\",\"f\":{\"n\":2},\"lang\":\"de\",\"t1\":\"Wartet auf dich: Grillkohle besorgen\",\"t2\":\"Der Plan steht und wartet auf ein OK.\"},\"actions\":[{\"a\":\"approve\",\"t\":\"XCCga6gLN0-reonq7mQ29xlK\"},{\"a\":\"later\",\"t\":\"Wd1C6V0H7uzy7LjSOQD9rRuA\"}]}",
+   "plain_len": 477,
+   "pad_to": 512,
+   "salt": "tPrwFgrr1b99ApzGO06y7w",
+   "as_priv": "6kyX58NuiRVpHWTdFRFoX2lCBJqOzIr5nMOwoQGcH6c",
+   "body": "tPrwFgrr1b99ApzGO06y7wAAEABBBMh6wACBL3nK-NAM7Kwg521ynh4bb3--ZwPlCGIEnwd2MEcbD59Eyl_Sw-PEWqzQUtEGF-MtR52QmHbibRmvVd86tjsV50sf1YCoXJTEcAMLxtC21I9Fg5xibzKQUPwQBs_p5OdLKNqfvRnNiQHLovCw7bsr-mhtUzeMHD4fG-cZOQl4TMIlcDsh0kFIgkIq_SYpiUynKEukA_KdOvLwz7tDuu1bwC06-cY6bmrm5Xu0_o-HfB_QE6eto_2AXhW8Hxi9oOvJsawnYnpltvdConWogxIjdu_Q-Ebodh1zprR7_vQcFC-IaBCmH-P32Z77wjjW8mZsCMS1tTKoWSxbRSf5VNv6E3iOy982y6JvGyQmDFSp1AYSV9VFJkT1eQ9EwpEyrpBHlponddJj9snfnv0mshjNYr0AeB-pDTpjp5M176DzedhkxGhn48iKyNK7v0WPiXgW08I-wsjpV-qXXIflzQTAepjPh-6h5sG3nNKDI6AwvYvBFfv9Ws5UT-PjZBl-cvClNPdA5Ql38VNImncXd6YlymSV4JRRwRkg27wcX6cuKkvXQk181xuOZMZjE7hZQHmZsXE7g-57LzRRnRpLG63gAj1XagGpfsMOoCrP59PI20V4nJ5H8BeHVWFohSpXXA59BgJpomCohuc69Pr1-MvlB49pCrY7hffzW23J0-5zzuV4MvEe5VbwJtrJc8mgAd2NOKf8FrJ-We3ApK3xFmMkYOvmZhFWckepfquDGJ-ZgALoRmrb9ifW9ZqQ8e8EU9R4Mm_kJS0qCjlQxjU",
+   "body_len": 614,
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "ttl": 14400,
+    "expiration": 1798776000,
+    "rate": "alert",
+    "collapse_tag": "job-44",
+    "collapse_id": "cQp0Rj-Gi49NqiOZKyT66Va",
+    "aps": {
+     "alert": {
+      "title-loc-key": "SAGA_PUSH_TITLE",
+      "loc-key": "SAGA_PUSH_BODY"
+     },
+     "mutable-content": 1,
+     "sound": "default"
+    },
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title-loc-key": "SAGA_PUSH_TITLE",
+       "loc-key": "SAGA_PUSH_BODY"
+      },
+      "mutable-content": 1,
+      "sound": "default"
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "tPrwFgrr1b99ApzGO06y7wAAEABBBMh6wACBL3nK-NAM7Kwg521ynh4bb3--ZwPlCGIEnwd2MEcbD59Eyl_Sw-PEWqzQUtEGF-MtR52QmHbibRmvVd86tjsV50sf1YCoXJTEcAMLxtC21I9Fg5xibzKQUPwQBs_p5OdLKNqfvRnNiQHLovCw7bsr-mhtUzeMHD4fG-cZOQl4TMIlcDsh0kFIgkIq_SYpiUynKEukA_KdOvLwz7tDuu1bwC06-cY6bmrm5Xu0_o-HfB_QE6eto_2AXhW8Hxi9oOvJsawnYnpltvdConWogxIjdu_Q-Ebodh1zprR7_vQcFC-IaBCmH-P32Z77wjjW8mZsCMS1tTKoWSxbRSf5VNv6E3iOy982y6JvGyQmDFSp1AYSV9VFJkT1eQ9EwpEyrpBHlponddJj9snfnv0mshjNYr0AeB-pDTpjp5M176DzedhkxGhn48iKyNK7v0WPiXgW08I-wsjpV-qXXIflzQTAepjPh-6h5sG3nNKDI6AwvYvBFfv9Ws5UT-PjZBl-cvClNPdA5Ql38VNImncXd6YlymSV4JRRwRkg27wcX6cuKkvXQk181xuOZMZjE7hZQHmZsXE7g-57LzRRnRpLG63gAj1XagGpfsMOoCrP59PI20V4nJ5H8BeHVWFohSpXXA59BgJpomCohuc69Pr1-MvlB49pCrY7hffzW23J0-5zzuV4MvEe5VbwJtrJc8mgAd2NOKf8FrJ-We3ApK3xFmMkYOvmZhFWckepfquDGJ-ZgALoRmrb9ifW9ZqQ8e8EU9R4Mm_kJS0qCjlQxjU"
+     }
+    }
+   },
+   "expect": {
+    "category": "saga.job.needs.ok",
+    "android_channel": "saga.jobs.needs.v1",
+    "thread_id": "job-44",
+    "notification_tag": "job-44",
+    "text": {
+     "title": "Wartet auf dich: Grillkohle besorgen",
+     "body": "Der Plan steht und wartet auf ein OK."
+    },
+    "buttons_unlocked_phone": [
+     "approve",
+     "open",
+     "later"
+    ],
+    "deeplink": "saga://job/44"
+   }
+  },
+  {
+   "name": "needs_ok_out_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 45,
+    "state": "wartet_ok",
+    "source": "api",
+    "steps": [
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "out",
+      "undo_class": "final"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – braucht dich",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=45",
+    "tag": "job-45",
+    "kind": "job.needs_you",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:45",
+    "thread": "job-45",
+    "job": 45,
+    "state": "needs",
+    "pv": 2,
+    "detail": {
+     "b": "plan",
+     "f": {
+      "n": 2
+     },
+     "lang": "de",
+     "t1": "Wartet auf dich: Grillkohle besorgen",
+     "t2": "Der Plan steht und wartet auf ein OK."
+    },
+    "actions": [
+     {
+      "a": "later",
+      "t": "GSrK-v8-PGe_TC6R0edofJ7h"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – braucht dich\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=45\",\"tag\":\"job-45\",\"kind\":\"job.needs_you\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:45\",\"thread\":\"job-45\",\"job\":45,\"state\":\"needs\",\"pv\":2,\"detail\":{\"b\":\"plan\",\"f\":{\"n\":2},\"lang\":\"de\",\"t1\":\"Wartet auf dich: Grillkohle besorgen\",\"t2\":\"Der Plan steht und wartet auf ein OK.\"},\"actions\":[{\"a\":\"later\",\"t\":\"GSrK-v8-PGe_TC6R0edofJ7h\"}]}",
+   "plain_len": 430,
+   "pad_to": 512,
+   "salt": "BK-rb_7wR8obBeWE0TB0Nw",
+   "as_priv": "kEO2wfSKd0VScxlbO66OpmY2dFFRPQxnJuHuJY-spNA",
+   "body": "BK-rb_7wR8obBeWE0TB0NwAAEABBBO7JaZZaQlzeMXpMI8yfVnO5IVJlGY38eLt3n0y70H6oFl_DOB8Q_23FMUrv_ZBOZGNDPLNxad1k_UV1VF35XTyXP_UMi97tErg9XqLrvVlbu-JIEqGsDGTi64K8B6sffYi7aF0XRx2KMrGSp9Mnn7FuK6Iqk1nYPNhAWpw2_gc0juIr_V3pdN0OBE_6Gfj7n7n7KzraBSEORC00y4chNKa6-aqXMkqeYy704RKGsuomDyfLGsvyYv5zeTCDdBasG3q3zmF4pvHkcpGJnDjOrjDeGGLUAFwj4DMDu0_NkT5adRH6HsF0zkY82LJYz8gSPC_Ei9tv8HnGiTc5X09mPXCbKybF7kfAvtJFNv3rqO1dRm8QpwTsca-uCaBa-KiEAJtm7KvT2hPE_qzz5XK5rCJ32sfI8M4AvZAioqZ7kK-hthyzFqZKrK6kE7qVs_na8yjxNZoFZNK-4Ye7iRZVfsw3wdsdPNYkHmCK6P2HHxngvJY9NlTUpIX26s-40dnuf8YlixDqDr1fH8H7wtJcF2dr1P4YhgdKia98YS0YCN39IiR-3nlgOMDONSHVfCQSwp7B-nuo7Du0eYHxvt1nC5xF294hnXuiZ5I7q2UUr9DztI6nomzEsiJoEVdBGUizb2I9Z1JIH2feunmSL8NeC5TsvXvRtO0WcoO8N2gjybiJsBMjkgna_0Qv0Rpp7p-MazKhJNPWLGWQfcGvQLfy2Z6-bBw0kQCiD2N57YboiBQ5KWTi6mSofcKShgcufx8STxt3iBTXOhYFRUfS5tn3nuE",
+   "body_len": 614,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "high",
+     "Topic": "cjAbaz-V4X6gg529_5mMMMQ"
+    }
+   },
+   "expect": {
+    "category": "saga.job.needs",
+    "android_channel": "saga.jobs.needs.v1",
+    "thread_id": "job-45",
+    "notification_tag": "job-45",
+    "text": {
+     "title": "Wartet auf dich: Grillkohle besorgen",
+     "body": "Der Plan steht und wartet auf ein OK."
+    },
+    "buttons_unlocked_phone": [
+     "open",
+     "later"
+    ],
+    "deeplink": "saga://job/45"
+   }
+  },
+  {
+   "name": "needs_you_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 46,
+    "state": "wartet_dich",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – braucht dich",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=46",
+    "tag": "job-46",
+    "kind": "job.needs_you",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:46",
+    "thread": "job-46",
+    "job": 46,
+    "state": "needs",
+    "pv": 2,
+    "detail": {
+     "b": "fail",
+     "f": {
+      "reason": "recht",
+      "changes": []
+     },
+     "lang": "de",
+     "t1": "Wartet auf dich: Grillkohle besorgen",
+     "t2": "Dafür fehlt mir jetzt das Recht. Der Auftrag wartet. Geändert wurde nichts."
+    },
+    "actions": [
+     {
+      "a": "later",
+      "t": "Ruin6_NMr0gPEixAYOZYLBkm"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – braucht dich\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=46\",\"tag\":\"job-46\",\"kind\":\"job.needs_you\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:46\",\"thread\":\"job-46\",\"job\":46,\"state\":\"needs\",\"pv\":2,\"detail\":{\"b\":\"fail\",\"f\":{\"reason\":\"recht\",\"changes\":[]},\"lang\":\"de\",\"t1\":\"Wartet auf dich: Grillkohle besorgen\",\"t2\":\"Dafür fehlt mir jetzt das Recht. Der Auftrag wartet. Geändert wurde nichts.\"},\"actions\":[{\"a\":\"later\",\"t\":\"Ruin6_NMr0gPEixAYOZYLBkm\"}]}",
+   "plain_len": 494,
+   "pad_to": 512,
+   "salt": "UUlLsuKxgQCjPMiMtuZXzw",
+   "as_priv": "Gf46d_W_ex12SLcbmn5fxoX_OwftNbjhekwRJUgzNYc",
+   "body": "UUlLsuKxgQCjPMiMtuZXzwAAEABBBD46VTZbVC_EksVmXvI-1yuQCUDl3zEAYk4rilDq_CMrIEVYJ7-yJelnCaVXZrju35b6lhIE3xu-U58QIz6lqVOF2fSsnvIP0Vi9CFfH8gkAeHbJyl0fFYFDrKyYliTc8Mw-fVNglrmpH-Ewlc9O7Lp_7JuN4fqDMCvXJhf_vi1cF84e7t7fl4b0mynGOKZrtWqH4DvagizTyfnseQM93ej7bG5dw4WWKHLmkpw9hxkQG8jltQV-9pQ0_0WbwMii8FVoOIMP4nWWg5N9XiVClJIuwHyGjlmYLRonj1URTx2C1dB1wOMSRNVqBOvWh17i5VJUeNYKweo4CNR-58tEMJacIg2DMlLAIdz1Yy1BpTffg30zvhYvuBqOJ7AWwxTEK0OegLlNtWy8Un7Y4QxGE9_1FlgPuU_Hm15SC5q7nhOUBOrxJ7_fF6nIuwxhBJ9uiIRsTbAk1SmnOyTstwGlq2F5OsmLOk4h4OuOnqRiwJ27i7pOwXqyLgUcjZ9JJAOQdq59t1YFQ23kq6EVzlkY7VUyiGofaci5EIBGuXz15hOhVC9Sn74TjgLkWv7IdgvVHch0a5XjI16aHDfVWIQt_uMMkuQkHXFy3J7TnbZki2tIuDm_7EBtQ4K56_fjqbnU19JB0bXabtxWE1rq7k_LVjcXFnrbSKyZ8EdMY-7-VztNtIZh8nwslb9-9fa7gBc_0OF-OFnjoQxX1KnMvdUk-V4W2FuKHP_7xhG1rA2ZaxsNGwvDUZYg6ELebUO22UQSr8ZPj6YBOlNcLmaI0FnTlJk",
+   "body_len": 614,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "high",
+     "Topic": "cdnCHXvdBuExwYmPQCkrw2D"
+    }
+   },
+   "expect": {
+    "category": "saga.job.needs",
+    "android_channel": "saga.jobs.needs.v1",
+    "thread_id": "job-46",
+    "notification_tag": "job-46",
+    "text": {
+     "title": "Wartet auf dich: Grillkohle besorgen",
+     "body": "Dafür fehlt mir jetzt das Recht. Der Auftrag wartet. Geändert wurde nichts."
+    },
+    "buttons_unlocked_phone": [
+     "open",
+     "later"
+    ],
+    "deeplink": "saga://job/46"
+   }
+  },
+  {
+   "name": "failed_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 47,
+    "state": "fehlgeschlagen",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=47",
+    "tag": "job-47",
+    "kind": "job.failed",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:47",
+    "thread": "job-47",
+    "job": 47,
+    "state": "failed",
+    "pv": 2,
+    "detail": {
+     "b": "fail",
+     "f": {
+      "reason": "konflikt",
+      "changes": []
+     },
+     "lang": "de",
+     "t1": "Hat nicht geklappt: Grillkohle besorgen",
+     "t2": "Eine Seite wurde inzwischen geändert – überschrieben habe ich nichts. Geändert wurde nichts."
+    }
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=47\",\"tag\":\"job-47\",\"kind\":\"job.failed\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:47\",\"thread\":\"job-47\",\"job\":47,\"state\":\"failed\",\"pv\":2,\"detail\":{\"b\":\"fail\",\"f\":{\"reason\":\"konflikt\",\"changes\":[]},\"lang\":\"de\",\"t1\":\"Hat nicht geklappt: Grillkohle besorgen\",\"t2\":\"Eine Seite wurde inzwischen geändert – überschrieben habe ich nichts. Geändert wurde nichts.\"}}",
+   "plain_len": 461,
+   "pad_to": 512,
+   "salt": "0hQjHcgzOo-KxppL2EGqsA",
+   "as_priv": "yEorkdn2E50_bS9RRKJodZnYEK8eLtOGA__nhmirf1s",
+   "body": "0hQjHcgzOo-KxppL2EGqsAAAEABBBDmSam9u6AGQjNgX3M4bRfSbUseXPJniMwlZjjvi-lCmRFtrEdg0PeCjVe8vtuMLcNWk45S6bd2GvlCUDqpk5DPv4S04LY8_lX2YCm9JPQE1NuNcxg7RIviJ1wiOAMyWcEiOu7afYg8lWyGVZOFpioKuRrTspJBYgu4JFfvSHHd7SZ0G9bYtssANt32VFrETi1Hx_VPi1rYClE19vGQjZCNTg2yjLotunSGAjfy24E4W4pvih8v5ZZrPo2i2AlORP4sG2D237gSysM7H4h8d0wq9nMYuWMbJb7ATfTkIkA-Iau0IiHrq02fc51FsU9_tJQEcDtxVdtwNWTrT8318OEQUC9C4UDcbEc5-adr1Q5xMeD4H13Fr-SWvnXsnKKqBIMN73SB7X91Y4jP1Ryj8ZHlzSbqZ0n99OuP40xBi2BwbC5pur4z8qm-N-LyVsfTk1Q7GaJEIeJKnbK9T-8LuXqp6NytCugGtXvmb4z4cnyL-G1OnpWFtJVkDf2zTzFz1dfzLgFXSP-rYtCwsne_L48E1UQpccMGGjuAKOXZljGxa79CT32vBbHHj_b7kIXrCNcfA0bxW6hCi3odX6Yg7P4yUEfke8myBcHF2WqmS8YyGUu_cBrELUmRMiNvKR8-RzzzoR1YpsH092DpyBPRIacXVeyvzRwt0cXzeE3sLH0RsWK7GXGfelfxmsWEBZBY1E60gferEus2dUShaQNcyUuknYrPqTWqMbmYhZL8D9IXgr5HTC7SYRC1ebfSA_qhZM4SRM-7zSa1ucyNJIC8Mjns",
+   "body_len": 614,
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "ttl": 14400,
+    "expiration": 1798776000,
+    "rate": "alert",
+    "collapse_tag": "job-47",
+    "collapse_id": "c6TuxwgKoKFav3WUxfAyVWP",
+    "aps": {
+     "alert": {
+      "title-loc-key": "SAGA_PUSH_TITLE",
+      "loc-key": "SAGA_PUSH_BODY"
+     },
+     "mutable-content": 1,
+     "sound": "default"
+    },
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title-loc-key": "SAGA_PUSH_TITLE",
+       "loc-key": "SAGA_PUSH_BODY"
+      },
+      "mutable-content": 1,
+      "sound": "default"
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "0hQjHcgzOo-KxppL2EGqsAAAEABBBDmSam9u6AGQjNgX3M4bRfSbUseXPJniMwlZjjvi-lCmRFtrEdg0PeCjVe8vtuMLcNWk45S6bd2GvlCUDqpk5DPv4S04LY8_lX2YCm9JPQE1NuNcxg7RIviJ1wiOAMyWcEiOu7afYg8lWyGVZOFpioKuRrTspJBYgu4JFfvSHHd7SZ0G9bYtssANt32VFrETi1Hx_VPi1rYClE19vGQjZCNTg2yjLotunSGAjfy24E4W4pvih8v5ZZrPo2i2AlORP4sG2D237gSysM7H4h8d0wq9nMYuWMbJb7ATfTkIkA-Iau0IiHrq02fc51FsU9_tJQEcDtxVdtwNWTrT8318OEQUC9C4UDcbEc5-adr1Q5xMeD4H13Fr-SWvnXsnKKqBIMN73SB7X91Y4jP1Ryj8ZHlzSbqZ0n99OuP40xBi2BwbC5pur4z8qm-N-LyVsfTk1Q7GaJEIeJKnbK9T-8LuXqp6NytCugGtXvmb4z4cnyL-G1OnpWFtJVkDf2zTzFz1dfzLgFXSP-rYtCwsne_L48E1UQpccMGGjuAKOXZljGxa79CT32vBbHHj_b7kIXrCNcfA0bxW6hCi3odX6Yg7P4yUEfke8myBcHF2WqmS8YyGUu_cBrELUmRMiNvKR8-RzzzoR1YpsH092DpyBPRIacXVeyvzRwt0cXzeE3sLH0RsWK7GXGfelfxmsWEBZBY1E60gferEus2dUShaQNcyUuknYrPqTWqMbmYhZL8D9IXgr5HTC7SYRC1ebfSA_qhZM4SRM-7zSa1ucyNJIC8Mjns"
+     }
+    }
+   },
+   "expect": {
+    "category": "saga.job.failed",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-47",
+    "notification_tag": "job-47",
+    "text": {
+     "title": "Hat nicht geklappt: Grillkohle besorgen",
+     "body": "Eine Seite wurde inzwischen geändert – überschrieben habe ich nichts. Geändert wurde nichts."
+    },
+    "buttons_unlocked_phone": [
+     "open"
+    ],
+    "deeplink": "saga://job/47"
+   }
+  },
+  {
+   "name": "done_nocaps_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2}",
+   "plain_len": 232,
+   "pad_to": 512,
+   "salt": "ahYgaeYshY8HwPDY8zy9jw",
+   "as_priv": "ybCGte8FV-ScX1xKX9xNp_FLooTEQJNCClogI8C1H7U",
+   "body": "ahYgaeYshY8HwPDY8zy9jwAAEABBBP_2KGiTSwwF98nvV_70cfh0WheBiYNJB3l13c7GJGPJts-JmuJlNxzq130a4F_5H8ynE25qQg_O68_yXlLTuNsPsOGgH4mTum7x-VM60kH_ZskLsjP7fvRGxJTuS_9gem-_pDrpSEb3fkjAZmLtk6WojdcxWYn5AzuXoPjDrW0ipuORYHTDCIk5y7xszIEjEVF9i3JsJEW2ZLlFlGrylWegnmLJZvKv7wkaIfHvpkKKw2DggHTJq4jpIUkq5hvKx_bAHkAYjYjOxqZqknIm67kcH_KITYRaC7rSsxS3P_kywFH1YsJYKowY1DVmf3uITmBr6dE6JG5pLE0vQpB8hbNgtu1Tdv_pAUCqy3gRC5vpahVibEVd99MOOGWw7hExnqvS7KnGJIE1iTDP-q2diuxmVunSyah3NLbxWiM5DfpjLWJbDeJ-cM7SSEL9D9rVmLbXAxNfY9mqicYzfOLIK2rHVZCHKDFrljs2Djm75V8UDIE-e7159l-F4w-amR6uMyFL-UKnRud1nhLfA15S86HUJiulvFRZMajS0XNCNy1I8VmLbfP54Lwt1NWi0C8AI3RmJssgGzj8dMMCghWu-808Cd4rOakeVMUGsmrsVBqkd5TuUyCTzc0WBJrv06jmNF8e8z0hYaE3IM-kssSIF7X1ykvw3xr0E7PvsEyXrHBTWbjNHmSJqAyVbxDomGL1T06YCOxO1kH8Nr0QEDhBH2O9jIojmvIq7B3-XGa30l_r1nRbEloQ5iFcsiUudyUWRLCnPYLiu-o0uh1PsckqU8U",
+   "body_len": 614,
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "ttl": 14400,
+    "expiration": 1798776000,
+    "rate": "alert",
+    "collapse_tag": "job-42",
+    "collapse_id": "cTPChTfCTBtBpKItsh-JcC_",
+    "aps": {
+     "alert": {
+      "title-loc-key": "SAGA_PUSH_TITLE",
+      "loc-key": "SAGA_PUSH_BODY"
+     },
+     "mutable-content": 1,
+     "sound": "default"
+    },
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title-loc-key": "SAGA_PUSH_TITLE",
+       "loc-key": "SAGA_PUSH_BODY"
+      },
+      "mutable-content": 1,
+      "sound": "default"
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "ahYgaeYshY8HwPDY8zy9jwAAEABBBP_2KGiTSwwF98nvV_70cfh0WheBiYNJB3l13c7GJGPJts-JmuJlNxzq130a4F_5H8ynE25qQg_O68_yXlLTuNsPsOGgH4mTum7x-VM60kH_ZskLsjP7fvRGxJTuS_9gem-_pDrpSEb3fkjAZmLtk6WojdcxWYn5AzuXoPjDrW0ipuORYHTDCIk5y7xszIEjEVF9i3JsJEW2ZLlFlGrylWegnmLJZvKv7wkaIfHvpkKKw2DggHTJq4jpIUkq5hvKx_bAHkAYjYjOxqZqknIm67kcH_KITYRaC7rSsxS3P_kywFH1YsJYKowY1DVmf3uITmBr6dE6JG5pLE0vQpB8hbNgtu1Tdv_pAUCqy3gRC5vpahVibEVd99MOOGWw7hExnqvS7KnGJIE1iTDP-q2diuxmVunSyah3NLbxWiM5DfpjLWJbDeJ-cM7SSEL9D9rVmLbXAxNfY9mqicYzfOLIK2rHVZCHKDFrljs2Djm75V8UDIE-e7159l-F4w-amR6uMyFL-UKnRud1nhLfA15S86HUJiulvFRZMajS0XNCNy1I8VmLbfP54Lwt1NWi0C8AI3RmJssgGzj8dMMCghWu-808Cd4rOakeVMUGsmrsVBqkd5TuUyCTzc0WBJrv06jmNF8e8z0hYaE3IM-kssSIF7X1ykvw3xr0E7PvsEyXrHBTWbjNHmSJqAyVbxDomGL1T06YCOxO1kH8Nr0QEDhBH2O9jIojmvIq7B3-XGa30l_r1nRbEloQ5iFcsiUudyUWRLCnPYLiu-o0uh1PsckqU8U"
+     }
+    }
+   },
+   "expect": {
+    "category": "saga.job.done.plain",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Marin · KI – Rückmeldung",
+     "body": "In Saga ansehen"
+    },
+    "buttons_unlocked_phone": [],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "done_content_never_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "never",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2,
+    "actions": [
+     {
+      "a": "quiet",
+      "t": "SnCmk-jBJ7cMO_j7HGL7NenM"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2,\"actions\":[{\"a\":\"quiet\",\"t\":\"SnCmk-jBJ7cMO_j7HGL7NenM\"}]}",
+   "plain_len": 289,
+   "pad_to": 512,
+   "salt": "rUEwzYeYQ31-P63PzlvZSg",
+   "as_priv": "9F4WNOpS-jbjcYgzQYsIMxHniBI5xDerKKoFHhB9Q9Q",
+   "body": "rUEwzYeYQ31-P63PzlvZSgAAEABBBPvikbMrB9jBQik1kRXa68Z9ALv6FaFCwgY5TOj0Xj9bkrm23gg2jRbUW6Kn9X6xu0v6WZDWtVQ2l0EOO2kSrzkJ70pLm5Xk4IlkTNo9qBN_WP48lGVm9zfVTVd655rQRJkjIKX6fO_0YcBA_yVYC5M2J1QmiXmtCNAasxZOkCNPH2PEzqN0Xif5xenkSzyBUAK8cp7s05mIcL893zQk_dpyggQRVkAkAaeTf5hK22vgghWgOAEXnsCY8U21_vbiuzIN091lB2W-61Kh-jDfdulxDZXWBYnqiEQuFUE1T3N_a3oezB0-cW0xNC5Dz0GiFh1W1gA7lc3apOPrBSDEb4WFGP_2tNHk1R2gH1VihzlJg71I4rA5xR-id3grF_ednOw27rn6UUk2-Kmn6cWHBvQ94pAmvdEtCVv4-zPr4E2MWbuqmSZYnYGZFMOeKwWT_-taIT5DlA2klWScI6db0Wv3_dsw1p5YqYC-gxkDvs4Qr3lxXaTs5237YtOHBPRPdVBWPhk6qdTf4P93wV3nybmOS8y6PD6qQD8gg4kgm-oYzDLIqX3IjktKxGHZIPLrpcURzLab37ovODwHTx2LQsL4iV2uc28FYP9pI9LWQFgwKZNHLYemW6__2va7yNEUiN6N_RaFIag0IqdcocYRkYyZQ3ViQbKruK7pP907iAsA7PXx10dCXbKTFiFWMnkdj66KkKEOYi5-UC1rRKYGltNjoPZn79hKsKKFk1LzISCcfDLyga3ZoIwytfQc6DG6metdNYedq_XYLkuThapHoqU",
+   "body_len": 614,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "normal",
+     "Topic": "cTPChTfCTBtBpKItsh-JcC_"
+    }
+   },
+   "expect": {
+    "category": "saga.job.done.plain",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Marin · KI – Rückmeldung",
+     "body": "In Saga ansehen"
+    },
+    "buttons_unlocked_phone": [
+     "quiet"
+    ],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "done_silent_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": true,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "thread": "job-42",
+    "job": 42,
+    "state": "done",
+    "pv": 2,
+    "silent": true,
+    "detail": {
+     "b": "report",
+     "f": {
+      "changes": [
+       {
+        "kind": "task",
+        "title": "Grillkohle besorgen"
+       },
+       {
+        "kind": "event",
+        "title": "Grillabend"
+       }
+      ]
+     },
+     "lang": "de",
+     "t1": "Erledigt: Grillkohle besorgen",
+     "t2": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "actions": [
+     {
+      "a": "undo",
+      "t": "WuKANryrN8RlH60qY3vFUDoR"
+     },
+     {
+      "a": "quiet",
+      "t": "SnCmk-jBJ7cMO_j7HGL7NenM"
+     }
+    ]
+   },
+   "plain": "{\"title\":\"Marin · KI – Rückmeldung\",\"body\":\"In Saga ansehen\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"thread\":\"job-42\",\"job\":42,\"state\":\"done\",\"pv\":2,\"silent\":true,\"detail\":{\"b\":\"report\",\"f\":{\"changes\":[{\"kind\":\"task\",\"title\":\"Grillkohle besorgen\"},{\"kind\":\"event\",\"title\":\"Grillabend\"}]},\"lang\":\"de\",\"t1\":\"Erledigt: Grillkohle besorgen\",\"t2\":\"Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender.\"},\"actions\":[{\"a\":\"undo\",\"t\":\"WuKANryrN8RlH60qY3vFUDoR\"},{\"a\":\"quiet\",\"t\":\"SnCmk-jBJ7cMO_j7HGL7NenM\"}]}",
+   "plain_len": 609,
+   "pad_to": 1024,
+   "salt": "tX6Vdj2O7XSScVRabWikYw",
+   "as_priv": "meJJ0tVS8Lc67AfeyCOUBOMcBwdRe_7Lnb5OYREtUDc",
+   "body": "tX6Vdj2O7XSScVRabWikYwAAEABBBKtbgK26xA8VyiE6cl_UeI8UMtwKYeFMkCM3iusxzzld6N-RPb-JMfxlN_1KUjg7oSViUcLoS0p-jG4UX32Td3u1sdM6d6Y5T8m7_Wfd1AcxYV3XFWir75tKoao78xS6KFV2fuWckMX31Bj3xOA-bawpx3B20RXCXmS8vk9KYSNMeyXdNZh5CLt75fWhxuwo2s1Onio_t4T0TJmcq6OJwNECUndT8NXICpIeDXwM8j36JcMbb7gv7HLhCeVE8fL8Z1Dbn6fRiEPJpWwnvYecUM0itV2OZtp9lv7lYYO6HShSy4c6sg6mHYL1--YzTQXfunmVlPjtOQL8idmFdpQpJZnOtNWkeXKmbHgxkNwl2zB7dQpzRbRTn8FTt6q6tQ9j4Z6P3OW3uHew0OvpryubUQ7fh4s3GuI_Igmn0dPA_RXGEs46Bk_rXL0OEh1PJgoYNvtVhzBkHRZ70WJmdMbKHXw-9doL-cV3T-2zcpf-pP9tc-phjIQ0DZg7n3ip4ph7dSuxzn0aXpT9rki7hAkENyCZVt8iEAiz008_0CTyQsSSmXEiqrm_LYfB_HqKIa4R8G4c62nR1ydRWOfLdPt8RjkAypXztJMWOKE-wfB8cKf_j86fg1PjC3hMF9PFxxn0byRZ677g2hbQbPf7-LuGx63dSCDxoLbsnkWo7hG9kDfsS7DkfeN0muZgohlis4rKCwDvqJ1OoRj7wSvxCShfrozCvcxm-8sGBeaDyyFfHLcSKIcxdZaBXlpNkUaImN5dz32PKpZdwQg_3Fm57BriTGcpwMaHfaeQ1VuGjNmEPE3wH-Pr-k_Do5wghYDAgKtqk5T3smn21RBgTr8gsdKYqyfr-AGLboog1zc41plqn4jir-uKAUnZBhCa749b0sD1Re9jgEM_-_gowbpxAyP3HHrdSghKhRmHRyO1A_hCILcr3kN0TwlnTXTK8pDQNS_--HIzo-oIvtbp70ygehtW0X5wBs4diw1cnJGUcOkLW21Qqz8X1oJEjTpzMIp7Q4iCji6spZWzH3eYHOPBlrbOXoKgUoFR6d7qRoSQZLW1IKzUJYg9vQPIa604EbM4vJrg9KhGMS2nUsvl6eK5MS0qbFlzB5yu1Pu5zVO75EgHOZKRhtw2KdkmGoTfsdq-smSbZ3-ZLJYPiKenCAcJeTzn0LYSSN9N0jVnlVRkfrRQkhI9V2dzRDlY2oP8S498vq0CgIvee7UH4iPIVHjS0cR6Dy8qV4wawP0i-97QNkHRRQzz4rurhYI3Yy1l9SziquTCT6P1kKY4vvhA4Wl4hZcWuBNi0bpvIEienVu3m6YLUE-uPgaHUgsRjWdv06vAUR534Ft5PvMdVHqzYHLuIcnirOi1WvnX1UeAhYDxImT77spxxeTMtYmipbtN_Q9Z0QckTbHCGC_Zepd8PdqFVFGNJzvwreaXElN4_rJqB6UfvG76xUSG0ML3lyYzP6fJ2arGwg",
+   "body_len": 1126,
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "ttl": 14400,
+    "expiration": 1798776000,
+    "rate": "alert",
+    "collapse_tag": "job-42",
+    "collapse_id": "cTPChTfCTBtBpKItsh-JcC_",
+    "aps": {
+     "alert": {
+      "title-loc-key": "SAGA_PUSH_TITLE",
+      "loc-key": "SAGA_PUSH_BODY"
+     },
+     "mutable-content": 1
+    },
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title-loc-key": "SAGA_PUSH_TITLE",
+       "loc-key": "SAGA_PUSH_BODY"
+      },
+      "mutable-content": 1
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "tX6Vdj2O7XSScVRabWikYwAAEABBBKtbgK26xA8VyiE6cl_UeI8UMtwKYeFMkCM3iusxzzld6N-RPb-JMfxlN_1KUjg7oSViUcLoS0p-jG4UX32Td3u1sdM6d6Y5T8m7_Wfd1AcxYV3XFWir75tKoao78xS6KFV2fuWckMX31Bj3xOA-bawpx3B20RXCXmS8vk9KYSNMeyXdNZh5CLt75fWhxuwo2s1Onio_t4T0TJmcq6OJwNECUndT8NXICpIeDXwM8j36JcMbb7gv7HLhCeVE8fL8Z1Dbn6fRiEPJpWwnvYecUM0itV2OZtp9lv7lYYO6HShSy4c6sg6mHYL1--YzTQXfunmVlPjtOQL8idmFdpQpJZnOtNWkeXKmbHgxkNwl2zB7dQpzRbRTn8FTt6q6tQ9j4Z6P3OW3uHew0OvpryubUQ7fh4s3GuI_Igmn0dPA_RXGEs46Bk_rXL0OEh1PJgoYNvtVhzBkHRZ70WJmdMbKHXw-9doL-cV3T-2zcpf-pP9tc-phjIQ0DZg7n3ip4ph7dSuxzn0aXpT9rki7hAkENyCZVt8iEAiz008_0CTyQsSSmXEiqrm_LYfB_HqKIa4R8G4c62nR1ydRWOfLdPt8RjkAypXztJMWOKE-wfB8cKf_j86fg1PjC3hMF9PFxxn0byRZ677g2hbQbPf7-LuGx63dSCDxoLbsnkWo7hG9kDfsS7DkfeN0muZgohlis4rKCwDvqJ1OoRj7wSvxCShfrozCvcxm-8sGBeaDyyFfHLcSKIcxdZaBXlpNkUaImN5dz32PKpZdwQg_3Fm57BriTGcpwMaHfaeQ1VuGjNmEPE3wH-Pr-k_Do5wghYDAgKtqk5T3smn21RBgTr8gsdKYqyfr-AGLboog1zc41plqn4jir-uKAUnZBhCa749b0sD1Re9jgEM_-_gowbpxAyP3HHrdSghKhRmHRyO1A_hCILcr3kN0TwlnTXTK8pDQNS_--HIzo-oIvtbp70ygehtW0X5wBs4diw1cnJGUcOkLW21Qqz8X1oJEjTpzMIp7Q4iCji6spZWzH3eYHOPBlrbOXoKgUoFR6d7qRoSQZLW1IKzUJYg9vQPIa604EbM4vJrg9KhGMS2nUsvl6eK5MS0qbFlzB5yu1Pu5zVO75EgHOZKRhtw2KdkmGoTfsdq-smSbZ3-ZLJYPiKenCAcJeTzn0LYSSN9N0jVnlVRkfrRQkhI9V2dzRDlY2oP8S498vq0CgIvee7UH4iPIVHjS0cR6Dy8qV4wawP0i-97QNkHRRQzz4rurhYI3Yy1l9SziquTCT6P1kKY4vvhA4Wl4hZcWuBNi0bpvIEienVu3m6YLUE-uPgaHUgsRjWdv06vAUR534Ft5PvMdVHqzYHLuIcnirOi1WvnX1UeAhYDxImT77spxxeTMtYmipbtN_Q9Z0QckTbHCGC_Zepd8PdqFVFGNJzvwreaXElN4_rJqB6UfvG76xUSG0ML3lyYzP6fJ2arGwg"
+     }
+    }
+   },
+   "expect": {
+    "category": "saga.job.done",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-42",
+    "notification_tag": "job-42",
+    "text": {
+     "title": "Erledigt: Grillkohle besorgen",
+     "body": "Aufgabe „Grillkohle besorgen“ angelegt. „Grillabend“ steht im Kalender."
+    },
+    "buttons_unlocked_phone": [
+     "undo",
+     "quiet"
+    ],
+    "deeplink": "saga://job/42"
+   }
+  },
+  {
+   "name": "gross_th_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "th"
+   },
+   "input": {
+    "job": 77,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อถ่าน น้ำแข็ง และของหวาน"
+   },
+   "msg": {
+    "title": "Marin · AI – อัปเดต",
+    "body": "ดูใน Saga",
+    "url": "/saga?tab=jobs&job=77",
+    "tag": "job-77",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "th",
+    "group_key": "job:77",
+    "thread": "job-77",
+    "job": 77,
+    "state": "done",
+    "pv": 2,
+    "detail": {
+     "b": "report",
+     "lang": "th",
+     "t1": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…",
+     "t2": "บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ"
+    },
+    "actions": [
+     {
+      "a": "undo",
+      "t": "vaPDPLyS6FepnGoA-QeNvgdg"
+     },
+     {
+      "a": "quiet",
+      "t": "jwGsMRFevZaqXCfKkiGnJGfy"
+     }
+    ]
+   },
+   "dropped": [
+    "detail.f"
+   ],
+   "plain": "{\"title\":\"Marin · AI – อัปเดต\",\"body\":\"ดูใน Saga\",\"url\":\"/saga?tab=jobs&job=77\",\"tag\":\"job-77\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"th\",\"group_key\":\"job:77\",\"thread\":\"job-77\",\"job\":77,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"lang\":\"th\",\"t1\":\"เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…\",\"t2\":\"บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ\"},\"actions\":[{\"a\":\"undo\",\"t\":\"vaPDPLyS6FepnGoA-QeNvgdg\"},{\"a\":\"quiet\",\"t\":\"jwGsMRFevZaqXCfKkiGnJGfy\"}]}",
+   "plain_len": 920,
+   "pad_to": 1024,
+   "salt": "KRPTdm61uqyxgzrHd764bw",
+   "as_priv": "UO2Zc1SpPnlI5H8rbQbbynRRPUTKpIo0YP-CoSXr7Cs",
+   "body": "KRPTdm61uqyxgzrHd764bwAAEABBBA6eq3ZUZctG7nCfx3fguzzb_R5iGjXSb7tk0oK6zwzEnJCZlQY-LEpZhMwogZzRcdN8lKmFF_NzKMJFSpbyYEOqTWrazaUE3e3AvKW8LyB6u2dT-raV_P3sORTCNZzowad3zfG4T77Vxb07XuXkz-qlWwawAQsFeUvNEmrk79C7xlBAT1dbl2PR8_pD_TeBZpnou2Y4AS2Xi_Ylxxp2v9k3_O7vqvMupwow5FLdkJYjSTnyDzZMrwDXsnpc74E66EKC8ksyj9l-Ut_XvxEigdlc4GPBjRDSBAen2Ggni_KwDdlYtBrNUOd8qKueh9DMZO76rLbUL6nB8X_v81P5I8AsFGgAQHgTvqZiDZmc3bBnIa_hwrDR-OYbLINUUrA7i93rsUy9DRpcngdwZ_O9OfbC7aC9ap-9OL50oWigbWjv7xPpkG7o8xw5EyeBtInQNlnRQ9MNXcDdLYaj8TOcp5n3il_wb3jn2ebPCZ7fo0RafyFOVlDh8WXK3jEBxYbg49Wx1O-VcdlK6vIL_J_9Ai4sN5gpPSnsvH-CiZG-vUIDn5Gp6wzg1taZQS-BZ0KHUBf4BxJtDqXz3sQfX7xgB2vNyjQA44DjHuBbWs4aJpDnhr7FL8OK-gW-XSxnTWjXI__6ZK6SDkFjiFq3dL1YIvuTzgcopKe6Ox-jVHg0WuwyMk5KwreLLlDDTJ4Pyefxq_t59ISbBW1L2uTNb57VGSH2VR54sgeTJHqdbIcsYGLiuo-2FpJd4vHG1wmXBL9fJP7vFZPhLcjAiiEfnayBJyarh2242fca5BvNdB4O05amunZulnVAH1cF71IfEaT5njt0vrt08B4OssHsZmuJmWssIkvr320Zv8so9_aPUFDaZoVXveQXcTFVLIMXv6Zl1gR-zIqF6v22X5Me4Px7jPs2hg_lEFZKIHExyCqmSKh0IxZuL4a09BRIfQywAwHJQDJ3FhwzjTxWx9GaXTORIQwfUGsdY7i-uFkRHlFP5rip2gxBJRhG2vvyXgY0WEnbgKBILk-T2lA5rzj6uG-sk1nEosDU4_eprOl12hafuj1VdM2xeqn5sCsx2v2uNNw8B5gI8H3guq0YdKGIkrQ7Jv4IPvOy4vN1dWW4n_20AEXCxcB42qhO59o9gix-Dyi3-Kxz9v3UC1nnTLL1a25QbeqFX2-LVZQJxEQgVbXuVKDV9yAn6t_uooWF-Hsy3ITMnG2d4HqOf1INV90W6TGCQjTQVmUs483YkUEVX5WfA3QkeA2cC77WzPvftDhtWS2yIFRe-jT1rPl7L2BbRJVhvwNXjfPtOJeKjIJz0XblWz5qB4osyrNeEqBqta0DD6PdfGouIT-yvWME9HgseasGWuO_yK98x0jIsjlMs2zRoSpnYaye_cJLwRo55o1OyGZEozwgO6BRe6i6GqsOIakGyndrTx38QecxkU_FHxa7bDhZNuRUqIqodhZ4dYavJAJ_NQ",
+   "body_len": 1126,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "normal",
+     "Topic": "cNXoecGcSGFk_Dcn1MxbgL3"
+    }
+   },
+   "expect": {
+    "category": "saga.job.done",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "job-77",
+    "notification_tag": "job-77",
+    "text": {
+     "title": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…",
+     "body": "บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ"
+    },
+    "buttons_unlocked_phone": [
+     "undo",
+     "quiet"
+    ],
+    "deeplink": "saga://job/77"
+   }
+  },
+  {
+   "name": "plain_ntfy",
+   "way": "ntfy",
+   "sub": {
+    "caps": [],
+    "keys": false,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "erledigt",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs",
+    "tag": "saga-job",
+    "kind": "job.done",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "state": "done"
+   },
+   "endpoint": "https://ntfy.example.org/saga-k7f3",
+   "request": {
+    "topic": "saga-k7f3",
+    "title": "Marin · KI – Rückmeldung",
+    "message": "In Saga ansehen",
+    "click": "https://saga.example.org/saga?tab=jobs",
+    "tags": [
+     "bell"
+    ],
+    "priority": 3
+   },
+   "expect": {
+    "category": "saga.job.done.plain",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "saga-job",
+    "notification_tag": "saga-job",
+    "text": {
+     "title": "Marin · KI – Rückmeldung",
+     "body": "In Saga ansehen"
+    },
+    "buttons_unlocked_phone": [],
+    "deeplink": "saga://jobs"
+   }
+  },
+  {
+   "name": "plain_unifiedpush",
+   "way": "unifiedpush-plain",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": false,
+    "lang": "de"
+   },
+   "input": {
+    "job": 46,
+    "state": "wartet_dich",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – braucht dich",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs",
+    "tag": "saga-job",
+    "kind": "job.needs_you",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "state": "needs"
+   },
+   "request": {
+    "title": "Marin · KI – braucht dich",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs",
+    "tag": "saga-job",
+    "kind": "job.needs_you",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "state": "needs"
+   },
+   "headers": {
+    "Content-Type": "application/json",
+    "TTL": "14400"
+   },
+   "expect": {
+    "category": "saga.job.needs",
+    "android_channel": "saga.jobs.needs.v1",
+    "thread_id": "saga-job",
+    "notification_tag": "saga-job",
+    "text": {
+     "title": "Marin · KI – braucht dich",
+     "body": "In Saga ansehen"
+    },
+    "buttons_unlocked_phone": [
+     "open"
+    ],
+    "deeplink": "saga://jobs"
+   }
+  },
+  {
+   "name": "plain_apns_direct",
+   "way": "apns-plain",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 47,
+    "state": "fehlgeschlagen",
+    "source": "saga",
+    "steps": [
+     {
+      "klass": "read",
+      "undo_class": null
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     },
+     {
+      "klass": "own",
+      "undo_class": "undo"
+     }
+    ],
+    "notify_content": "unlocked",
+    "silent": false,
+    "title": "Grillkohle besorgen"
+   },
+   "msg": {
+    "title": "Marin · KI – Rückmeldung",
+    "body": "In Saga ansehen",
+    "url": "/saga?tab=jobs",
+    "tag": "saga-job",
+    "kind": "job.failed",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "state": "failed"
+   },
+   "note": "eigener APNs-Weg, Abo mit Schluesseln, push.apns_e2e_direct aus -> Klartext wie bis 2.5",
+   "transport": {
+    "push_type": "alert",
+    "priority": 10,
+    "collapse_id": "saga-job",
+    "apns_body": {
+     "aps": {
+      "alert": {
+       "title": "Marin · KI – Rückmeldung",
+       "body": "In Saga ansehen"
+      },
+      "sound": "default",
+      "thread-id": "saga-job"
+     },
+     "url": "/saga?tab=jobs",
+     "kind": "job.failed",
+     "v": 3,
+     "lang": "de",
+     "state": "failed"
+    }
+   },
+   "expect": {
+    "category": "saga.job.failed",
+    "android_channel": "saga.jobs.feedback.v1",
+    "thread_id": "saga-job",
+    "notification_tag": "saga-job",
+    "text": {
+     "title": "Marin · KI – Rückmeldung",
+     "body": "In Saga ansehen"
+    },
+    "buttons_unlocked_phone": [
+     "open"
+    ],
+    "deeplink": "saga://jobs"
+   }
+  },
+  {
+   "name": "update_removed_apns",
+   "way": "apns",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "zurueckgenommen",
+    "from": "erledigt"
+   },
+   "msg": {
+    "title": "",
+    "body": "",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.changed",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "job": 42,
+    "update": true,
+    "removed": true
+   },
+   "plain": "{\"title\":\"\",\"body\":\"\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.changed\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"job\":42,\"update\":true,\"removed\":true}",
+   "plain_len": 181,
+   "pad_to": 512,
+   "salt": "T8EtmjEXhu1m_PMDOHgLIQ",
+   "as_priv": "xH8zwjeDlddcY034s7S0cjLS2Pm9Tsf9IAnHr3yCRI4",
+   "body": "T8EtmjEXhu1m_PMDOHgLIQAAEABBBOk2XE8KT9iY3MFJ1dbpJ-LPq5VpJ9dwDTz46W-EMYuKfg8KaIL_G4RXefS6VP8M3HV12HnkG53LcqS7Xnhi7KHCaXjzmpP54KjEh7YwwN1-qdwKBsm3nML_6U0f_UKBuI4R5UWItrKUhIbsmxoS52Sqs--14bzpGykuu6D0Ps74hdG9W1_gbWBWeIa-F43iq2x8uuCK2CjjuZJIoZSWwaWWnlRGCnnmMril4hDDchJKkXKLWbDdKl_mIN2F6vbJIQ60oPqBUMTVfo9oYurGhNcQXlZqmXoPTRjWxu5jHWkVNWxghQ0Y23SAc9hqNcsJMqO32b3YUZNMADpUtGjn-thAKqwW78AKnHfZBQi-_dp6hR371uCxhjK9wd01_Hb9WiImhKM5LabrxXd1Z0WLT6I1IVUIMbPp1Y7RAftl87faLRR26EiOeR74qPmB-AUlAwpB5hWR_XfV4m5L-fKFdQUdKeb0q2popN-S4zmOyIxzfuwNI1dR5zZuwj3xkx-2fNRTDuOZE3mx7c11DffQgQ2bPT7eqWN3VXjr8aKWrcqLKO3vllnwyQv4EbzRJu4S1qT0sT45_6TIkXo1DCV2u_MlR-JhRZ-5yfEnUSyLRsInpIKZQqPDmqMNVLEfCTY8-G9pZDMhbGCVg79YAz7uzau9_SeZpAISQEYlXX3q0LSjc33HsCRZ6dVdDxe_XF6QWKO1-l7NmszLGm7fpYPYDRgGxbqrncMDRVzl5rL_OPczRHJj6p_pSyjzFGplqMgni-aLOKvQWciQm_kjYl-T-x0",
+   "body_len": 614,
+   "transport": {
+    "push_type": "background",
+    "priority": 5,
+    "ttl": 14400,
+    "expiration": 0,
+    "rate": "bg",
+    "collapse_tag": "ujob-42",
+    "collapse_id": "coa6-uHwGzoNDdHPNvTTPIk",
+    "aps": {
+     "content-available": 1
+    },
+    "apns_body": {
+     "aps": {
+      "content-available": 1
+     },
+     "saga": {
+      "e2e": 1,
+      "k": "rJ1YACNZ",
+      "c": "T8EtmjEXhu1m_PMDOHgLIQAAEABBBOk2XE8KT9iY3MFJ1dbpJ-LPq5VpJ9dwDTz46W-EMYuKfg8KaIL_G4RXefS6VP8M3HV12HnkG53LcqS7Xnhi7KHCaXjzmpP54KjEh7YwwN1-qdwKBsm3nML_6U0f_UKBuI4R5UWItrKUhIbsmxoS52Sqs--14bzpGykuu6D0Ps74hdG9W1_gbWBWeIa-F43iq2x8uuCK2CjjuZJIoZSWwaWWnlRGCnnmMril4hDDchJKkXKLWbDdKl_mIN2F6vbJIQ60oPqBUMTVfo9oYurGhNcQXlZqmXoPTRjWxu5jHWkVNWxghQ0Y23SAc9hqNcsJMqO32b3YUZNMADpUtGjn-thAKqwW78AKnHfZBQi-_dp6hR371uCxhjK9wd01_Hb9WiImhKM5LabrxXd1Z0WLT6I1IVUIMbPp1Y7RAftl87faLRR26EiOeR74qPmB-AUlAwpB5hWR_XfV4m5L-fKFdQUdKeb0q2popN-S4zmOyIxzfuwNI1dR5zZuwj3xkx-2fNRTDuOZE3mx7c11DffQgQ2bPT7eqWN3VXjr8aKWrcqLKO3vllnwyQv4EbzRJu4S1qT0sT45_6TIkXo1DCV2u_MlR-JhRZ-5yfEnUSyLRsInpIKZQqPDmqMNVLEfCTY8-G9pZDMhbGCVg79YAz7uzau9_SeZpAISQEYlXX3q0LSjc33HsCRZ6dVdDxe_XF6QWKO1-l7NmszLGm7fpYPYDRgGxbqrncMDRVzl5rL_OPczRHJj6p_pSyjzFGplqMgni-aLOKvQWciQm_kjYl-T-x0"
+     }
+    }
+   },
+   "expect": {
+    "remove_tag": "job-42",
+    "sound": false
+   }
+  },
+  {
+   "name": "update_removed_webpush",
+   "way": "webpush",
+   "sub": {
+    "caps": [
+     "update",
+     "detail",
+     "actions"
+    ],
+    "keys": true,
+    "lang": "de"
+   },
+   "input": {
+    "job": 42,
+    "state": "zurueckgenommen",
+    "from": "erledigt"
+   },
+   "msg": {
+    "title": "",
+    "body": "",
+    "url": "/saga?tab=jobs&job=42",
+    "tag": "job-42",
+    "kind": "job.changed",
+    "ts": 1798761600,
+    "v": 3,
+    "lang": "de",
+    "group_key": "job:42",
+    "job": 42,
+    "update": true,
+    "removed": true
+   },
+   "plain": "{\"title\":\"\",\"body\":\"\",\"url\":\"/saga?tab=jobs&job=42\",\"tag\":\"job-42\",\"kind\":\"job.changed\",\"ts\":1798761600,\"v\":3,\"lang\":\"de\",\"group_key\":\"job:42\",\"job\":42,\"update\":true,\"removed\":true}",
+   "plain_len": 181,
+   "pad_to": 512,
+   "salt": "g_bIR4gE1nRxFzphGvYx3g",
+   "as_priv": "aus9zLM1w1OkoKRYSWuOILHOBn_eL8C9kbdYYs3UQKo",
+   "body": "g_bIR4gE1nRxFzphGvYx3gAAEABBBFy6ChLiZwCm8R__9PQg9K4XaLVYY-TlUyqkef5iS2Q_ZkcaJOXpdTXX1PZpXvuD9mD3KSR5gk2Iw78y9qWsZzQs3sB_CGq0qFvkv_2uKBMErpZL8j6zcTeSOdiYGEPdMnEKkIfJaY3qDFD1SA2OLOLvKTzru7Lq5fcJsP0gT1va95-_1yd646RSk7z9YU7q-m2aYFXm5f4nCuskSCMTYWwYU736UpS92UhPdH9-BD-_R8_y4Mgf8Da3Yd2SrAJJzkcmGLy0hj5MMchUPSvL0mYjIzc8tfBAK0dhmxoh-yld4mntPdXsBHsNQzRB0IjgHcS0PpY-D6JGnUMxpAvAptAWAlvB5W2ReL5suSXFdzTsK721evcrz6h05P9niumrJMPNkKLF80u3tyh2ZmPl1NGXLhi6jPg4BNCyT6Hzok_x16Tv2avtojZgqEcg9LXcvh1dVuOA7_jdD9aPf5ibBf08XvGOBCw-FbTNNHaCWLUGLOAMj5RWQEjtHP3mdysHR7oBv6eB6PMeFHcr7DEFMgmDM9L60q6UDFLUIB2f4L57id65TR6kOSZmDt99t6klRDYolNr3SzFL5K6G4SYcmNaZXlNKxc4or-6leGeYeh8AXVery0xETSzIvbM7T_wFGdTiowXsunwnwIqLXQpiQYsXfHFKE9_s_yJPCJX4xW5cv2d-P0aI3k8c6LH9gOGr2vcxmj-JTcuWvrL86cUUB49sct08KtL861rsbjA5kVP6ODDtMSMio9EZtOV6Dj0LfMSsyUu5d3bkIxK-uQ-Zlhw",
+   "body_len": 614,
+   "transport": {
+    "headers": {
+     "TTL": "14400",
+     "Content-Encoding": "aes128gcm",
+     "Content-Type": "application/octet-stream",
+     "Urgency": "normal",
+     "Topic": "coa6-uHwGzoNDdHPNvTTPIk"
+    }
+   },
+   "expect": {
+    "remove_tag": "job-42",
+    "sound": false
+   }
+  }
+ ],
+ "issue": [
+  {
+   "state": "wartet_ok",
+   "source": "share",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": true,
+    "actions": [
+     "approve",
+     "later"
+    ],
+    "category": "saga.job.needs.ok",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "wartet_ok",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": null
+  },
+  {
+   "state": "wartet_ok",
+   "source": "api",
+   "steps": [
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    },
+    {
+     "klass": "own",
+     "undo_class": "delete_only"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": true,
+    "actions": [
+     "later"
+    ],
+    "category": "saga.job.needs",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "wartet_ok",
+   "source": "api",
+   "steps": [
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    },
+    {
+     "klass": "out",
+     "undo_class": "final"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": true,
+    "actions": [
+     "later"
+    ],
+    "category": "saga.job.needs",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "wartet_ok",
+   "source": "thunderbird",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "never",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": false,
+    "actions": [
+     "later"
+    ],
+    "category": "saga.job.needs",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "wartet_dich",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": true,
+    "actions": [
+     "later"
+    ],
+    "category": "saga.job.needs",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": true,
+    "actions": [
+     "undo",
+     "quiet"
+    ],
+    "category": "saga.job.done",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "own",
+     "undo_class": "delete_only"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": true,
+    "actions": [
+     "quiet"
+    ],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "own",
+     "undo_class": "final"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": true,
+    "actions": [
+     "quiet"
+    ],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": false,
+    "actions": [
+     "quiet"
+    ],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": true,
+    "actions": [],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "never",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": false,
+    "actions": [
+     "quiet"
+    ],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": false,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": false,
+    "actions": [],
+    "category": "saga.job.done.plain",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "fehlgeschlagen",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "failed",
+    "kind": "job.failed",
+    "detail": true,
+    "actions": [],
+    "category": "saga.job.failed",
+    "channel": "saga.jobs.feedback.v1"
+   }
+  },
+  {
+   "state": "abgebrochen",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": null
+  },
+  {
+   "state": "zurueckgenommen",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": null
+  },
+  {
+   "state": "laeuft",
+   "source": "saga",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": null
+  }
+ ],
+ "k15": [
+  {
+   "cat": "saga.job.needs",
+   "device": "phone",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "watch",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "watch",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "watch",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "watch",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "car",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "car",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "car",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "car",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "web",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "web",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "web",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs",
+   "device": "web",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "approve",
+     "auth": true
+    },
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "approve",
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "approve",
+     "auth": true
+    },
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "watch",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "watch",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "watch",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "watch",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "car",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "car",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "car",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "car",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "web",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "web",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "web",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.needs.ok",
+   "device": "web",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    },
+    {
+     "a": "later",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open",
+    "later"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "undo",
+     "auth": true
+    },
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "undo",
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "undo",
+     "auth": true
+    },
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "watch",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "watch",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "watch",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "watch",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "car",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "car",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "car",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "car",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "web",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "web",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "web",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done",
+   "device": "web",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "watch",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "watch",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "watch",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "watch",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "car",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "car",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "car",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "car",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "web",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "web",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "web",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.done.plain",
+   "device": "web",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "quiet",
+     "auth": false
+    },
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "quiet",
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone_noauth",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "phone_noauth",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "watch",
+   "locked": false,
+   "content": "on",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "watch",
+   "locked": false,
+   "content": "off",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "watch",
+   "locked": true,
+   "content": "on",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "watch",
+   "locked": true,
+   "content": "off",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "car",
+   "locked": false,
+   "content": "on",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "car",
+   "locked": false,
+   "content": "off",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "car",
+   "locked": true,
+   "content": "on",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "car",
+   "locked": true,
+   "content": "off",
+   "buttons": [],
+   "direct": []
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "web",
+   "locked": false,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "web",
+   "locked": false,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "web",
+   "locked": true,
+   "content": "on",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  },
+  {
+   "cat": "saga.job.failed",
+   "device": "web",
+   "locked": true,
+   "content": "off",
+   "buttons": [
+    {
+     "a": "open",
+     "auth": false
+    }
+   ],
+   "direct": [
+    "open"
+   ]
+  }
+ ],
+ "tokens": {
+  "path": "/api/ai/jobs/{id}/act",
+  "request": {
+   "action": "undo",
+   "atok": "WuKANryrN8RlH60qY3vFUDoR",
+   "pv": 2
+  },
+  "auth": {
+   "hkd_A": "Authorization: Bearer hkd_… (Geraet des Abos)",
+   "hkd_B": "Authorization: Bearer hkd_… (anderes Geraet)",
+   "session": "Sitzung + X-Saga: 1",
+   "hk_": "Authorization: Bearer hk_… (Widget)",
+   "sga_": "Authorization: Bearer sga_… (API-Token)"
+  },
+  "example": {
+   "atok": "WuKANryrN8RlH60qY3vFUDoR",
+   "len": 24,
+   "hash": "00e98595885c9444c5af8fdca19b6823679f2006fdec0c57bc368972dc978f2d"
+  },
+  "responses": {
+   "200": {
+    "ok": true,
+    "action": "undo",
+    "state": "zurueckgenommen"
+   },
+   "200_later": {
+    "ok": true,
+    "action": "later",
+    "state": "wartet_dich",
+    "at": 1798772400
+   },
+   "200_quiet": {
+    "ok": true,
+    "action": "quiet",
+    "state": "erledigt",
+    "until": 1798783200
+   },
+   "200_open": {
+    "ok": true,
+    "action": "open",
+    "url": "/saga?tab=jobs&job=42"
+   },
+   "409": {
+    "error": "…",
+    "code": "stale",
+    "url": "/saga?tab=jobs&job=42"
+   },
+   "410": {
+    "error": "…",
+    "code": "used"
+   },
+   "403": {
+    "error": "…",
+    "code": "device"
+   },
+   "404": {
+    "error": "…"
+   }
+  },
+  "client": {
+   "200": "remove",
+   "409": "hint_open",
+   "410": "hint_open",
+   "403": "open_app",
+   "404": "remove",
+   "net": "hint_open"
+  },
+  "order": [
+   "key",
+   "job (404)",
+   "cap ai (403 cap)",
+   "reserved/open",
+   "token (410)",
+   "device (403)",
+   "pv/plan_hash (409 stale)",
+   "state (409 state)",
+   "action (409 changed/open)",
+   "ausfuehren + verbrauchen (200)"
+  ],
+  "cases": [
+   {
+    "name": "undo_ok",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "erledigt, Token fuer Abo von Geraet A",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "undo_again",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "derselbe Token ein zweites Mal",
+    "status": 410,
+    "code": "used",
+    "consumed": false
+   },
+   {
+    "name": "undo_conflict",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "Ziel seitdem geaendert (ai_undo.conflicts)",
+    "status": 409,
+    "code": "changed",
+    "consumed": false
+   },
+   {
+    "name": "approve_ok",
+    "auth": "hkd_A",
+    "action": "approve",
+    "given": "wartet_ok, nur read/own, alle undo, pv/plan_hash passen",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "approve_stale_pv",
+    "auth": "hkd_A",
+    "action": "approve",
+    "given": "pv im Koerper != job.plan_v",
+    "status": 409,
+    "code": "stale",
+    "consumed": false
+   },
+   {
+    "name": "approve_replanned",
+    "auth": "hkd_A",
+    "action": "approve",
+    "given": "Plan inzwischen geaendert (plan_hash des Tokens alt)",
+    "status": 409,
+    "code": "stale",
+    "consumed": false
+   },
+   {
+    "name": "approve_state",
+    "auth": "hkd_A",
+    "action": "approve",
+    "given": "anderswo schon freigegeben (laeuft)",
+    "status": 409,
+    "code": "state",
+    "consumed": false
+   },
+   {
+    "name": "approve_out",
+    "auth": "hkd_A",
+    "action": "approve",
+    "given": "Plan enthaelt inzwischen einen Schritt nach aussen (out)",
+    "status": 409,
+    "code": "open",
+    "consumed": false
+   },
+   {
+    "name": "later_ok",
+    "auth": "hkd_A",
+    "action": "later",
+    "given": "wartet_dich; gleiche Mitteilung nach 3 h erneut (hoechstens 2x)",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "quiet_ok",
+    "auth": "hkd_A",
+    "action": "quiet",
+    "given": "erledigt; Ruhe bis naechstes 07:00 Kontozeit, wartende job.* aus push_queue weg",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "expired",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "jetzt > expires",
+    "status": 410,
+    "code": "expired",
+    "consumed": false
+   },
+   {
+    "name": "sub_gone",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "Abo inzwischen entfernt (Token per CASCADE weg)",
+    "status": 410,
+    "code": "gone",
+    "consumed": false
+   },
+   {
+    "name": "wrong_action",
+    "auth": "hkd_A",
+    "action": "quiet",
+    "given": "Token gehoert zu einer anderen Aktion bzw. einem anderen Auftrag",
+    "status": 410,
+    "code": "gone",
+    "consumed": false
+   },
+   {
+    "name": "device_other",
+    "auth": "hkd_B",
+    "action": "undo",
+    "given": "Token fuer Geraet A, Aufruf mit Geraet B",
+    "status": 403,
+    "code": "device",
+    "consumed": false
+   },
+   {
+    "name": "device_less_hkd",
+    "auth": "hkd_A",
+    "action": "later",
+    "given": "Token ohne Geraet (Browser-Abo), Aufruf mit hkd_ statt Sitzung",
+    "status": 403,
+    "code": "device",
+    "consumed": false
+   },
+   {
+    "name": "session_web",
+    "auth": "session",
+    "action": "later",
+    "given": "Token ohne Geraet (Browser-Abo), Sitzung + X-Saga: 1",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "no_ai",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "Faehigkeit ai inzwischen entzogen",
+    "status": 403,
+    "code": "cap",
+    "consumed": false
+   },
+   {
+    "name": "widget_later",
+    "auth": "hk_",
+    "action": "later",
+    "given": "Widget-Schluessel, Ruhe-Aktion",
+    "status": 200,
+    "code": null,
+    "consumed": true
+   },
+   {
+    "name": "widget_undo",
+    "auth": "hk_",
+    "action": "undo",
+    "given": "Widget-Schluessel, keine Ruhe-Aktion",
+    "status": 403,
+    "code": "key",
+    "consumed": false
+   },
+   {
+    "name": "api_token",
+    "auth": "sga_",
+    "action": "later",
+    "given": "API-Token/MCP/OAuth (RT-42)",
+    "status": 403,
+    "code": "key",
+    "consumed": false
+   },
+   {
+    "name": "foreign",
+    "auth": "hkd_A",
+    "action": "undo",
+    "given": "Auftrag eines anderen Kontos",
+    "status": 404,
+    "code": null,
+    "consumed": false
+   },
+   {
+    "name": "reserved",
+    "auth": "hkd_A",
+    "action": "retry",
+    "given": "retry/reply/ideas_off (reserviert)",
+    "status": 409,
+    "code": "open",
+    "consumed": false
+   },
+   {
+    "name": "open",
+    "auth": "hkd_A",
+    "action": "open",
+    "given": "ohne Token: nur die Adresse",
+    "status": 200,
+    "code": null,
+    "consumed": false
+   }
+  ]
+ },
+ "quiet": [
+  {
+   "tz": "Europe/Berlin",
+   "now": 1795725000,
+   "now_local": "2026-11-26T21:30:00+01:00",
+   "until": 1795759200,
+   "until_local": "2026-11-27T07:00:00+01:00"
+  },
+  {
+   "tz": "Europe/Berlin",
+   "now": 1795757400,
+   "now_local": "2026-11-27T06:30:00+01:00",
+   "until": 1795759200,
+   "until_local": "2026-11-27T07:00:00+01:00"
+  },
+  {
+   "tz": "Europe/Berlin",
+   "now": 1795759200,
+   "now_local": "2026-11-27T07:00:00+01:00",
+   "until": 1795845600,
+   "until_local": "2026-11-28T07:00:00+01:00"
+  },
+  {
+   "tz": "Europe/Berlin",
+   "now": 1806184800,
+   "now_local": "2027-03-27T23:00:00+01:00",
+   "until": 1806210000,
+   "until_local": "2027-03-28T07:00:00+02:00"
+  },
+  {
+   "tz": "Asia/Bangkok",
+   "now": 1795708800,
+   "now_local": "2026-11-26T23:00:00+07:00",
+   "until": 1795737600,
+   "until_local": "2026-11-27T07:00:00+07:00"
+  },
+  {
+   "tz": "America/New_York",
+   "now": 1793511000,
+   "now_local": "2026-11-01T01:30:00-04:00",
+   "until": 1793534400,
+   "until_local": "2026-11-01T07:00:00-05:00"
+  }
+ ],
+ "deeplinks": [
+  {
+   "link": "saga://saga",
+   "route": "/saga"
+  },
+  {
+   "link": "saga://jobs",
+   "route": "/saga?tab=jobs"
+  },
+  {
+   "link": "saga://job/42",
+   "route": "/saga?tab=jobs&job=42"
+  }
+ ],
+ "digest": {
+  "msg": {
+   "title": "Saga",
+   "body": "Während „Nicht stören“: 1 verpasster Anruf, 2 Rückmeldungen von Marin, 1 weitere Mitteilung",
+   "url": "/",
+   "tag": "status-digest",
+   "kind": "status.digest",
+   "ts": 1798761600,
+   "v": 2,
+   "lang": "de",
+   "n": 4,
+   "digest": {
+    "messages": 0,
+    "calls": 1,
+    "other": 3,
+    "jobs": 2
+   }
+  },
+  "note": "jobs ist in other enthalten (aeltere Apps: '3 weitere Mitteilungen'); Apps zeigen body"
+ }
+}
