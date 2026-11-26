@@ -122,6 +122,16 @@
     foot.textContent = '';
     notice.textContent = A.st ? A.st.notice : '';
     foot.appendChild(notice);
+    var det = A.st && A.st.intro && A.st.intro.details;       // 2.6 K-I (2269): derselbe Host-Hinweis wie im Ort "Saga", Details hinter ⓘ (M3)
+    if (det && det.length) {
+      var ib = el('button', 'ai-info-b', 'ⓘ'); ib.type = 'button'; ib.setAttribute('aria-label', T('Was genau rausgeht'));
+      ib.setAttribute('aria-expanded', 'false');
+      var ibox = el('div', 'ai-info-box'); ibox.hidden = true;
+      det.forEach(function (x) { ibox.appendChild(el('p', null, x)); });
+      ib.addEventListener('click', function () { ibox.hidden = !ibox.hidden; ib.setAttribute('aria-expanded', ibox.hidden ? 'false' : 'true'); });
+      notice.appendChild(document.createTextNode(' ')); notice.appendChild(ib);
+      foot.appendChild(ibox);
+    }
     var q = A.st && A.st.quota ? T('Heute noch {n} von {m} Anfragen', { n: Math.max(0, A.st.quota - A.st.used), m: A.st.quota }) : '';
     quota.textContent = q; quota.hidden = !q;
     foot.appendChild(quota);

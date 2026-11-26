@@ -4696,9 +4696,9 @@
     n.appendChild(HKAIAvatar(aiP(), 20));
     n.appendChild(el('span', null, S.ai.web
       ? T('{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) und Suchbegriffe über die Websuche an Suchmaschinen. Alles andere bleibt Ende-zu-Ende-verschlüsselt.',
-        { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })
+        { name: aiP().name, n: AI_CTX, host: (S.ai.endpoint && S.ai.endpoint.label) || S.ai.host || '?' })
       : T('{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}). Alles andere bleibt Ende-zu-Ende-verschlüsselt.',
-        { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })));
+        { name: aiP().name, n: AI_CTX, host: (S.ai.endpoint && S.ai.endpoint.label) || S.ai.host || '?' })));
   }
   function aiHint() {
     var h = $('ct-ai-hint'); if (!h) return;
@@ -4706,13 +4706,13 @@
     h.hidden = !on; if (!on) return;
     h.textContent = ''; h.appendChild(HKAIAvatar(aiP(), 16));
     h.appendChild(el('span', null, S.ai.web
-      ? T('Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host} – und Suchbegriffe über die Websuche.', { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })
-      : T('Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host}.', { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })));
+      ? T('Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host} – und Suchbegriffe über die Websuche.', { name: aiP().name, n: AI_CTX, host: (S.ai.endpoint && S.ai.endpoint.label) || S.ai.host || '?' })
+      : T('Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host}.', { name: aiP().name, n: AI_CTX, host: (S.ai.endpoint && S.ai.endpoint.label) || S.ai.host || '?' })));
   }
   function aiToggle(c) {
     var on = !c.ai, P = aiP();
     (on ? HK.ask({ title: T('{name} in diesem Chat erlauben?', { name: P.name }),
-      text: T('Dann kann jede Person im Chat {name} mit @{name} fragen. Nur diese Nachricht und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) – der Server speichert sie nicht. Alle Mitglieder sehen einen Hinweis.', { name: P.name, n: AI_CTX, host: (S.ai && S.ai.host) || '?' }) +
+      text: T('Dann kann jede Person im Chat {name} mit @{name} fragen. Nur diese Nachricht und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) – der Server speichert sie nicht. Alle Mitglieder sehen einen Hinweis.', { name: P.name, n: AI_CTX, host: (S.ai && ((S.ai.endpoint && S.ai.endpoint.label) || S.ai.host)) || '?' }) +
         (S.ai && S.ai.web ? ' ' + T('Bei Fragen nach Aktuellem darf {name} im Web suchen; die Suchbegriffe gehen über die Websuche an Suchmaschinen.', { name: P.name }) : ''),
       ok: T('Erlauben') }) : Promise.resolve(true)).then(function (y) {
       if (!y) return;

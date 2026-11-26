@@ -22,6 +22,7 @@
   }
   function av(px) { return window.HKAIAvatar ? HKAIAvatar(P(), px) : el('span', 'ai-av', '✦'); }
   function emit(name, detail) { document.dispatchEvent(new CustomEvent(name, { detail: detail })); }
+  function hostLabel() { return (S.st && S.st.endpoint && S.st.endpoint.label) || (S.st && S.st.host) || '–'; }
   function consentOk() { return !!(S.st && S.st.consent && S.st.consent.state === 'granted'); }
 
   S.load = function () {
@@ -82,7 +83,7 @@
     var bar = el('div', 'sg-intro-bar'), err = el('p', 'sg-err'); err.hidden = true; err.setAttribute('role', 'alert');
     function go(answer, b) {
       [].forEach.call(bar.querySelectorAll('button'), function (x) { x.disabled = true; });
-      api('POST', '/api/ai/consent', { answer: answer, version: it.version }).then(function (r) {
+      api('POST', '/api/ai/consent', { answer: answer, version: it.version, host: it.host }).then(function (r) {
         if (S.st) S.st.consent = r.consent;
         emit('saga:consent', { consent: r.consent });
         if (answer === 'later') { if (opts.later) opts.later(); }
@@ -396,7 +397,7 @@
     var c = d.consent || {}, name = P().name;
     var st = el('p', 'hk-hint sg-set-state');
     if (c.state === 'granted') st.textContent = T('Du nutzt {name} seit {date}.', { name: name, date: new Date(c.at * 1000).toLocaleDateString() });
-    else if (c.state === 'withdrawn') st.textContent = T('Du hast die Einwilligung widerrufen – {name} bekommt nichts von dir.', { name: name });
+    else if (c.state === 'withdrawn') st.textContent = T('Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.', { name: name, host: hostLabel() });
     else if (c.state === 'stale') st.textContent = T('Der Admin hat die KI umgestellt – lerne {name} noch einmal kennen, bevor es weitergeht.', { name: name });
     else st.textContent = T('Du hast {name} noch nicht kennengelernt.', { name: name });
     box.appendChild(st);
@@ -428,7 +429,7 @@
     if (c.state === 'granted' || c.state === 'stale') {
       var wd = el('button', 'btn', T('Einwilligung widerrufen')); wd.type = 'button';
       wd.addEventListener('click', function () {
-        HK.ask({ title: T('Einwilligung widerrufen?'), text: T('{name} bekommt danach nichts mehr von dir. Laufende Aufträge halten an und warten auf dich; Ideen gehen aus. Du kannst {name} jederzeit wieder kennenlernen.', { name: name }),
+        HK.ask({ title: T('Einwilligung widerrufen?'), text: T('Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.', { name: name, host: hostLabel() }),
                  ok: T('Widerrufen'), danger: true }).then(function (yes) {
           if (!yes) return;
           api('DELETE', '/api/ai/consent').then(function (r) {
