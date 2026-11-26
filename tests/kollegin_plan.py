@@ -312,7 +312,12 @@ def part_model(pages):
              "Ruf J. Müller an. Dann Ben.": "Ruf J. Müller an",
              "Call Mr. Smith about the grill. Then Ben.": "Call Mr. Smith about the grill",
              "Llama al Sr. García, p. ej. mañana. Luego a Ana.": "Llama al Sr. García, p. ej. mañana",
-             "Ruf Ben an. Dann Clara.": "Ruf Ben an"}
+             "Ruf Ben an. Dann Clara.": "Ruf Ben an",
+             # Pruefer prr2: an der Linkstelle abschneiden, keine Luecken/leeren Klammern
+             "Bestell bei https://shop.example/kohle bitte": "Bestell bei",
+             "Kauf Kohle (siehe www.shop.example) beim Händler.": "Kauf Kohle",
+             "Kauf Kohle bei ｓｈｏｐ．ｅｘａｍｐｌｅ/kohle und Bier": "Kauf Kohle bei",
+             "https://shop.example/kohle bestellen, bitte bis Freitag": "Bestellen, bitte bis Freitag"}
     got = {q_: ai_plan._alt_text(q_) for q_ in cases}
     ok(f"2509: _alt_text Faelle ({got})", got == cases, got)
     r = plan(A, "", recipe={"id": "x", "steps": []})

@@ -826,8 +826,18 @@ def _alt_text(q):
     erste Zeile, erster Satz, an einer Wortgrenze gekuerzt (…); die Befehlsform bleibt, nur die Anrede der KI vorne
     ("Marin, …") faellt weg. Die volle Bitte bleibt die Bitte des Auftrags (plan.request, Detail request) - Aufgaben haben
     kein Beschreibungsfeld."""
-    raw = _MENTION.sub("", ai_frame.no_links(str(q or ""), ""))
-    s = next((re.sub(r"\s+", " ", ln).strip() for ln in raw.splitlines() if ln.strip()), "")
+    raw = _MENTION.sub("", ai_frame.no_links(str(q or ""), "\x00"))
+    s = next((ln for ln in raw.splitlines() if ln.replace("\x00", "").strip()), "")
+    if "\x00" in s:  # Pruefer prr2: an der Linkstelle abschneiden statt Luecken/leere Klammern stehen lassen
+        head, tail = s.split("\x00", 1)
+        if head.strip():
+            s = head
+        else:  # Link ganz vorne: der Rest ist die Bitte
+            s = tail.replace("\x00", " ").strip()
+            s = s[:1].upper() + s[1:]
+        if s.count("(") > s.count(")"):
+            s = s[:s.rfind("(")]
+    s = re.sub(r"\s+", " ", s).strip()
     m = _ALT_HELLO.match(s)
     if m and m.group(1).lower() in {"saga", str(ai.persona_name() or "").lower()}:
         s = m.group(2)[:1].upper() + m.group(2)[1:]
