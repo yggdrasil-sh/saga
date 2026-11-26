@@ -1,0 +1,92 @@
+/* Saga 2.6 (Bugs-DB 2267 K-B): Auftraege der Kollegin - Plan-Karte, Rueckmeldung, Ort "Auftraege" (static/ai-jobs.js).
+   Farben ueber die Tokens (style.css/tokens.css); KI-Flaeche --ai-tint/--ai-edge (UX §6) mit Rueckfall, falls tokens.css
+   sie (noch) nicht hat. Dunkel ist Standard, hell ueber prefers-color-scheme bzw. data-theme=light (wie tokens.css).
+   Schrift >= 16 px (Nebenzeilen 14 px), Ziele >= 32 px mit Zeiger, 44 px mobil; Rueckgaengig ist ein Knopf (>= 44 px). */
+:root{--kj-tint:var(--ai-tint,#1e2530);--kj-edge:var(--ai-edge,#8f7440);--kj-pri-bg:#c9a45c;--kj-pri-fg:#0f141c}
+@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--kj-tint:var(--ai-tint,#f7f0df);--kj-edge:var(--ai-edge,#a07c2c);--kj-pri-bg:#7a5a12;--kj-pri-fg:#fff}}
+:root:where([data-theme=light]){--kj-tint:var(--ai-tint,#f7f0df);--kj-edge:var(--ai-edge,#a07c2c);--kj-pri-bg:#7a5a12;--kj-pri-fg:#fff}
+
+.kj-root{flex:1;min-height:0;overflow:auto;padding:.8rem .9rem;display:flex;flex-direction:column;gap:.9rem;font-size:max(16px,var(--fs-base))}
+.kj-form{display:flex;flex-direction:column;gap:.45rem}
+.kj-ta{width:100%;resize:vertical;min-height:2.8rem;font-size:16px}
+.kj-bar{display:flex;justify-content:flex-end;gap:.5rem}
+.kj-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.kj-stage:empty{display:none}
+
+.kj-card{background:var(--kj-tint);border:1px solid var(--kj-edge);border-left-width:4px;border-radius:var(--r-md,10px);padding:.75rem .85rem;
+  color:var(--fg);display:flex;flex-direction:column;gap:.55rem;line-height:1.5}
+.kj-small{gap:.3rem}
+.kj-head{display:flex;align-items:center;gap:.45rem;font-size:14px;font-weight:600}
+.kj-who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kj-state{font-weight:600;font-size:14px;color:var(--fg);padding:.1rem .5rem;border-radius:999px;border:1px solid var(--kj-edge)}
+.kj-spark{color:var(--accent)}
+.kj-lead{margin:0;font-size:16px}
+.kj-lead:focus{outline:none}
+.kj-note{margin:0;font-size:14px;color:var(--muted)}
+.kj-steps{margin:0;padding:0 0 0 1.4rem;display:flex;flex-direction:column;gap:.45rem}
+.kj-step{padding-left:.15rem}
+.kj-step::marker{color:var(--muted)}
+.kj-sym{display:inline-block;width:1.3em;color:var(--kj-edge);font-weight:700}
+.kj-step-t{font-size:16px}
+.kj-cls{display:inline-block;margin-left:.45rem;font-size:14px;color:var(--muted);white-space:nowrap}
+.kj-cls::before{content:"· "}
+.kj-draft{margin:.35rem 0 0;padding:.45rem .6rem;border-radius:var(--r-sm,6px);background:var(--card);border:1px solid var(--border);font-size:15px}
+.kj-draft .ai-answer,.kj-draft .ai-p{margin:0}
+.kj-read{margin:0;font-size:14px;color:var(--muted)}
+.kj-err{margin:0;color:var(--down,#e5534b);font-size:14px}
+.kj-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.kj-actions .kj-no{margin-left:1rem}
+.kj-go{background:var(--kj-pri-bg);border-color:var(--kj-pri-bg);color:var(--kj-pri-fg);font-weight:600}
+.kj-go:hover{filter:brightness(1.06)}
+.kj-card .btn{min-height:32px}
+.kj-editbox{display:flex;flex-direction:column;gap:.4rem;margin-top:.4rem}
+.kj-field{display:flex;flex-direction:column;gap:.15rem;font-size:14px;color:var(--muted)}
+.kj-field .hk-in{font-size:16px;color:var(--fg)}
+.kj-thinking{margin:0;color:var(--muted)}
+.kj-thinking::after{content:"";display:inline-block;width:.5em;height:.5em;margin-left:.4em;border-radius:50%;background:var(--kj-edge);animation:kj-pulse 1.2s ease-in-out infinite}
+@keyframes kj-pulse{0%,100%{opacity:.3}50%{opacity:1}}
+@media (prefers-reduced-motion: reduce){.kj-thinking::after{animation:none}}
+.kj-chips{display:flex;flex-wrap:wrap;gap:.4rem}
+.kj-chip{min-height:32px;padding:.3rem .7rem;border-radius:999px;border:1px solid var(--kj-edge);background:var(--card);color:var(--fg);font:inherit;font-size:15px;cursor:pointer}
+.kj-chip:focus-visible,.kj-item:focus-visible,.kj-undo:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.kj-result{font-size:16px}
+.kj-result .ai-p{margin:0}
+.kj-changes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.kj-change{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;justify-content:space-between}
+.kj-change-t{flex:1;min-width:12rem}
+.kj-undo{min-height:44px;min-width:44px;font-weight:600}
+.kj-changed{display:flex;flex-direction:column;gap:.3rem;font-size:14px;color:var(--muted)}
+.kj-oldtext{border:1px solid var(--border);border-radius:var(--r-sm,6px);padding:.4rem .55rem;background:var(--card);color:var(--fg)}
+.kj-oldtext pre{margin:.3rem 0 0;white-space:pre-wrap;font:inherit;font-size:14px}
+
+.kj-empty{color:var(--muted);display:flex;flex-direction:column;gap:.5rem;align-items:flex-start}
+.kj-empty p{margin:0}
+.kj-group{display:flex;flex-direction:column;gap:.3rem}
+.kj-gh{margin:0;font-size:14px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
+.kj-count{display:inline-block;min-width:1.4em;padding:0 .35em;border-radius:999px;background:var(--card-h);color:var(--fg);font-size:13px;text-align:center}
+.kj-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.25rem}
+.kj-item{width:100%;display:flex;align-items:center;gap:.6rem;min-height:44px;padding:.45rem .6rem;border:1px solid var(--border);border-radius:var(--r-sm,8px);
+  background:var(--card);color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.kj-item:hover{background:var(--card-h)}
+.kj-isym{width:1.2em;text-align:center;color:var(--kj-edge);font-weight:700}
+.kj-g-nicht_geklappt .kj-isym{color:var(--down,#e5534b)}
+.kj-g-fertig .kj-item{opacity:.85}
+.kj-itx{flex:1;min-width:0;display:flex;flex-direction:column}
+.kj-ititle{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kj-iline{font-size:14px;color:var(--muted)}
+.kj-chev{color:var(--muted)}
+
+.kj-detail{display:flex;flex-direction:column;gap:.6rem}
+.kj-detail[hidden]{display:none}
+.kj-back{align-self:flex-start}
+.kj-dtitle{margin:0;font-size:var(--fs-md,1.1rem)}
+.kj-dstate{margin:0}
+.kj-sec h4{margin:.2rem 0 .3rem;font-size:14px;color:var(--muted);font-weight:600}
+.kj-sec p{margin:0}
+.kj-hint{font-size:14px;color:var(--muted)}
+.kj-log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.15rem;font-size:14px}
+.kj-time{color:var(--muted);margin-right:.3rem}
+.kj-cancel{align-self:flex-start}
+@media (max-width:760px){.kj-actions .kj-go{flex:1 1 100%;min-height:44px}.kj-actions .kj-no{margin-left:0}.kj-card .btn,.kj-chip{min-height:44px}}
+.ai-jobs{flex:1;min-height:0;display:flex;flex-direction:column}

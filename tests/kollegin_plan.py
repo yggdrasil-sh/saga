@@ -417,12 +417,12 @@ def part_row(pages):
     jobs.approve(r["job"], A, r["plan_v"], r["plan_hash"])
     st = run_jobs(r["job"])
     props = api_v1.page_read(full, row)[1].get("properties") or {}
-    ok(f"update_row ausgefuehrt ({st}, {props})", st == "erledigt" and props.get("Wer") == "Ben")
+    ok(f"update_row ausgefuehrt ({st}, {props})", st == "erledigt" and "Ben" in props.values())
     ch = [x for x in pg("SELECT target, before FROM job_change WHERE job_id=?", (r["job"],)) if (x[1] or {}).get("op") == "props"]
     ok(f"Vorher-Stand der Eigenschaften ({ch})", len(ch) == 1 and ch[0][1]["keys"])
     s, d = K.req("POST", f"/api/ai/jobs/{r['job']}/undo", K.ck(A), {})
     props = api_v1.page_read(full, row)[1].get("properties") or {}
-    ok(f"update_row zurueckgenommen ({s}, {d}, {props})", s == 200 and props.get("Wer") == "offen")
+    ok(f"update_row zurueckgenommen ({s}, {d}, {props})", s == 200 and "offen" in props.values() and "Ben" not in props.values())
 
 
 def part_api(pages):

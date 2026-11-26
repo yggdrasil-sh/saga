@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/live.css?v={{ v }}">
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
+<link rel="stylesheet" href="/static/ai-jobs.css?v={{ v }}">
 </head>
 <body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}" data-editor="{{ editor or 'editorjs' }}"{% if search_enabled %} data-web="1"{% endif %}>
 <a class="skip-link" href="#page" data-skip="pg-h1 pg-trash pg-empty pg-main">{{ _("Zum Inhalt") }}</a>
@@ -186,6 +187,7 @@
 <script src="/static/backup.js?v={{ v }}"></script>
 <script src="/static/nextcloud.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script>{% endif %}
+<script src="/static/ai-jobs.js?v={{ v }}"></script>
 <script src="/static/ai.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
 <script src="/static/graph-sim.js?v={{ v }}"></script>

@@ -73,7 +73,8 @@
   head.appendChild(grip); head.appendChild(htitle); head.appendChild(close);
   var tabs = el('div', 'ai-tabs'); tabs.setAttribute('role', 'tablist');
   var tAsk = tabBtn('ask', T('Frag deine Seiten')), tPage = tabBtn('page', T('Diese Seite'));
-  tabs.appendChild(tAsk); tabs.appendChild(tPage);
+  var tJobs = tabBtn('jobs', T('Aufträge'));         // 2.6 (K-B 2267): Ort "Aufträge" (static/ai-jobs.js), nur mit status.jobs
+  tabs.appendChild(tAsk); tabs.appendChild(tPage); tabs.appendChild(tJobs);
   var body = el('div', 'ai-body'), foot = el('div', 'ai-foot');
   var notice = el('p', 'ai-notice'), quota = el('span', 'ai-quota');
   panel.appendChild(head); panel.appendChild(tabs); panel.appendChild(body); panel.appendChild(foot);
@@ -127,7 +128,10 @@
   }
 
   function render() {
-    [tAsk, tPage].forEach(function (b) {
+    var jobsOn = !!(A.st && A.st.jobs && window.HKJobs);
+    tJobs.hidden = !jobsOn;
+    if (!jobsOn && A.tab === 'jobs') A.tab = 'ask';
+    [tAsk, tPage, tJobs].forEach(function (b) {
       var on = b.dataset.k === A.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     var pg = cur(), remote = !!pg && typeof pg.id === 'number' && pg.id < 0;   // Seite einer anderen Saga-Instanz: Inhalt liegt dort
@@ -135,8 +139,18 @@
     tPage.title = remote ? T('Seiten anderer Saga-Instanzen bearbeitet der Assistent nicht.') : '';
     if ((!pg || remote) && A.tab === 'page') A.tab = 'ask';
     body.textContent = '';
-    if (A.tab === 'ask') renderAsk(); else renderPage();
+    if (A.tab === 'ask') renderAsk(); else if (A.tab === 'jobs') renderJobs(); else renderPage();
     renderFoot();
+  }
+
+  // 2.6 (K-B 2267): Auftraege - das Bauteil bleibt erhalten (Plan-Karte, Detail), beim Wechsel nur neu eingehaengt
+  function renderJobs() {
+    if (!A.jobs) {
+      var box = el('div', 'ai-jobs');
+      A.jobs = window.HKJobs.mount(box, { note: function () { var c = cur(); return c && typeof c.id === 'number' && c.id > 0 ? c.id : null; } });
+      A.jobsBox = box;
+    } else A.jobs.refresh();
+    body.appendChild(A.jobsBox);
   }
 
   // --- Antworttext -> DOM (nie innerHTML): Absaetze, Listen ('- ', '* ', '1. '), **fett**, `code`, Ueberschriften als
@@ -725,7 +739,10 @@
       show(tab);
       if (q && A.tab === 'ask') { askTa.value = q; try { askTa.focus(); askTa.setSelectionRange(q.length, q.length); } catch (e) { /* egal */ } }
     },
-    state: function () { return A.st; }
+    state: function () { return A.st; },
+    // 2.6 (K-B 2267): gemeinsame KI-Darstellung (2248) und "Melden" (2258a) fuer static/ai-jobs.js (Plan-Karte, Rueckmeldung)
+    md: function (text) { return answerNode(text, []); },
+    reportBtn: reportBtn
   };
 
   api('GET', '/api/ai/status').then(function (d) {

@@ -403,6 +403,7 @@
      'call.mod', 'call.invites',                                                          // (2.5) Gastgeber: stumm/entfernt; L7 Nicht dabei
      'call.topo',                                                                         // (2.5) Horn-Fix/A3: Anruf laeuft jetzt direkt
      'call.quiet',                                                                        // (2.6, 2029-5 B) zurueckgehaltener Anruf (Nicht stoeren)
+     'ai.job.changed',                                                                    // (2.6, K-B 2267) Auftraege der Kollegin
      'call.move'].forEach(function (n) {                                                  // (2.5) L9: 1:1 ist in eine neue Gruppe umgezogen
       on(es, n, function (d) { chatEvent(n, d); });
     });

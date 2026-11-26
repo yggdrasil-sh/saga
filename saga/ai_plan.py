@@ -442,7 +442,7 @@ def _lines_obj(text):
 
 def parse(text, lines=False):
     v = _json_obj(text)
-    if v is None:
+    if v is None or not any(k in v for k in ("kind", "steps", "recipe")):   # JSON nur als ganzer Plan, nicht die Angaben einer STEP-Zeile
         v = _lines_obj(text)
     if v is not None and "kind" not in v:
         v["kind"] = "plan" if v.get("steps") else "recipe" if v.get("recipe") else None
@@ -846,10 +846,6 @@ def _store(uid, res, reads, lvl, q, source):
 
 
 # --- Darstellung (Systemtext) -------------------------------------------------------------------------------------
-KLASS_WORDS = {"undo": "rückgängig", "delete_only": "nur löschbar", "final": "endgültig"}
-KIND_WORDS = {"read": "Lesen", "own": "Eigenes ändern", "out": "Nach außen"}
-
-
 def klass_text(undo_class, klass):
     if klass == "read":
         return t("ändert nichts")
@@ -964,7 +960,7 @@ def plan_view(job_id, uid):
     for n, tool, klass, undo_c, args, st in rows:
         steps.append({"n": n, "tool": tool, "klass": klass, "kind_text": kind_text(klass), "undo_class": undo_c if klass != "read" else None,
                       "class_text": klass_text(undo_c, klass), "text": step_text(tool, args, labels), "wording": wording(tool, args),
-                      "state": st, "edit": editable(tool)})
+                      "state": st, "edit": editable(tool), "fields": {k: (args or {}).get(k) for k in editable(tool) if (args or {}).get(k) is not None}})
     rl = read_list(pj)
     return {"job": job_id, "plan_v": r[1], "plan_hash": r[2], "title": r[3], "state": r[4], "steps": steps, "read": rl,
             "read_text": (t("Ich lese dafür:") + " " + ", ".join(x["label"] for x in rl)) if rl else "",

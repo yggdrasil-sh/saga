@@ -117,6 +117,9 @@ def record(job_id, n, idem, attempt, spec, args, snap, out):
                 continue
             i = int(v)
             if kind == "row" or (kind == "note" and spec.name == "update_row"):
+                if spec.name == "update_row" and i != (args or {}).get("id"):   # z. B. die Datenbank selbst (Ansicht/Zaehler)
+                    _upd(c, cid, {"op": "none"}, {}, None)
+                    continue
                 if i in primary:                 # Nebenstempel (note:<id> neben row:<id>)
                     _upd(c, cid, {"op": "none", "same": primary[i]}, {}, None)
                     continue
