@@ -247,6 +247,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Behoben
 
+- **Rückweg 2.6 → 2.5: Backup zurückspielen entfernt auch die neuen 2.6-Tabellen** (Bugs-DB 2454): `run.py restore`
+  entfernt vor dem Einspielen jetzt alle Tabellen, die die laufende Version kennt (bisher eine von Hand gepflegte
+  Liste, für 2.6 nicht nachgezogen). Adressbuch, eigener Status, Aufträge und KI-Verbrauch blieben sonst nach dem
+  Zurückspielen eines 2.5-Backups mit ihren 2.6-Daten stehen und galten beim nächsten Update wieder. Rückweg in
+  [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) Abschnitt 7 (mit 2.6 zurückspielen, dann 2.5 starten); getestet mit der
+  `db.py` von v2.5.0.
 - **Gjallarhorn: eigene Kachel zeigt „spricht“ wieder richtig** (Bugs-DB 2458, Web inkl. Mac-Hülle/Linux, Gruppen ab drei
   Personen über den Knoten): Der eigene Pegel wurde nur während eines Knotenwechsels gemessen – ohne Wechsel zeigte die
   eigene Kachel nie „spricht“, nach einem Wechsel, bei dem man sprach, dauerhaft. Jetzt jeden Takt gemessen (älter als

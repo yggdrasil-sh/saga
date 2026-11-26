@@ -1233,7 +1233,7 @@ CREATE INDEX IF NOT EXISTS file_fed_by ON file (uid, fed_by) WHERE fed_by IS NOT
     # peer_id, role, state, replaces, caps, joined, left_at, seen; PK (call_id, device), FK auf chat_call ON DELETE CASCADE)
     # und chat_call_invite; caps_a/caps_b werden dort als caps der beiden ersten Endpunkte uebernommen, caller/callee und
     # caller_device/callee_device bleiben fuer 2.3-Code und Foederation gefuellt. Neue Tabellen mit Fremdschluessel auf
-    # chat_call muessen dann auch in _RESTORE_DROP (sonst scheitert das Zurueckspielen eines aelteren Backups an DROP chat_call).
+    # chat_call: _RESTORE_DROP entfernt sie vor dem Zurueckspielen (seit 2454 alle Tabellen dieser Version, von selbst).
     10: """
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS v SMALLINT NOT NULL DEFAULT 1;
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS topo TEXT NOT NULL DEFAULT 'p2p';
@@ -1567,48 +1567,25 @@ def backup(label="manuell"):
     return path
 
 
-# Abgeleitete Tabellen (2.2, saga/pageindex.py) verweisen per Fremdschluessel auf note. Ein Backup von vor 2.2 kennt sie
-# nicht - pg_restore --clean koennte note dann nicht loeschen ("other objects depend on it") und bricht ab. Sie sind
-# jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie an und
-# gleicht alle Seiten neu ab. Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): der Stand gehoert zur alten
-# Datenbank - der naechste Start legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz).
-# chat_invite (2.3, Fremdschluessel auf chat): ein Backup von davor kennt sie nicht (sonst bricht DROP chat ab); ein
-# neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
-# 2.4: Migration 10 aendert nur Spalten von chat_call (ein aelteres Backup legt chat_call ohne sie an, der naechste Start
-# ergaenzt sie). Tabellen mit Fremdschluessel auf chat_call (E4/E5: chat_call_leg, chat_call_invite) gehoeren hierher: ein
-# Backup von davor kennt sie nicht (sonst bricht DROP chat_call ab); ein neueres bringt sie mit, sonst legt der naechste
-# Start sie leer an (laufende Anrufe sind nach dem Zurueckspielen ohnehin vorbei).
-# chat_upload (2.4 E2, Fremdschluessel auf chat): laufende Uploads gehoeren zur alten Datenbank - weg (die Teil-Dateien unter
-# STATE_DIR/chat/up raeumt der naechste purge() ab, ein Neustart des Uploads legt einen neuen an).
-# 2.4 (Migration 13): chat_receipt (Fremdschluessel auf chat) und chat_seen - ein aelteres Backup kennt sie nicht; danach
-# legt der naechste Start sie leer an (Bestaetigungen kommen mit dem naechsten Lesen neu, "zuletzt online" fehlt bis dahin).
-# 2.4 (Migration 14, Sicherheitsrunde 2 R1): login_lock - laufende harte Anmelde-Sperren gehoeren zur alten Datenbank; ein
-# aelteres Backup kennt die Tabelle nicht (sonst bliebe eine Sperre bis zu 1 h stehen), ein neueres bringt sie mit.
-# 2.5 (Migration 15, schon im SCHEMA): chat_reaction (Fremdschluessel auf chat_msg) und push_stream_msg (Fremdschluessel
-# auf push_sub) - ein Backup von 2.4 kennt sie nicht (sonst bricht DROP chat_msg bzw. push_sub ab); Reaktionen und
-# abgelegte Mitteilungen gehoeren zu den Nachrichten bzw. Abos der alten Datenbank. Die Gjallarhorn-Tabellen (horn_*) haben
-# keine Fremdschluessel und bleiben bei einem 2.4-Backup stehen (Knotenregister, gesperrte Schluessel).
-# 2.5, weitere Tabellen mit Fremdschluessel auf Tabellen von 2.4 (sonst bricht ein 2.4-Backup an "note_pkey ... andere
-# Objekte haengen davon ab" ab - Rueckweg in docs/UPGRADE-2.5.md Abschnitt 7): auf note note_fresh, row_person, row_done
-# (abgeleitet bzw. nur Zaehler), note_mention, synced_ref; auf chat/chat_msg chat_hidden, chat_pin. Alle gehoeren zu den
-# Zeilen der alten Datenbank (ON DELETE CASCADE); ein Backup von 2.5 bringt sie mit, sonst legt der naechste Start sie an.
-_RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
-                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
-                 b"DROP TABLE IF EXISTS public.chat_invite;\n"
-                 b"DROP TABLE IF EXISTS public.chat_call_leg, public.chat_call_invite;\n"
-                 b"DROP TABLE IF EXISTS public.chat_upload;\n"
-                 b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n"
-                 b"DROP TABLE IF EXISTS public.login_lock;\n"
-                 b"DROP TABLE IF EXISTS public.chat_reaction, public.push_stream_msg;\n"
-                 b"DROP TABLE IF EXISTS public.note_fresh, public.row_person, public.row_done, public.note_mention, public.synced_ref;\n"
-                 b"DROP TABLE IF EXISTS public.chat_hidden, public.chat_pin;\n")
+# Zurueckspielen (restore): Vor dem Einspielen entfernt Saga ALLE Tabellen, die diese Version kennt (SCHEMA, Seitenbaum-
+# Abgleich, Migrationen, dazu die Tabellen, die Bereiche beim Start selbst anlegen) - in derselben Transaktion wie das
+# Einspielen, also alles oder nichts. pg_restore --clean entfernt nur, was im Backup steht: Tabellen, die ein aelteres
+# Backup nicht kennt, blieben sonst mit den Daten nach dem Backup stehen (2.6 -> 2.5: Adressbuch contact/contact_addr,
+# Kollegin-Auftraege job*, Status user_status, KI-Einheiten ai_units - ein spaeteres Update setzte darauf auf; Bugs-DB
+# 2454) oder brachen das Einspielen ab, wenn sie per Fremdschluessel auf eine Tabelle des Backups verweisen ("cannot drop
+# ... other objects depend on it", frueher je Version von Hand nachgetragen: note_derived 2.2, chat_invite 2.3, chat_call_leg
+# 2.4, chat_reaction 2.5 ...). Was das Backup mitbringt, legt es neu an; den Rest legt der naechste Start leer an (bzw. die
+# Migrationen der neueren Version, wenn sie wieder startet). Fremde Tabellen (nicht von Saga) bleiben unberuehrt - ohne
+# CASCADE: haengt etwas Fremdes an einer Saga-Tabelle (z. B. eine eigene Sicht), bricht das Zurueckspielen ab und aendert
+# nichts. tests/sicherung.py prueft, dass jede Tabelle einer frisch gestarteten Datenbank hier enthalten ist.
+_RESTORE_MODULE_TABLES = ("app_token", "user_kv", "app_code", "device_login", "cal_account", "file", "immich_key")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 
 def _restore_filter(src, dst, known):
     """SQL-Text von pg_restore -> psql. Laesst SET-Zeilen fuer Parameter weg, die der Server nicht kennt (pg_restore 17
     schreibt "SET transaction_timeout = 0;", Postgres 16 bricht daran ab), setzt nach BEGIN das DROP der abgeleiteten
-    Tabellen ein und haelt alles ab dem abschliessenden COMMIT zurueck. Zeilen in COPY-Daten bleiben unberuehrt.
+    Tabellen dieser Version (_RESTORE_DROP) ein und haelt alles ab dem abschliessenden COMMIT zurueck. Zeilen in COPY-Daten bleiben unberuehrt.
     Rueckgabe: zurueckgehaltener Rest (bytes) oder None, wenn kein BEGIN kam (dann nie COMMIT schicken).
     SET-Zeilen fallen nur im Kopf weg (vor dem ersten Objekt) - spaeter koennten sie in Funktionskoerpern oder
     mehrzeiligen Texten stehen. Ein "COMMIT;" mitten im Text (z. B. in einer Prozedur) wird nicht festgehalten: Folgt
@@ -1796,6 +1773,28 @@ DO $$ BEGIN
 END $$;
 """
 
+
+
+def _restore_tables():
+    """Alle Tabellen, die diese Version anlegt (Namen aus SCHEMA, TREE_SEQ_SQL, MIGRATIONS und _RESTORE_MODULE_TABLES)."""
+    names = []
+    for sql in (SCHEMA, TREE_SEQ_SQL, *MIGRATIONS.values()):
+        names += re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)\s*\(", sql)
+    return tuple(dict.fromkeys([*names, *_RESTORE_MODULE_TABLES]))
+
+
+def _restore_drop_sql(tables):
+    out, line = [], b"DROP TABLE IF EXISTS"
+    for i, t in enumerate(tables):
+        part = (b" " if i == 0 else b", ") + b"public." + t.encode()
+        if len(line) + len(part) > 110:
+            out.append(line + b",\n")
+            line, part = b"   ", b" public." + t.encode()
+        line += part
+    return b"".join(out) + line + b";\n"
+
+
+_RESTORE_DROP = _restore_drop_sql(_restore_tables())
 
 def init_tree_seq(c):
     """Abgleich-Stand fuer den Seitenbaum (siehe TREE_SEQ_SQL) anlegen und die Kennung neu wuerfeln. Ohne pg_current_xact_id
