@@ -1485,6 +1485,19 @@ time.hk-date::before{content:"@";opacity:.55}
 .sec-wrap .mfa{border-top:0;margin-top:0;padding-top:0}
 .mfa-block .hk-actions .hk-in{flex:1 1 14rem;min-width:0}
 .auth-btn.disabled{opacity:.55;cursor:not-allowed}
+/* 2.6 (Bugs-DB 2264): Zustimmungsseite "App verbinden" (templates/oauth.html) und Einstellungen "Verbundene Apps" */
+.oa-lead{font-size:var(--fs-md);font-weight:600;margin:0 0 .8rem;overflow-wrap:anywhere}
+.oa-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.3rem .8rem;margin:0 0 .9rem;font-size:var(--fs-base)}
+.oa-facts dt{color:var(--muted)}
+.oa-facts dd{margin:0;overflow-wrap:anywhere}
+.oa-facts code{font-size:var(--fs-sm)}
+.oa-sub{color:var(--muted)}
+.oa-rights{border:1px solid var(--border);border-radius:var(--r-md);padding:.5rem .8rem .6rem;margin:0;display:flex;flex-direction:column;gap:.35rem}
+.oa-rights legend{padding:0 .3rem;font-weight:600}
+.oa-limits{margin:0}
+.oa-info summary{cursor:pointer;color:var(--accent);font-size:var(--fs-base)}
+.oa-info p{margin:.4rem 0 0}
+.oa-app .oa-host{font-size:var(--fs-sm);color:var(--muted)}
 .mfa{margin-top:1.4rem;border-top:1px solid var(--border);padding-top:.4rem}
 .mfa h5{margin:1.1rem 0 .3rem;font-size:var(--fs-base)}
 .mfa-block{margin-top:.4rem}

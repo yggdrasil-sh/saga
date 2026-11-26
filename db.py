@@ -34,7 +34,7 @@ ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
              "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery", "job", "job_event", "job_change",
-             "contact", "contact_addr"}
+             "contact", "contact_addr", "oauth_grant"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "bookorbit_link": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -1104,6 +1104,30 @@ CREATE TABLE IF NOT EXISTS webhook_delivery (
     done DOUBLE PRECISION);
 CREATE INDEX IF NOT EXISTS webhook_delivery_due ON webhook_delivery (next_try) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS webhook_delivery_hook ON webhook_delivery (hook_id, id);
+-- MCP mit OAuth (2.6, Bugs-DB 2264, saga/oauth.py, Migration 43). oauth_client: dynamisch registrierte Clients (RFC 7591),
+-- id = client_id (zufaellig), redirect_uris JSON-Liste (exakter Vergleich), auth_method none|client_secret_post|
+-- client_secret_basic, secret_hash nur als SHA-256. oauth_grant = eine "verbundene App" einer Person (Zustimmung):
+-- Bereiche (JSON-Liste, nie tel), resource (= BASE_URL/mcp), revoked = getrennt bzw. Wiederverwendung erkannt (why).
+-- oauth_code: Autorisierungs-Code (nur Hash, einmalig, kurzlebig, PKCE S256). oauth_refresh: Refresh-Token (nur Hash,
+-- Rotation - used gesetzt = verbraucht; ein zweites Mal -> ganze Kette gesperrt). Zugriffstoken stehen in api_token
+-- (Spalte grant_id, Migration 43) und gelten nur fuer /mcp.
+CREATE TABLE IF NOT EXISTS oauth_client (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, auth_method TEXT NOT NULL DEFAULT 'none',
+    secret_hash TEXT, grant_types TEXT NOT NULL DEFAULT '["authorization_code"]', created DOUBLE PRECISION NOT NULL,
+    last_used DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS oauth_grant (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, client_id TEXT NOT NULL REFERENCES oauth_client(id) ON DELETE CASCADE,
+    scopes TEXT NOT NULL DEFAULT '[]', resource TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION,
+    last_used DOUBLE PRECISION, revoked DOUBLE PRECISION, why TEXT);
+CREATE INDEX IF NOT EXISTS oauth_grant_uid ON oauth_grant (uid);
+CREATE INDEX IF NOT EXISTS oauth_grant_client ON oauth_grant (client_id);
+CREATE TABLE IF NOT EXISTS oauth_code (
+    hash TEXT PRIMARY KEY, grant_id BIGINT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE, client_id TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL, challenge TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS oauth_refresh (
+    hash TEXT PRIMARY KEY, grant_id BIGINT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE,
+    created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS oauth_refresh_grant ON oauth_refresh (grant_id);
 -- Erwaehnungen (2.5, P6-5, saga/mentions.py): Index der Personen, die in einer Seite erwaehnt sind (span.hk-mention data-u im
 -- Inhalt). person = kanonische Kennung (lokaler Benutzername bzw. Prinzipal '@name@host'), verlaesst den Server nie roh.
 -- Gepflegt beim Speichern (gleiche Transaktion). first_* = erste Erwaehnung, gone_at = gerade nicht mehr im Inhalt,
@@ -1507,6 +1531,14 @@ ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS topic TEXT;
     40: """
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS lim SMALLINT;
 SELECT lim FROM chat_call LIMIT 0;
+""",
+    # 2.6 (Bugs-DB 2264, MCP mit OAuth, saga/oauth.py): Zugriffstoken einer verbundenen App stehen in api_token mit
+    # grant_id (oauth_grant.id) - sie gelten nur fuer /mcp und erscheinen nicht unter "API-Tokens". Tabellen oauth_* legt
+    # SCHEMA oben an. Bestand: NULL (alle bisherigen sga_-Tokens unveraendert). Beliebig oft ausfuehrbar.
+    43: """
+ALTER TABLE api_token ADD COLUMN IF NOT EXISTS grant_id BIGINT;
+CREATE INDEX IF NOT EXISTS api_token_grant ON api_token (grant_id) WHERE grant_id IS NOT NULL;
+SELECT 1 FROM oauth_client, oauth_grant, oauth_code, oauth_refresh LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

@@ -56,6 +56,7 @@ from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/imp
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
 from saga import tasksrc                       # 2.5 (Paket 7): Aufgabenquellen (/api/tasks/src/..., /api/notes/{db}/tasksource)
 from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Tokens, /api/v1, Webhooks, MCP-Server
+from saga import oauth                        # 2.6 (Bugs-DB 2264): MCP mit OAuth (/.well-known/oauth-*, /oauth/*)
 from saga import mentions                     # 2.5 (P6-5): @Erwaehnungen (entprellte Mitteilungen)
 from saga import jobs                         # 2.6 (K-A2 2266): Auftrags-Maschine der Kollegin (Worker, Stempel in bus.fire)
 from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Status /api/account/status, reachability()
@@ -389,3 +390,4 @@ app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/ap
 app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)
 app.include_router(webhooks.router)          # 2.5 (Paket 1 E6): /api/v1/webhooks, /api/account/webhooks
 app.include_router(mcp.router)               # 2.5 (Paket 1 E7): MCP-Server POST /mcp (Streamable HTTP, Bearer-Token)
+app.include_router(oauth.router)             # 2.6 (Bugs-DB 2264): OAuth fuer MCP-Clients, /api/account/oauth-apps

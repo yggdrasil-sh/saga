@@ -72,6 +72,8 @@
     {{ check(_('Webhooks anbieten'), 'api_webhooks', st.api.webhooks, _('Saga meldet Änderungen per HTTP-POST an Adressen der Personen. Interne Ziele nur über „Freigegebene interne Hosts“; Weiterleitungen werden nie verfolgt.')) }}
     {{ check(_('Webhook-Ziele ohne TLS (http://) erlauben'), 'api_webhook_http', st.api.webhook_http) }}
     {{ check(_('MCP-Server anbieten (/mcp)'), 'api_mcp', st.api.mcp, _('KI-Werkzeuge (z. B. Claude) lesen und schreiben mit einem API-Token. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten – Personen sollten Tokens auf Seitenbäume beschränken.')) }}
+    {{ check(_('MCP-Clients ohne Token verbinden (OAuth)'), 'api_oauth', st.api.oauth, _('Apps wie der Claude-Connector melden sich über OAuth an: Die Person stimmt auf einer Saga-Seite zu und wählt die Rechte, kein Token muss kopiert werden. Die Verbindung gilt nur für /mcp – nie für /api/v1, Chats, Anrufe oder Aufträge an Saga. Aus: alle verbundenen Apps verlieren sofort den Zugriff; API-Tokens bleiben gültig.')) }}
+    <p class="hk-hint" id="adm-oauth-n">{{ _("Verbundene Apps: {n} · registrierte Clients: {c}", n=oauth_n.apps, c=oauth_n.clients) }}</p>
   </section>
   <section class="adm-card">
     <h3>{{ _("Veröffentlichen") }}</h3>

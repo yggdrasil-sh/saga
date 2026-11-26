@@ -775,7 +775,16 @@ def settings_page(request: Request):
         return _go("/login")
     return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published(),
                  live_n=live.count(), chat_quota_default=chat.QUOTA_MB_DEFAULT, chat_video_default=chat.VIDEO_MAX_MB_DEFAULT,
-                 chat_attach_mb=chat.FILE_MAX // 1048576)
+                 chat_attach_mb=chat.FILE_MAX // 1048576, oauth_n=_oauth_counts())
+
+
+def _oauth_counts():
+    """2.6 (Bugs-DB 2264): verbundene Apps (OAuth) und registrierte Clients fuer die Karte "API, Webhooks und MCP"."""
+    from saga import oauth
+    try:
+        return oauth.admin_counts()
+    except Exception:  # noqa: BLE001 - Datenbank gerade weg: Seite trotzdem zeigen
+        return {"apps": 0, "clients": 0}
 
 
 @admin.post("/settings")
@@ -842,7 +851,8 @@ async def settings_post(request: Request):
                               "max_tokens": _n("api_max_tokens", 1, 100, 10), "max_days": _n("api_max_days", 0, 3650, 365),
                               "unlimited": _on(f, "api_unlimited"), "rate": _n("api_rate", 1, 10000, 120),
                               "rate_write": _n("api_rate_write", 1, 10000, 30), "webhooks": _on(f, "api_webhooks"),
-                              "mcp": _on(f, "api_mcp"), "webhook_http": _on(f, "api_webhook_http")})
+                              "mcp": _on(f, "api_mcp"), "webhook_http": _on(f, "api_webhook_http"),
+                              "oauth": _on(f, "api_oauth")})                                       # 2.6 (Bugs-DB 2264)
     weather.reset_cache()
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
     acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))

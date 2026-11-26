@@ -152,6 +152,7 @@
         var pre = el('pre', 'api-snippet');
         pre.textContent = JSON.stringify({ mcpServers: { saga: { type: 'http', url: location.origin + '/mcp', headers: { Authorization: 'Bearer sga_…' } } } }, null, 2);
         mcpBox.appendChild(pre);
+        if (S.oauth) mcpBox.appendChild(el('p', 'hk-hint', T('Claude und andere Apps mit „App verbinden“ brauchen keinen Token: Adresse eintragen, in Saga zustimmen. Übersicht unter „Verbundene Apps“.')));
       } else mcpBox.hidden = true;
     }
 
@@ -208,5 +209,42 @@
     load();
   }
 
-  window.HKApi = { section: section };
+  // 2.6 (Bugs-DB 2264): "Verbundene Apps" - per OAuth verbundene MCP-Clients (z. B. Claude-Connector), Server saga/oauth.py.
+  // Zeigt Name, Rechte, zuletzt benutzt; "Trennen" macht den Zugang sofort ungueltig. Ohne OAuth auf dem Server: Hinweis.
+  function oauthSection(body) {
+    var sec = el('section', 'hk-set hk-set-oauth'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, T('Verbundene Apps')));
+    sec.appendChild(el('p', 'hk-hint', T('KI-Werkzeuge wie Claude, die du über „App verbinden“ zugelassen hast. Sie sehen und ändern nur, was du dabei erlaubt hast – nie mehr als dein Konto.')));
+    var list = el('div', 'hk-tok-list oa-list'); sec.appendChild(list);
+    var how = el('details', 'hk-more oa-how'); sec.appendChild(how);
+    function load() {
+      return api('GET', '/api/account/oauth-apps').then(render)
+        .catch(function (e) { list.textContent = T('Nicht geladen: {err}', { err: e.message }); });
+    }
+    function render(d) {
+      list.textContent = ''; how.textContent = '';
+      if (!d.apps.length) list.appendChild(el('p', 'hk-hint', d.enabled ? T('Noch keine verbundenen Apps.') : T('Verbundene Apps sind auf diesem Server für dein Konto nicht freigegeben.')));
+      d.apps.forEach(function (a) {
+        var row = el('div', 'hk-tok oa-app');
+        row.appendChild(el('strong', null, a.name));
+        if (a.host) row.appendChild(el('span', 'oa-host', a.host));
+        var rights = a.scopes.map(function (s) { return SCOPE_TXT[s] || s; }).join(', ');
+        row.appendChild(el('span', 'hk-hint', rights + ' · ' + T('verbunden am {date}', { date: when(a.created) }) + ' · ' +
+          (a.last_used ? T('zuletzt benutzt {date}', { date: when(a.last_used) }) : T('noch nie benutzt'))));
+        row.appendChild(button(T('Trennen'), 'btn-danger', function () {
+          if (!confirm(T('„{name}“ trennen? Die App verliert sofort den Zugriff und muss neu verbunden werden.', { name: a.name }))) return;
+          api('DELETE', '/api/account/oauth-apps/' + a.id).then(load).catch(function (e) { HK.toast(e.message); });
+        }));
+        list.appendChild(row);
+      });
+      if (d.enabled) {
+        how.appendChild(el('summary', null, T('So verbindest du Claude')));
+        how.appendChild(el('p', 'hk-hint', T('In Claude unter Einstellungen → Connectors „Eigenen Connector hinzufügen“ wählen und diese Adresse eintragen. Claude öffnet dann Saga; dort meldest du dich an und wählst, was Claude darf.')));
+        how.appendChild(copyRow(d.mcp_url, T('Adresse für Claude')));
+      }
+    }
+    load();
+  }
+
+  window.HKApi = { section: section, oauthSection: oauthSection };
 })();

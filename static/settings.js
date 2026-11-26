@@ -139,6 +139,7 @@
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
     if (window.HKApi) HKApi.section(body);                   // 2.5: API-Tokens, Webhooks, MCP (static/apitokens.js)
+    if (window.HKApi && HKApi.oauthSection) HKApi.oauthSection(body);   // 2.6 (2264): Verbundene Apps (OAuth)
     helpSection(body);                                       // 2.5: Hilfe - "Diagnose senden" (static/clientlog.js)
     // Benachrichtigungen je Art (static/live.js) gehoeren zu "Mitteilungen" (frueher unter "Konto")
     if (window.HKLive) {
@@ -149,7 +150,7 @@
     var GROUPS = [
       [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell'], ['saga', 'Saga', 'sparkles']]],
       [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star'], ['contacts', T('Kontakte'), 'users']]],
-      [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
+      [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['oauth', T('Verbundene Apps'), 'link'], ['api', 'API', 'code']]],
       [T('Daten'), [['backup', T('Mein Backup'), 'download']]],
       [null, [['help', T('Hilfe'), 'help']]]
     ];

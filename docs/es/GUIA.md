@@ -1675,6 +1675,28 @@ calendarios e Immich **no** se usa un proxy de salida (`HTTPS_PROXY`/`HTTP_PROXY
 
 ![Ajustes](../screenshots/einstellungen.png)
 
+### Conectar Saga con claude.ai (apps conectadas)
+
+Desde Saga 2.6, las herramientas de IA que admiten el inicio de sesión de MCP (OAuth) se conectan **sin token** –
+por ejemplo el conector de Claude en claude.ai, Claude Desktop o MCP Inspector:
+
+1. En Claude, abre **Ajustes → Conectores → Añadir conector personalizado** e introduce tu dirección de Saga seguida
+   de `/mcp` (p. ej. `https://saga.example.org/mcp`). La dirección exacta se copia en **Ajustes → Apps conectadas →
+   Cómo conectar Claude**.
+2. Claude abre Saga. Inicia sesión si hace falta (también con llave de acceso, código o SSO).
+3. La página **Conectar app** muestra qué app lo pide, tu cuenta, la dirección de Saga, adónde vuelves y qué puede
+   hacer la app (páginas, bases de datos, tareas, archivos, comentarios, calendario – leer y cambiar por separado).
+   Desmarca lo que Claude no deba hacer y elige **Permitir**, o **Rechazar**.
+
+La app nunca puede más que tu cuenta. Los chats, las llamadas y los encargos a Saga le quedan vedados. El nombre de
+la página lo eligió la propia app: permite solo una app que tú mismo acabas de querer añadir. El contenido de páginas
+compartidas puede incluir instrucciones para el modelo de IA; concede solo lo que la IA necesita.
+
+**Ajustes → Apps conectadas** lista cada app conectada con sus permisos y su último uso. **Desconectar** quita el
+acceso al instante. "Cerrar sesión en todas partes" y borrar la cuenta también desconectan todas las apps. Los tokens
+de API (`sga_…`, Ajustes → API) siguen funcionando como antes. Los admins pueden desactivarlo en General → «API,
+webhooks y MCP» → «Conectar clientes MCP sin token (OAuth)». Detalles: `docs/API.md`.
+
 ### Llaves de acceso e inicio de sesión en dos pasos
 
 En **Ajustes → Cuenta → Inicio de sesión y seguridad** proteges una cuenta local o LDAP además de con la contraseña

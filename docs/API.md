@@ -335,7 +335,55 @@ claude mcp add --transport http saga https://saga.example.org/mcp --header "Auth
 }
 ```
 
-Clients, die nur OAuth können, folgen in einer späteren Version.
+### MCP mit OAuth (verbundene Apps, 2.6)
+
+Clients, die die MCP-Autorisierung beherrschen (OAuth 2.1, z. B. der claude.ai-Connector, Claude Desktop, MCP
+Inspector), verbinden sich **ohne Token**: Adresse `https://saga.example.org/mcp` eintragen, Saga öffnet die
+Zustimmungsseite, die Person meldet sich an und wählt die Rechte. Alles läuft unter der normalen Saga-Adresse
+(`BASE_URL`, nur Port 443) – hinter einem Reverse Proxy stimmen die Adressen, solange `BASE_URL` stimmt (Saga leitet sie
+nie aus `Host`/`X-Forwarded-Host` ab).
+
+| Endpunkt | Zweck |
+|---|---|
+| `GET /.well-known/oauth-protected-resource/mcp` (und ohne `/mcp`) | RFC 9728: `resource` = `BASE_URL/mcp`, `authorization_servers` = `[BASE_URL]`, `scopes_supported` |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414: `issuer` = `BASE_URL`, Endpunkte unten, nur `code`, nur PKCE `S256`, `authorization_response_iss_parameter_supported` |
+| `POST /oauth/register` | Dynamische Registrierung (RFC 7591), JSON `{client_name, redirect_uris, token_endpoint_auth_method?, grant_types?}` → `201` mit `client_id` (bei `client_secret_post`/`client_secret_basic` einmal `client_secret`) |
+| `GET /oauth/authorize` | `response_type=code`, `client_id`, `redirect_uri` (exakt wie registriert), `code_challenge` + `code_challenge_method=S256` (Pflicht), `state`, `resource` (RFC 8707, nur `BASE_URL/mcp`), `scope` |
+| `POST /oauth/token` | Formular: `grant_type=authorization_code` (`code`, `redirect_uri`, `code_verifier`, `client_id`) bzw. `refresh_token` (`refresh_token`, optional kleineres `scope`) |
+| `POST /oauth/revoke` | RFC 7009: Refresh-Token → ganze Verbindung getrennt, Zugriffstoken → nur dieses; immer `200` |
+
+Ablauf: `POST /mcp` ohne gültigen Token → `401` mit `WWW-Authenticate: Bearer realm="saga-mcp", resource_metadata="https://saga.example.org/.well-known/oauth-protected-resource/mcp"`
+(bei einem ungültigen Token zusätzlich `error="invalid_token"`). Der Client liest die Metadaten, registriert sich,
+leitet die Person zu `/oauth/authorize` (ohne Sitzung über die Anmeldung, auch mit zweitem Faktor oder SSO, danach
+zurück zur Zustimmung), bekommt den Code mit `state` und `iss` an seine `redirect_uri` und tauscht ihn gegen Token.
+
+- **Bereiche:** `mcp` (immer) und die Datenbereiche `read:`/`write:` für `pages`, `db`, `tasks`, `files`, `comments`,
+  `calendar`. **Nie `tel`** (auch nicht reserviert) und nie `webhooks`; wer `tel…` oder einen unbekannten Bereich
+  anfragt, bekommt `invalid_scope`. Ohne `scope` bietet Saga alle Datenbereiche an; die Person kann auf der
+  Zustimmungsseite einzelne abwählen (`write:x` bringt `read:x` mit). `offline_access` wird ignoriert.
+- **Zugriffstoken** `sgo_…` gelten 1 Stunde, nur an `/mcp` (an `/api/v1`, Webhooks und allen Sitzungs-Endpunkten
+  `401 invalid_token`), mit derselben Rechteprüfung (Bereich, Rolle des Kontos) und Ratenbegrenzung wie `sga_`-Tokens.
+  Werkzeuge kommen aus derselben Registry (`saga/tools.py`, `tools.for_mcp()`): keine Chat-Werkzeuge, kein Zugang zu
+  `/api/ai/jobs/*` (RT-42).
+- **Refresh-Token** `sgr_…` gelten 30 Tage ab der letzten Benutzung und genau **einmal** (Rotation). Wird ein schon
+  benutzter Refresh-Token noch einmal vorgelegt, trennt Saga die ganze Verbindung (alle Zugriffs- und Refresh-Token).
+  Ebenso, wenn ein Code ein zweites Mal eingelöst wird. Codes gelten 2 Minuten, einmal, und nur mit dem passenden
+  `code_verifier`, derselben `redirect_uri` und demselben Client. Höchste Laufzeit einer Verbindung: Admin-Wert
+  „Höchste Laufzeit (Tage)“, sonst 365 Tage.
+- **Clients:** `redirect_uris` 1–5, `https://` (ohne Fragment und Zugangsdaten) oder `http://` nur für `localhost`,
+  `127.0.0.1`, `[::1]` (RFC 8252); Name höchstens 80 Zeichen (länger als 200 → `400`). Registrierungen: höchstens 10 je
+  IP und Stunde (`SAGA_OAUTH_REG_PER_IP`), 100 je Stunde insgesamt, 2000 Clients bzw. 300 noch nie benutzte; Clients
+  ohne Zustimmung verfallen nach 24 Stunden. `grant_types` sind immer `authorization_code` und `refresh_token`.
+- **Zustimmungsseite:** nennt den (vom Client selbst gewählten) Namen, das angemeldete Konto, die Saga-Adresse, den
+  Rücksprung-Host und die Rechte. Schutz: CSRF-Token der Sitzung, `Origin`/`Sec-Fetch-Site`, `frame-ancestors 'none'`;
+  `form-action` erlaubt nur Saga und den Origin der `redirect_uri`. Unbekannter Client oder nicht registrierte
+  `redirect_uri` → Hinweisseite, nie eine Umleitung. Konten ohne API-Freigabe bzw. ohne den vom Admin verlangten
+  zweiten Faktor bekommen einen Hinweis und `access_denied`.
+- **Gespeichert** werden Token, Codes und Client-Geheimnisse nur als SHA-256. Verbundene Apps sieht die Person unter
+  Einstellungen → Verbundene Apps (`GET /api/account/oauth-apps`, Trennen `DELETE /api/account/oauth-apps/{id}`,
+  nur mit Sitzung). „Überall abmelden“, Passwortwechsel mit Abmelden, „API-Tokens widerrufen“ im Admin-Bereich und das
+  Löschen des Kontos trennen auch alle verbundenen Apps.
+- Bestehende `sga_`-Tokens (auch im Ausweich-Kopf `X-API-Key`) gelten unverändert weiter.
 
 > **Vorsicht – Prompt-Injection:** Seiten können Text enthalten, den jemand anderes geschrieben hat (geteilte Seiten,
 > Kommentare, Importe). Ein KI-Modell könnte solchen Text als Anweisung missverstehen. Saga markiert Seiteninhalte in
@@ -345,6 +393,9 @@ Clients, die nur OAuth können, folgen in einer späteren Version.
 ## Admin
 
 Admin-Bereich → Allgemein → „API, Webhooks und MCP“: API an/aus bzw. nur für eine Gruppe, Höchstzahl Tokens je Konto,
-höchste Laufzeit, Tokens ohne Ablauf, Ratenbegrenzung, Webhooks an/aus, `http://`-Ziele, MCP an/aus. Je Konto
-(Benutzer → Konto) stehen die Zahlen aktiver Tokens und Webhooks; „API-Tokens widerrufen“ widerruft alle Tokens eines
-Kontos. „Überall abmelden“ widerruft sie ebenfalls.
+höchste Laufzeit, Tokens ohne Ablauf, Ratenbegrenzung, Webhooks an/aus, `http://`-Ziele, MCP an/aus und (2.6)
+„MCP-Clients ohne Token verbinden (OAuth)“ – darunter die Zahl verbundener Apps und registrierter Clients. OAuth aus:
+Metadaten `404`, keine Registrierung und Zustimmung, alle OAuth-Zugriffstoken sofort ungültig, kein Refresh (die
+Verbindungen bleiben gespeichert und gelten nach dem Einschalten wieder); `sga_`-Tokens bleiben gültig. Je Konto
+(Benutzer → Konto) stehen die Zahlen aktiver Tokens, Webhooks und verbundener Apps; „API-Tokens widerrufen“ widerruft
+alle Tokens eines Kontos und trennt seine verbundenen Apps. „Überall abmelden“ tut beides ebenfalls.

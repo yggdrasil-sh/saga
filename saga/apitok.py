@@ -43,6 +43,10 @@ ROOTS_MAX = 20
 NAME_MAX = 60
 DEFAULT_DAYS = 90
 TOKEN_RE = re.compile(r"sga_[A-Za-z0-9_-]{40,60}")
+# 2.6 (Bugs-DB 2264, saga/oauth.py): Zugriffstoken verbundener Apps (OAuth) - gleiche Tabelle, Spalte grant_id, gelten nur
+# fuer /mcp (authed(..., oauth=True)); nie unter "API-Tokens" gelistet, nie per Hand angelegt
+OAUTH_PREFIX = "sgo_"
+OAUTH_RE = re.compile(r"sgo_[A-Za-z0-9_-]{40,60}")
 
 
 def conf():
@@ -84,8 +88,9 @@ def norm_scopes(raw):
 class Tok:
     """Ein gueltiger Token einer Anfrage."""
 
-    def __init__(self, tid, uid, name, prefix, scopes, roots, expires):
+    def __init__(self, tid, uid, name, prefix, scopes, roots, expires, grant_id=None):
         self.id, self.uid, self.name, self.prefix = tid, uid, name, prefix
+        self.grant_id = grant_id                # OAuth (saga/oauth.py): verbundene App - gilt nur fuer /mcp
         self.scopes = frozenset(scopes)
         self.roots = [int(x) for x in roots] if roots is not None else None     # [] = nichts (RT-27), None = alles
         self.expires = expires
@@ -193,24 +198,31 @@ def _unauth(msg=None):
 def lookup(raw):
     """Klartext -> Tok oder (None, code). Prueft Widerruf, Ablauf, Konto und Admin-Schalter."""
     raw = (raw or "").strip()
-    if not TOKEN_RE.fullmatch(raw):
+    oauth = bool(OAUTH_RE.fullmatch(raw))
+    if not oauth and not TOKEN_RE.fullmatch(raw):
         return None, "unauthorized"
+    if oauth:
+        cf = conf()
+        if not (cf.get("oauth") and cf.get("mcp")):          # Admin hat OAuth bzw. MCP abgeschaltet: sofort ungueltig
+            return None, "unauthorized"
     with _db() as c, c:
-        r = c.execute("SELECT id, uid, name, prefix, scopes, roots, created, expires, revoked, last_used FROM api_token WHERE hash=?",
-                      (_tok_hash(raw),)).fetchone()
-        if not r or r[8] is not None:
+        r = c.execute("SELECT id, uid, name, prefix, scopes, roots, created, expires, revoked, last_used, grant_id FROM api_token "
+                      "WHERE hash=?", (_tok_hash(raw),)).fetchone()
+        if not r or r[8] is not None or bool(r[10]) != oauth:
             return None, "unauthorized"
         now = time.time()
         if r[7] is not None and r[7] <= now:
             return None, "expired"
         if not r[9] or now - r[9] > 60:                       # "zuletzt benutzt" grob mitfuehren
             c.execute("UPDATE api_token SET last_used=? WHERE id=?", (now, r[0]))
+            if r[10]:
+                c.execute("UPDATE oauth_grant SET last_used=? WHERE id=?", (now, r[10]))
     info = user_info(r[1])
     if info is None:
         return None, "unauthorized"
     if not allowed_for(info):
         return None, "disabled"
-    return Tok(r[0], r[1], r[2], r[3], _json_load(r[4], []), roots_load(r[5]), r[7]), None
+    return Tok(r[0], r[1], r[2], r[3], _json_load(r[4], []), roots_load(r[5]), r[7], grant_id=r[10]), None
 
 
 def use_account_lang(uid):
@@ -226,8 +238,10 @@ def use_account_lang(uid):
         i18n.set_lang(lang)
 
 
-def authed(request, write=False, scope=None):
-    """Bearer-Token der Anfrage -> (Tok, None) oder (None, Fehlerantwort 401/403/429). scope: noetiger Bereich."""
+def authed(request, write=False, scope=None, oauth=False):
+    """Bearer-Token der Anfrage -> (Tok, None) oder (None, Fehlerantwort 401/403/429). scope: noetiger Bereich.
+    oauth=True (nur saga/mcp.py): auch Zugriffstoken verbundener Apps (sgo_) annehmen - sie sind an /mcp gebunden
+    (RFC 8707), ueberall sonst 401 invalid_token (RT-42: nie /api/v1, Webhooks, /api/ai/jobs/*)."""
     hdr = request.headers.get("authorization") or ""
     if hdr.lower().startswith("bearer ") and len(hdr) <= 200:
         raw = hdr[7:]
@@ -240,6 +254,9 @@ def authed(request, write=False, scope=None):
     tok, code = lookup(raw)
     if tok is not None:
         use_account_lang(tok.uid)
+    if tok is not None and tok.grant_id and not oauth:
+        return None, _err("invalid_token", t("Dieser Zugang gilt nur für den MCP-Server."), 401,
+                          {"WWW-Authenticate": 'Bearer error="invalid_token"'})
     if tok is None:
         if code == "expired":
             return None, _err("expired", t("Der API-Token ist abgelaufen."), 401, {"WWW-Authenticate": 'Bearer error="invalid_token"'})
@@ -324,7 +341,7 @@ def _titles(c, uid, ids):
 def list_tokens(uid):
     with _db() as c:
         rows = c.execute("SELECT id, name, prefix, scopes, roots, created, expires, last_used, revoked FROM api_token WHERE uid=? "
-                         "ORDER BY id", (uid,)).fetchall()
+                         "AND grant_id IS NULL ORDER BY id", (uid,)).fetchall()
         now = time.time()
         out = [{"id": r[0], "name": r[1], "prefix": r[2], "scopes": _json_load(r[3], []),
                 "roots": _titles(c, uid, roots_load(r[4])) if r[4] else None, "created": r[5], "expires": r[6],
@@ -343,6 +360,7 @@ def api_tokens(request: Request):
                          "max": int(cf.get("max_tokens") or 10), "max_days": int(cf.get("max_days") or 0),
                          "unlimited": bool(cf.get("unlimited")), "default_days": DEFAULT_DAYS,
                          "webhooks": bool(cf.get("webhooks")), "mcp": bool(cf.get("mcp")),
+                         "oauth": bool(cf.get("mcp") and cf.get("oauth")),
                          "sso": not mfa.supported(info)}, headers={"Cache-Control": "no-store"})
 
 
@@ -395,8 +413,8 @@ def create_token(uid, b):
             roots = list(dict.fromkeys(ok))
         else:
             roots = None
-        n = c.execute("SELECT COUNT(*) FROM api_token WHERE uid=? AND revoked IS NULL AND (expires IS NULL OR expires>?)",
-                      (uid, time.time())).fetchone()[0]
+        n = c.execute("SELECT COUNT(*) FROM api_token WHERE uid=? AND revoked IS NULL AND (expires IS NULL OR expires>?) "
+                      "AND grant_id IS NULL", (uid, time.time())).fetchone()[0]
         mx = int(cf.get("max_tokens") or 10)
         if n >= mx:
             return None, _bad(t("Höchstens {n} Tokens je Konto.", n=mx), 409)
@@ -436,15 +454,19 @@ def api_token_delete(tid: int, request: Request):
 
 
 def revoke(uid, tid=None):
-    """Einen (tid) bzw. alle Tokens eines Kontos widerrufen -> Anzahl."""
+    """Einen (tid) bzw. alle Tokens eines Kontos widerrufen -> Anzahl. Alle: auch verbundene Apps (OAuth, Bugs-DB 2264) -
+    Zugriffstoken sofort ungueltig, Refresh-Token verweigert."""
     now = time.time()
     with _db() as c, c:
         if tid is None:
-            n = c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (now, uid)).rowcount
+            n = c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL AND grant_id IS NULL", (now, uid)).rowcount
+            n += c.execute("UPDATE oauth_grant SET revoked=?, why='revoked' WHERE uid=? AND revoked IS NULL", (now, uid)).rowcount
+            c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (now, uid))
             c.execute("UPDATE webhook SET active=0, last_error=? WHERE uid=? AND token_id IS NOT NULL AND active=1",
                       ("token revoked", uid))
         else:
-            n = c.execute("UPDATE api_token SET revoked=? WHERE id=? AND uid=? AND revoked IS NULL", (now, tid, uid)).rowcount
+            n = c.execute("UPDATE api_token SET revoked=? WHERE id=? AND uid=? AND revoked IS NULL AND grant_id IS NULL",
+                          (now, tid, uid)).rowcount
             if n:
                 c.execute("UPDATE webhook SET active=0, last_error=? WHERE uid=? AND token_id=? AND active=1", ("token revoked", uid, tid))
     return n
@@ -453,6 +475,8 @@ def revoke(uid, tid=None):
 def counts(c, uid):
     """Fuer den Admin-Bereich: aktive Tokens und Webhooks eines Kontos."""
     now = time.time()
-    return {"api_tokens": c.execute("SELECT COUNT(*) FROM api_token WHERE uid=? AND revoked IS NULL AND (expires IS NULL OR expires>?)",
-                                    (uid, now)).fetchone()[0],
+    return {"api_tokens": c.execute("SELECT COUNT(*) FROM api_token WHERE uid=? AND revoked IS NULL AND (expires IS NULL OR expires>?) "
+                                    "AND grant_id IS NULL", (uid, now)).fetchone()[0],
+            "oauth_apps": c.execute("SELECT COUNT(*) FROM oauth_grant g WHERE uid=? AND revoked IS NULL AND (expires IS NULL OR expires>?) "
+                                    "AND EXISTS (SELECT 1 FROM oauth_refresh r WHERE r.grant_id = g.id AND r.used IS NULL)", (uid, now)).fetchone()[0],
             "webhooks": c.execute("SELECT COUNT(*) FROM webhook WHERE uid=? AND active=1", (uid,)).fetchone()[0]}

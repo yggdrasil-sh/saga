@@ -132,7 +132,8 @@ DEFAULTS = {
     # erlaubt, rate/rate_write = Anfragen bzw. Schreibzugriffe je Token und Minute (je Konto das Dreifache), webhooks/mcp =
     # Webhooks bzw. MCP-Server (/mcp) anbieten, webhook_http = Webhook-Ziele auch ohne TLS (http://)
     "api": {"enabled": True, "group": "", "max_tokens": 10, "max_days": 365, "unlimited": False, "rate": 120, "rate_write": 30,
-            "webhooks": True, "mcp": True, "webhook_http": False}
+            "webhooks": True, "mcp": True, "webhook_http": False,
+            "oauth": True}                       # 2.6 (Bugs-DB 2264): MCP-Clients per OAuth verbinden (saga/oauth.py)
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),

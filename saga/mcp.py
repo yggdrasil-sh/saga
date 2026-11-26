@@ -3,7 +3,8 @@ Seiten und Datenbanken - mit den Rechten eines API-Tokens.
 
 Transport "Streamable HTTP": POST /mcp mit JSON-RPC 2.0 (einzeln oder als Liste), Antwort als JSON (kein SSE noetig).
 GET /mcp -> 405 (kein Kanal vom Server zum Client), DELETE /mcp -> 405 (zustandslos, keine Mcp-Session-Id).
-Anmeldung: Authorization: Bearer sga_... mit Bereich "mcp" (P1-E7: OAuth 2.1 folgt in Etappe 2). Werkzeuge erscheinen nur,
+Anmeldung: Authorization: Bearer sga_... mit Bereich "mcp" oder (2.6, Bugs-DB 2264) Zugriffstoken einer per OAuth 2.1
+verbundenen App (sgo_, saga/oauth.py; 401 nennt resource_metadata nach RFC 9728). Werkzeuge erscheinen nur,
 wenn das Token ihre Datenbereiche hat (tools/list), und rufen dieselben Funktionen wie /api/v1 auf (saga.api_v1) - gleiche
 Rechte (Bereich, roots, Rolle), gleiche Ratenbegrenzung. Origin-Kopf: fehlt (Kommandozeilen-Clients) oder ist BASE_URL;
 fremde Origins -> 403 (Schutz gegen DNS-Rebinding laut Spezifikation).
@@ -24,7 +25,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import apitok, tools
+from saga import apitok, oauth, tools
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -152,10 +153,14 @@ async def mcp_post(request: Request):
         return JSONResponse(_err(None, -32000, "Origin not allowed"), status_code=403)
     if not apitok.conf().get("mcp"):
         return JSONResponse(_err(None, -32000, t("Der MCP-Server ist auf diesem Server abgeschaltet.")), status_code=403)
-    tok, err = apitok.authed(request, scope="mcp")
+    tok, err = apitok.authed(request, scope="mcp", oauth=True)
     if err is not None:
         if err.status_code == 401:
-            err.headers["WWW-Authenticate"] = 'Bearer realm="saga-mcp"'
+            # MCP-Autorisierung: Clients finden ueber resource_metadata den OAuth-Weg (nur wenn der Admin ihn anbietet)
+            code = "invalid_token" if (request.headers.get("authorization") or "").lower().startswith("bearer ") else None
+            err.headers["WWW-Authenticate"] = oauth.www_authenticate(code)
+        elif err.status_code == 403 and "insufficient_scope" in (err.headers.get("www-authenticate") or ""):
+            err.headers["WWW-Authenticate"] = oauth.www_authenticate("insufficient_scope", "mcp")
         return err
     pv = request.headers.get("mcp-protocol-version")
     try:

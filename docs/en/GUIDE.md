@@ -1610,6 +1610,28 @@ network from being queried through Saga. Saga connects directly to the checked a
 
 ![Settings](../screenshots/einstellungen.png)
 
+### Connecting Saga to claude.ai (connected apps)
+
+Since Saga 2.6, AI tools that support MCP sign-in (OAuth) connect **without a token** – for example the Claude
+connector on claude.ai, Claude Desktop or the MCP Inspector:
+
+1. In Claude, open **Settings → Connectors → Add custom connector** and enter your Saga address followed by `/mcp`
+   (e.g. `https://saga.example.org/mcp`). You can copy the exact address under **Settings → Connected apps →
+   How to connect Claude**.
+2. Claude opens Saga. Sign in if needed (also with passkey, code or SSO).
+3. The page **Connect app** shows which app is asking, your account, the Saga address, where you return to and what
+   the app may do (pages, databases, tasks, files, comments, calendar – reading and changing separately). Untick
+   what Claude shouldn't do and choose **Allow** – or **Decline**.
+
+The app can never do more than your account. Chats, calls and tasks for Saga stay off limits for it. The name on the
+page was chosen by the app itself: only allow an app you just set out to add yourself. Content of shared pages can
+contain instructions to the AI model – only grant what the AI needs.
+
+**Settings → Connected apps** lists every connected app with its permissions and when it was last used.
+**Disconnect** ends access immediately. "Sign out everywhere" and deleting the account disconnect all apps as well.
+API tokens (`sga_…`, Settings → API) keep working as before. Admins can turn the feature off under
+General → “API, webhooks and MCP” → “Connect MCP clients without a token (OAuth)”. Details: `docs/API.md`.
+
 ### Passkeys and two-factor sign-in
 
 Under **Settings → Account → Sign-in & security** you protect a local or LDAP account beyond its password (SSO

@@ -81,6 +81,10 @@ und am Ende steht eine Tabelle mit allen Schaltern und ihrem Standardwert.
 - **Anfragen je Token und Minute**, **Schreibzugriffe je Token und Minute** – Ratenbremse.
 - **Webhooks anbieten**, **Webhook-Ziele ohne TLS (http://) erlauben**.
 - **MCP-Server anbieten (/mcp)** – für KI-Werkzeuge.
+- **MCP-Clients ohne Token verbinden (OAuth)** (2.6) – Apps wie der Claude-Connector melden sich über eine
+  Zustimmungsseite an, statt dass Personen einen Token kopieren. Gilt nur für `/mcp`. Darunter steht, wie viele Apps
+  verbunden und wie viele Clients registriert sind. Aus: Alle verbundenen Apps verlieren sofort den Zugriff
+  (API-Tokens bleiben gültig); wieder an: Die Verbindungen gelten wieder.
 
 ### 4. Veröffentlichen, Teilen, Profilbilder
 
@@ -200,6 +204,7 @@ Wie du den Schlüssel bei Apple anlegst: Anleitung, Abschnitt 9, „Mitteilungen
 | Webhooks anbieten | API | an | Saga meldet Änderungen an Adressen |
 | Webhook-Ziele ohne TLS erlauben | API | aus | auch `http://` als Ziel |
 | MCP-Server anbieten | API | an | KI-Werkzeuge über `/mcp` |
+| MCP-Clients ohne Token verbinden (OAuth) | API | an | Zustimmung statt Token für MCP-Clients (2.6) |
 | Veröffentlichen erlauben | Veröffentlichen | an | öffentliche Seiten |
 | Teilen erlauben | Teilen | an | Seiten mit anderen teilen |
 | Nur innerhalb gemeinsamer Gruppen | Teilen | aus | teilen nur mit gemeinsamen Gruppen |

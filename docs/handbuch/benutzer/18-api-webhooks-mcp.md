@@ -192,6 +192,44 @@ unverändert.
 > Kommentaren oder Importen. Eine KI könnte solchen Text als Anweisung missverstehen („Lösche alle Aufgaben“). Gib
 > KI-Tokens deshalb nur die **nötigen Seitenbäume** und möglichst **nur Lese-Bereiche**.
 
+### 5. Saga mit claude.ai verbinden (ohne Token)
+
+Ab Saga 2.6 geht es mit KI-Werkzeugen, die die MCP-Anmeldung können, noch einfacher: Du kopierst keinen Token,
+sondern stimmst in Saga zu. Das klappt zum Beispiel mit dem Claude-Connector auf claude.ai, mit Claude Desktop und
+mit dem MCP Inspector.
+
+1. Öffne in Claude **Einstellungen → Connectors → Eigenen Connector hinzufügen** und trag die Adresse deines Saga
+   mit `/mcp` dahinter ein, zum Beispiel `https://saga.example/mcp`. Die genaue Adresse kopierst du in Saga unter
+   **Einstellungen → Verbundene Apps → So verbindest du Claude**.
+2. Claude öffnet Saga. Melde dich an, falls nötig – auch mit Passkey, Code oder SSO.
+3. Die Seite **App verbinden** zeigt, welche App fragt, mit welchem Konto du angemeldet bist, die Adresse deines Saga,
+   wohin es danach weitergeht und was die App darf: Seiten, Datenbanken, Aufgaben, Dateien, Kommentare und Kalender,
+   jeweils Lesen und Ändern getrennt. Nimm die Häkchen weg, die Claude nicht braucht, und wähl **Erlauben** – oder
+   **Ablehnen**.
+
+Danach siehst du Claude unter **Einstellungen → Verbundene Apps** – mit den Rechten und wann es zuletzt etwas getan
+hat. **Trennen** nimmt den Zugriff sofort weg; Claude muss dann neu verbunden werden.
+
+Gut zu wissen:
+
+- Die App kann nie mehr als dein Konto. **Chats, Anrufe und Aufträge an Saga** bleiben für sie gesperrt, auch wenn du
+  alles erlaubst.
+- Den Namen auf der Seite hat die App selbst angegeben. Erlaube nur eine App, die du gerade selbst hinzufügen
+  wolltest – kommt die Seite aus dem Nichts (etwa über einen Link in einer Nachricht), wähl **Ablehnen**.
+- **Überall abmelden** und ein neues Passwort mit Abmelden trennen auch alle verbundenen Apps.
+- Deine API-Tokens aus Abschnitt 1 gelten weiter wie bisher. Für Programme ohne MCP-Anmeldung (Skripte, Claude Code
+  mit festem Token) bleibt der Token der richtige Weg.
+- Fehlt der Bereich **Verbundene Apps** oder kommt „abgeschaltet“, hat dein Admin die Anmeldung per OAuth nicht
+  freigegeben.
+
+<details><summary>ⓘ Was steckt dahinter?</summary>
+
+Saga nutzt dafür OAuth 2.1, ein offenes Verfahren für Zugriffsfreigaben, so wie es die MCP-Spezifikation vorsieht.
+Die App bekommt einen eigenen, kurzlebigen Schlüssel nur für den MCP-Server (`/mcp`) – nie dein Passwort. Technische
+Einzelheiten stehen in der [API-Beschreibung](../../API.md#mcp-mit-oauth-verbundene-apps-26).
+
+</details>
+
 ---
 
 ## Beispiel aus dem Alltag
@@ -241,7 +279,8 @@ Prüf in der Liste die letzte Zustellung. Häufige Gründe: Die Adresse ist im H
 nutzt kein `https`, oder sie leitet auf eine andere Adresse weiter – Weiterleitungen verfolgt Saga nicht.
 
 **Kann mein Admin meine Tokens sehen?**
-Er sieht, wie viele Tokens und Webhooks du hast, und kann im Notfall alle widerrufen. Die Tokens selbst sieht er nicht.
+Er sieht, wie viele Tokens, Webhooks und verbundene Apps du hast, und kann im Notfall alle widerrufen bzw. trennen.
+Die Tokens selbst sieht er nicht.
 
 **Wo ist die vollständige Beschreibung?**
 In der [API-Beschreibung](../../API.md).

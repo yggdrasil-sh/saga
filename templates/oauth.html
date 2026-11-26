@@ -1,0 +1,36 @@
+{% extends "_auth_base.html" %}
+{#- 2.6 (Bugs-DB 2264): Zustimmungsseite "App verbinden" (MCP mit OAuth, saga/oauth.py). Ohne Skripte; frame-ancestors 'none'. #}
+{% block pagetitle %}{{ _("App verbinden") }}{% endblock %}
+{% block content %}
+{% if mode == "consent" %}
+<h2 class="auth-h">{{ _("App verbinden") }}</h2>
+<p class="oa-lead">{{ _("„{client}“ möchte auf dein Konto zugreifen.", client=client) }}</p>
+<dl class="oa-facts">
+  <dt>{{ _("Angemeldet als") }}</dt><dd>{{ user }}{% if user != uid %} <span class="oa-sub">({{ uid }})</span>{% endif %}</dd>
+  <dt>{{ _("Saga-Adresse") }}</dt><dd><code>{{ base }}</code></dd>
+  <dt>{{ _("Danach weiter zu") }}</dt><dd><code>{{ back_host }}</code></dd>
+</dl>
+<p class="auth-note oa-warn">{{ _("Den Namen hat die App selbst angegeben. Verbinde nur eine App, die du gerade selbst hinzufügen wolltest.") }}</p>
+{% if err %}<p class="auth-err" role="alert">{{ err }}</p>{% endif %}
+<form method="post" action="/oauth/authorize" class="auth-form oa-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="r" value="{{ rid }}">
+  <input type="hidden" name="scope" value="mcp">
+  <fieldset class="oa-rights"><legend>{{ _("Das darf die App") }}</legend>
+    {% for r in rights %}<label class="hk-check oa-right"><input type="checkbox" name="scope" value="{{ r.scope }}" checked> {{ r.label }}</label>
+    {% endfor %}
+  </fieldset>
+  <p class="hk-hint oa-limits">{{ _("Die App kann nie mehr als dein Konto. Chats, Anrufe und Aufträge an Saga bleiben für sie gesperrt. Trennen kannst du sie jederzeit unter Einstellungen → Verbundene Apps.") }}</p>
+  <details class="oa-info"><summary><span aria-hidden="true">ⓘ</span> {{ _("Was passiert hier?") }}</summary>
+    <p class="hk-hint">{{ _("Die App meldet sich mit OAuth an, einem offenen Verfahren für Zugriffsfreigaben: Sie bekommt einen eigenen Schlüssel für den MCP-Server von Saga (die Schnittstelle für KI-Werkzeuge) – nie dein Passwort. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten; gib einer KI nur frei, was sie braucht.") }}</p>
+  </details>
+  <button class="btn btn-primary auth-btn" type="submit" name="action" value="allow">{{ _("Erlauben") }}</button>
+  <button class="btn auth-btn" type="submit" name="action" value="deny">{{ _("Ablehnen") }}</button>
+</form>
+{% else %}
+<h2 class="auth-h">{{ _("Verbindung nicht möglich") }}</h2>
+<p class="auth-err" role="alert">{{ msg }}</p>
+{% if back %}<a class="btn auth-btn" href="{{ back }}" rel="noreferrer">{{ _("Zurück zur App") }}</a>{% endif %}
+<p class="auth-foot"><a href="/">{{ _("Zur Startseite") }}</a></p>
+{% endif %}
+{% endblock %}

@@ -261,6 +261,17 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Gruppen unter „KI-Assistent“ ein (leer = alle, bestehende Server ändern sich nicht). Gruppen ohne `ai_act` sind
   eingeschränkt (z. B. Kinder): keine Websuche. `GET /api/account` und `/api/ai/status` nennen die Fähigkeiten (`caps`);
   `tel*` ist für 3.0 reserviert. Testreihe `tests/faehigkeiten.py`.
+- **MCP mit OAuth – Claude ohne Token verbinden** (Bugs-DB 2264): MCP-Clients wie der claude.ai-Connector melden sich
+  nach der MCP-Autorisierung (OAuth 2.1) an: Adresse `…/mcp` eintragen, in Saga auf der Seite „App verbinden“
+  zustimmen und die Rechte wählen. Metadaten nach RFC 9728/8414 (`/.well-known/oauth-protected-resource/mcp`,
+  `/.well-known/oauth-authorization-server`), dynamische Registrierung (RFC 7591, mit Grenzen), Code mit PKCE S256
+  (Pflicht), `resource` (RFC 8707) an `/mcp` gebunden, kurzlebige Zugriffstoken, Refresh-Token mit Rotation (ein
+  zweites Mal benutzt → ganze Verbindung getrennt), Widerruf (RFC 7009). Zugriffstoken gelten nur an `/mcp`, mit
+  denselben Rechten und Grenzen wie `sga_`-Tokens und denselben Werkzeugen (`tools.for_mcp()`); Bereiche nie `tel`,
+  kein Zugang zu `/api/ai/jobs/*` und keine Chat-Werkzeuge (RT-42). Neu unter Einstellungen „Verbundene Apps“
+  (Rechte, zuletzt benutzt, Trennen); Admin-Schalter „MCP-Clients ohne Token verbinden (OAuth)“ mit der Zahl der
+  Verbindungen. Bestehende API-Tokens bleiben unverändert. Migration 43 (`api_token.grant_id`), Testreihe
+  `tests/mcp_oauth.py`, Doku `docs/API.md` und Handbuch B18 Abschnitt 5 (en/es: GUIDE/GUIA).
 
 ### Behoben
 
