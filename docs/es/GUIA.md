@@ -1683,7 +1683,9 @@ por ejemplo el conector de Claude en claude.ai, Claude Desktop o MCP Inspector:
 1. En Claude, abre **Ajustes → Conectores → Añadir conector personalizado** e introduce tu dirección de Saga seguida
    de `/mcp` (p. ej. `https://saga.example.org/mcp`). La dirección exacta se copia en **Ajustes → Apps conectadas →
    Cómo conectar Claude**.
-2. Claude abre Saga. Inicia sesión si hace falta (también con llave de acceso, código o SSO).
+2. Claude abre Saga. Inicia sesión si hace falta (también con llave de acceso, código o SSO). Como al crear un token
+   de API, Saga vuelve a pedir tu **contraseña** (o un código de la app de autenticación); las cuentas SSO necesitan
+   un inicio de sesión de los últimos 5 minutos, si no, elige **Volver a iniciar sesión**.
 3. La página **Conectar app** muestra qué app lo pide, tu cuenta, la dirección de Saga, adónde vuelves y qué puede
    hacer la app (páginas, bases de datos, tareas, archivos, comentarios, calendario – leer y cambiar por separado).
    Desmarca lo que Claude no deba hacer y elige **Permitir**, o **Rechazar**.

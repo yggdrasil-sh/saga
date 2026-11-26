@@ -1618,7 +1618,9 @@ connector on claude.ai, Claude Desktop or the MCP Inspector:
 1. In Claude, open **Settings → Connectors → Add custom connector** and enter your Saga address followed by `/mcp`
    (e.g. `https://saga.example.org/mcp`). You can copy the exact address under **Settings → Connected apps →
    How to connect Claude**.
-2. Claude opens Saga. Sign in if needed (also with passkey, code or SSO).
+2. Claude opens Saga. Sign in if needed (also with passkey, code or SSO). As when creating an API token, Saga then
+   asks once more for your **password** (or a code from the authenticator app); SSO accounts need a sign-in from the
+   last 5 minutes, otherwise choose **Sign in again**.
 3. The page **Connect app** shows which app is asking, your account, the Saga address, where you return to and what
    the app may do (pages, databases, tasks, files, comments, calendar – reading and changing separately). Untick
    what Claude shouldn't do and choose **Allow** – or **Decline**.

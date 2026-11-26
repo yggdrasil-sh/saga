@@ -36,7 +36,21 @@ const b64u = (b) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_')
   ok('Ohne Sitzung: Anmeldeseite', p.url().includes('/login?next='), p.url());
   await p.fill('input[name=username]', USER); await p.fill('input[name=password]', PW);
   await Promise.all([p.waitForNavigation(), p.click('button[type=submit]')]);
-  ok('Nach der Anmeldung: Zustimmungsseite', /\/oauth\/authorize\?r=/.test(p.url()), p.url());
+  ok('Nach der Anmeldung: zurueck zu /oauth/authorize', /\/oauth\/authorize\?r=/.test(p.url()), p.url());
+  // frische Bestaetigung wie beim Anlegen eines sga_-Tokens (Passwort oder Code), dann erst die Rechte
+  ok('Erst Bestaetigen: Passwortfeld, noch keine Rechte', !!(await p.$('input[name=secret]')) && !(await p.$('input[name=scope][type=checkbox]')));
+  ok('Bestaetigungsschritt ohne Konsolen-/CSP-Fehler', !errs.length, errs);
+  await p.screenshot({ path: path.join(SHOTS, 'oauth-bestaetigen-hell.png'), fullPage: true });
+  await p.emulateMedia({ colorScheme: 'dark' });
+  await p.screenshot({ path: path.join(SHOTS, 'oauth-bestaetigen-dunkel.png'), fullPage: true });
+  await p.emulateMedia({ colorScheme: 'light' });
+  await p.fill('input[name=secret]', 'falsch-' + PW);
+  await Promise.all([p.waitForNavigation(), p.click('button[value=confirm]')]);
+  ok('Falsches Passwort: Fehler sichtbar, weiter Bestaetigen', !!(await p.$('#oa-err')) && !!(await p.$('input[name=secret]')));
+  await p.screenshot({ path: path.join(SHOTS, 'oauth-bestaetigen-fehler.png'), fullPage: true });
+  await p.fill('input[name=secret]', PW);
+  await Promise.all([p.waitForNavigation(), p.click('button[value=confirm]')]);
+  ok('Nach dem Bestaetigen: Zustimmungsseite mit Rechten', /\/oauth\/authorize\?r=/.test(p.url()) && !!(await p.$('input[name=scope][type=checkbox]')), p.url());
   const txt = await p.textContent('main');
   ok('Zustimmung nennt Client, Konto, Saga-Adresse, Ruecksprung-Host', txt.includes('„Claude“') && txt.includes('Anna Ahorn') && txt.includes(BASE) && txt.includes('claude.ai'), txt.slice(0, 300));
   const boxes = await p.$$eval('input[name=scope][type=checkbox]', (x) => x.map((i) => i.value));

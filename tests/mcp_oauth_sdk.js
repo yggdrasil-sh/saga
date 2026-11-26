@@ -33,7 +33,7 @@ async function get(u, init = {}) {
 const form = (o) => new URLSearchParams(Object.entries(o).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : [[k, v]])));
 
 // "Browser": Autorisierungs-Adresse -> Anmeldung -> Zustimmung -> Code an die redirect_uri
-let gotCode = null, gotState = null, authUrl = null, seenScopes = [];
+let gotCode = null, gotState = null, authUrl = null, seenScopes = [], confirmStep = false;
 async function browser(url) {
   authUrl = url;
   let r = await get(url.toString());
@@ -44,9 +44,17 @@ async function browser(url) {
     r = await get('/login', { method: 'POST', body: form({ csrf, username: USER, password: PW }), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
     loc = r.headers.get('location') || '';
   }
-  const page = await (await get(loc)).text();
-  const csrf = (page.match(/name="csrf" value="([^"]+)"/) || [])[1];
+  let page = await (await get(loc)).text();
+  let csrf = (page.match(/name="csrf" value="([^"]+)"/) || [])[1];
   const rid = (loc.match(/r=([\w-]+)/) || [])[1];
+  // frische Bestaetigung wie beim Anlegen eines sga_-Tokens: erst Passwort, dann die Rechte
+  confirmStep = page.includes('name="secret"') && !page.includes('name="scope" value="read:pages"');
+  if (confirmStep) {
+    r = await get('/oauth/authorize', { method: 'POST', body: form({ csrf, r: rid, action: 'confirm', secret: PW }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: BASE, 'Sec-Fetch-Site': 'same-origin' } });
+    page = await (await get(r.headers.get('location') || loc)).text();
+    csrf = (page.match(/name="csrf" value="([^"]+)"/) || [])[1];
+  }
   seenScopes = [...page.matchAll(/name="scope" value="([^"]+)" checked/g)].map((m) => m[1]);
   r = await get('/oauth/authorize', { method: 'POST', body: form({ csrf, r: rid, action: 'allow', scope: ['mcp', ...seenScopes] }),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: BASE, 'Sec-Fetch-Site': 'same-origin' } });
@@ -81,6 +89,7 @@ ok('SDK: dynamisch registriert (client_id sgc_…)', /^sgc_/.test(store.client?.
 await store.redirect;
 ok('SDK: Autorisierungs-Adresse mit PKCE S256, resource und state', authUrl && authUrl.searchParams.get('code_challenge_method') === 'S256'
   && authUrl.searchParams.get('resource') === BASE + '/mcp' && authUrl.searchParams.get('state') === store.state, authUrl);
+ok('SDK-Ablauf: erst Bestaetigen (Passwort), dann Zustimmung', confirmStep);
 ok('SDK: Zustimmung -> Code mit state zurueck', /^sgk_/.test(gotCode || '') && gotState === store.state, gotCode);
 ok('SDK: Zustimmungsseite bietet nie tel', seenScopes.length > 0 && !seenScopes.some((s) => s.startsWith('tel')), seenScopes);
 await transport.finishAuth(gotCode);

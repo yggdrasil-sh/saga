@@ -434,6 +434,11 @@ def _consent(request, rid, err=None):
     if mfa.setup_needed(uid):
         return _error_page(request, t("Dein Admin verlangt einen zweiten Faktor – bitte richte zuerst im Browser unter „Anmeldung & Sicherheit“ einen Passkey oder eine Authenticator-App ein."),
                            back=deny_url, status=403)
+    if not apitok._confirmed(request, uid):
+        # wie beim Anlegen eines sga_-Tokens (apitok._confirmed): frische Bestaetigung (Passwort oder Code, hoechstens
+        # mfa.FRESH_SEC alt); SSO-Konten: Anmeldung hoechstens so alt -> erst bestaetigen, dann die Rechte
+        return _page(request, csp_form=_origin(back), mode="confirm", rid=rid, client=cl["name"], user=info.get("name") or uid,
+                     uid=uid, sso=not mfa.supported(info), err=err)
     rights = [{"scope": s, "label": _scope_label(s)} for s in p["scopes"] if s != "mcp"]
     return _page(request, csp_form=_origin(back), mode="consent", rid=rid, client=cl["name"], back_host=_host_of(back),
                  rights=rights, user=info.get("name") or uid, uid=uid, err=err)
@@ -476,7 +481,17 @@ async def oauth_authorize_post(request: Request):
             _pending.pop(rid, None)
         print("oauth: Zustimmung abgelehnt", flush=True)
         return _redirect(p["redirect_uri"], error="access_denied", error_description="the person declined", state=p["state"], iss=BASE)
-    if not enabled() or not apitok.allowed_for(user_info(uid)) or mfa.setup_needed(uid):
+    if one.get("action") == "confirm":
+        # dieselbe Bestaetigung wie POST /api/account/security/confirm (mfa.confirm, setzt sec_at) - Passwort oder Code
+        v = (one.get("secret") or "").strip()
+        b = {"code": v} if re.fullmatch(r"\d{6}", v) else {"password": one.get("secret") or ""}
+        msg = await run_in_threadpool(mfa.confirm, request, uid, b) if mfa.supported(user_info(uid)) else t("Bitte bestätigen: Passwort, Code oder Passkey.")
+        if msg:
+            return _consent(request, rid, err=msg)
+        request.session["sec_at"] = int(time.time())
+        print("oauth: Zustimmung bestaetigt", flush=True)
+        return RedirectResponse("/oauth/authorize?r=" + rid, status_code=303, headers={"Cache-Control": "no-store"})
+    if not enabled() or not apitok.allowed_for(user_info(uid)) or mfa.setup_needed(uid) or not apitok._confirmed(request, uid):
         return _consent(request, rid)
     chosen = set(f.get("scope", [])) & set(p["scopes"])
     if not chosen - {"mcp"}:

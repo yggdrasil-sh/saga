@@ -263,7 +263,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   `tel*` ist für 3.0 reserviert. Testreihe `tests/faehigkeiten.py`.
 - **MCP mit OAuth – Claude ohne Token verbinden** (Bugs-DB 2264): MCP-Clients wie der claude.ai-Connector melden sich
   nach der MCP-Autorisierung (OAuth 2.1) an: Adresse `…/mcp` eintragen, in Saga auf der Seite „App verbinden“
-  zustimmen und die Rechte wählen. Metadaten nach RFC 9728/8414 (`/.well-known/oauth-protected-resource/mcp`,
+  zustimmen und die Rechte wählen (vorher frische Bestätigung mit Passwort oder Code wie beim Anlegen eines
+  API-Tokens; SSO-Konten: Anmeldung höchstens 5 Minuten alt). Metadaten nach RFC 9728/8414 (`/.well-known/oauth-protected-resource/mcp`,
   `/.well-known/oauth-authorization-server`), dynamische Registrierung (RFC 7591, mit Grenzen), Code mit PKCE S256
   (Pflicht), `resource` (RFC 8707) an `/mcp` gebunden, kurzlebige Zugriffstoken, Refresh-Token mit Rotation (ein
   zweites Mal benutzt → ganze Verbindung getrennt), Widerruf (RFC 7009). Zugriffstoken gelten nur an `/mcp`, mit

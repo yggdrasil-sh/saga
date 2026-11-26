@@ -27,6 +27,33 @@
   <button class="btn btn-primary auth-btn" type="submit" name="action" value="allow">{{ _("Erlauben") }}</button>
   <button class="btn auth-btn" type="submit" name="action" value="deny">{{ _("Ablehnen") }}</button>
 </form>
+{% elif mode == "confirm" %}
+<h2 class="auth-h">{{ _("App verbinden") }}</h2>
+<p class="oa-lead">{{ _("„{client}“ möchte auf dein Konto zugreifen.", client=client) }}</p>
+<dl class="oa-facts">
+  <dt>{{ _("Angemeldet als") }}</dt><dd>{{ user }}{% if user != uid %} <span class="oa-sub">({{ uid }})</span>{% endif %}</dd>
+  <dt>{{ _("Saga-Adresse") }}</dt><dd><code>{{ base }}</code></dd>
+</dl>
+<p class="auth-note">{{ _("Zur Sicherheit bitte bestätigen, dass du es bist.") }}</p>
+{% if err %}<p class="auth-err" role="alert" id="oa-err">{{ err }}</p>{% endif %}
+{% if sso %}
+<p class="hk-hint">{{ _("Dein Konto meldet sich über SSO an: bitte ab- und wieder anmelden, dann innerhalb von 5 Minuten erneut versuchen.") }}</p>
+<form method="post" action="/logout" class="auth-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="next" value="/oauth/authorize?r={{ rid }}">
+  <button class="btn btn-primary auth-btn" type="submit">{{ _("Neu anmelden") }}</button></form>
+{% else %}
+<form method="post" action="/oauth/authorize" class="auth-form oa-form" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="r" value="{{ rid }}">
+  <label class="hk-field"><span>{{ _("Passwort oder Code aus der Authenticator-App") }}</span>
+    <input class="hk-in" type="password" name="secret" autocomplete="current-password" maxlength="200" autofocus{% if err %} aria-invalid="true" aria-describedby="oa-err"{% endif %}></label>
+  <button class="btn btn-primary auth-btn" type="submit" name="action" value="confirm">{{ _("Bestätigen") }}</button>
+</form>
+{% endif %}
+<form method="post" action="/oauth/authorize" class="auth-form oa-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="r" value="{{ rid }}">
+  <button class="btn auth-btn" type="submit" name="action" value="deny">{{ _("Ablehnen") }}</button>
+</form>
 {% else %}
 <h2 class="auth-h">{{ _("Verbindung nicht möglich") }}</h2>
 <p class="auth-err" role="alert">{{ msg }}</p>

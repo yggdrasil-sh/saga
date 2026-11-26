@@ -39,6 +39,7 @@ HOST = urllib.parse.urlparse(BASE).netloc
 SIGN = TimestampSigner(os.environ["SESSION_SECRET"])
 U, PW = "oa-test-a", "Oa-Pass-" + secrets.token_hex(6)
 U2 = "oa-test-b"
+U3 = "oa-test-sso"                          # SSO-Konto (source oidc): Bestaetigung = frische Anmeldung
 RU = "http://127.0.0.1:9/cb"                 # Loopback-Client (RFC 8252), wird nie aufgerufen
 RU2 = "https://client.example/cb?x=1"
 res = []
@@ -93,10 +94,31 @@ def req(m, path, body=None, headers=None, jar=None, form=None, bearer=None):
     return r.status, d, raw.decode(errors="replace"), {k.lower(): v for k, v in hs}
 
 
-def session(uid, csrf):
-    """Sitzung wie nach der Anmeldung (pwc = Passwort-Stand des Kontos, sonst verwirft _session_user sie)."""
+def session(uid, csrf, sec_at=None, login_at=None):
+    """Sitzung wie nach der Anmeldung (pwc = Passwort-Stand des Kontos, sonst verwirft _session_user sie). sec_at = letzte
+    Bestaetigung (Standard: jetzt), login_at = Anmeldung (SSO-Konten: zaehlt als Bestaetigung, mfa.fresh)."""
     pwc = (auth.user_info(uid, fresh=True) or {}).get("epoch") or 0
-    return SIGN.sign(base64.b64encode(json.dumps({"uid": uid, "csrf": csrf, "pwc": pwc, "sec_at": int(time.time())}).encode())).decode()
+    d = {"uid": uid, "csrf": csrf, "pwc": pwc, "sec_at": int(time.time()) if sec_at is None else int(sec_at)}
+    if login_at is not None:
+        d["login_at"] = int(login_at)
+    return SIGN.sign(base64.b64encode(json.dumps(d).encode())).decode()
+
+
+def part_fresh(cid):
+    """Bestaetigung laeuft ab wie beim Token (mfa.FRESH_SEC); SSO-Konten: frische Anmeldung statt Passwort."""
+    from saga import mfa
+    ver, ch = pkce()
+    old = time.time() - mfa.FRESH_SEC - 30
+    for name, jar, want in (("Bestaetigung abgelaufen", Jar(session(U, CSRF, sec_at=old, login_at=time.time())), "confirm"),
+                            ("Bestaetigung frisch", Jar(session(U, CSRF)), "consent"),
+                            ("SSO, Anmeldung alt", Jar(session(U3, CSRF, sec_at=0, login_at=old)), "sso"),
+                            ("SSO, Anmeldung frisch", Jar(session(U3, CSRF, sec_at=0, login_at=time.time())), "consent")):
+        st, _, _, hd = req("GET", authorize_url(cid, ch), jar=jar)
+        st, _, page, _ = req("GET", hd.get("location") or "/", jar=jar)
+        got = ("sso" if 'action="/logout"' in page and 'name="next"' in page and 'name="secret"' not in page and 'name="scope"' not in page
+               else "confirm" if 'name="secret"' in page and 'name="scope"' not in page
+               else "consent" if 'name="scope" value="read:pages"' in page else "?")
+        ok(f"{name} -> {want}", st == 200 and got == want, (st, got, page[:200]))
 
 
 def pkce():
@@ -182,7 +204,7 @@ def settings_api(**kw):
 
 
 def cleanup():
-    for u in (U, U2):
+    for u in (U, U2, U3):
         if auth.get_user(u):
             delete_user_data(u, drop_user=True)
     with db.connect() as c, c:
@@ -262,6 +284,26 @@ def part_flow(cid):
     st, _, _, hd = req("POST", "/login", form={"csrf": m.group(1) if m else "", "username": U, "password": PW}, jar=jar)
     nxt = hd.get("location") or ""
     ok("Nach der Anmeldung zurueck zur Zustimmung", st == 303 and re.fullmatch(r"/oauth/authorize\?r=[\w-]+", nxt), (st, nxt))
+    # Frische Bestaetigung wie beim Anlegen eines sga_-Tokens (Entscheidung Koordinator): erst bestaetigen, dann Rechte
+    st, _, page, hd = req("GET", nxt, jar=jar)
+    ok("Ohne frische Bestaetigung: erst Bestaetigen (Passwortfeld, noch keine Rechte)", st == 200 and 'name="secret"' in page
+       and 'value="confirm"' in page and 'name="scope"' not in page and "Testclient" in page, page[:300])
+    ok("Bestaetigungsschritt: Clickjacking-Schutz", "frame-ancestors 'none'" in (hd.get("content-security-policy") or ""))
+    rid0 = nxt.split("r=", 1)[1]
+    csrf0 = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+    st, _, page2, hd = req("POST", "/oauth/authorize", form={"csrf": csrf0, "r": rid0, "action": "allow", "scope": ["mcp", "read:pages"]},
+                           jar=jar, headers={"Origin": BASE, "Sec-Fetch-Site": "same-origin"})
+    ok("Erlauben ohne Bestaetigung -> kein Code, wieder der Bestaetigungsschritt", st == 200 and "location" not in hd and 'name="secret"' in page2, st)
+    st, _, page2, hd = req("POST", "/oauth/authorize", form={"csrf": csrf0, "r": rid0, "action": "confirm", "secret": "falsch-" + PW},
+                           jar=jar, headers={"Origin": BASE, "Sec-Fetch-Site": "same-origin"})
+    ok("Bestaetigen mit falschem Passwort -> Fehler, weiter Bestaetigungsschritt", st == 200 and "location" not in hd and 'name="secret"' in page2
+       and "auth-err" in page2, st)
+    st, _, _, hd = req("POST", "/oauth/authorize", form={"csrf": "falsch", "r": rid0, "action": "confirm", "secret": PW},
+                       jar=jar, headers={"Origin": BASE, "Sec-Fetch-Site": "same-origin"})
+    ok("Bestaetigen ohne gueltiges CSRF-Token -> 403", st == 403, st)
+    st, _, _, hd = req("POST", "/oauth/authorize", form={"csrf": csrf0, "r": rid0, "action": "confirm", "secret": PW},
+                       jar=jar, headers={"Origin": BASE, "Sec-Fetch-Site": "same-origin"})
+    ok("Bestaetigen mit Passwort -> zurueck zur Zustimmung", st == 303 and hd.get("location") == nxt, (st, hd.get("location")))
     st, _, page, hd = req("GET", nxt, jar=jar)
     csp = hd.get("content-security-policy") or ""
     ok("Zustimmungsseite: Client, Server-Adresse, Ruecksprung-Host, Rechte", st == 200 and "Testclient" in page and BASE in page
@@ -603,10 +645,12 @@ def main():
     try:
         auth.create_user(U, PW, "Olga Auth")
         auth.create_user(U2, None, U2)
+        auth.create_user(U3, None, "Sso Person", source="oidc", ext_id="oa-sub-1")
         settings_api(enabled=True, mcp=True, oauth=True, rate=3000, rate_write=1000, max_tokens=50)
         part_meta()
         cid = part_register()
         acc, ref, granted = part_flow(cid)
+        part_fresh(cid)
         part_rt42(acc)
         part_refresh(cid, ref)
         part_errors(cid)

@@ -374,6 +374,10 @@ zurück zur Zustimmung), bekommt den Code mit `state` und `iss` an seine `redire
   `127.0.0.1`, `[::1]` (RFC 8252); Name höchstens 80 Zeichen (länger als 200 → `400`). Registrierungen: höchstens 10 je
   IP und Stunde (`SAGA_OAUTH_REG_PER_IP`), 100 je Stunde insgesamt, 2000 Clients bzw. 300 noch nie benutzte; Clients
   ohne Zustimmung verfallen nach 24 Stunden. `grant_types` sind immer `authorization_code` und `refresh_token`.
+- **Frische Bestätigung** wie beim Anlegen eines `sga_`-Tokens (`apitok._confirmed`): vor den Rechten fragt Saga nach
+  Passwort oder Code aus der Authenticator-App (dieselbe Prüfung wie `POST /api/account/security/confirm`, gilt
+  5 Minuten); eine frische Anmeldung allein reicht bei Konten mit Passwort nicht. SSO-Konten: Anmeldung höchstens
+  5 Minuten alt, sonst „Neu anmelden“ (danach zurück zur Zustimmung). „Ablehnen“ geht ohne Bestätigung.
 - **Zustimmungsseite:** nennt den (vom Client selbst gewählten) Namen, das angemeldete Konto, die Saga-Adresse, den
   Rücksprung-Host und die Rechte. Schutz: CSRF-Token der Sitzung, `Origin`/`Sec-Fetch-Site`, `frame-ancestors 'none'`;
   `form-action` erlaubt nur Saga und den Origin der `redirect_uri`. Unbekannter Client oder nicht registrierte

@@ -201,7 +201,10 @@ mit dem MCP Inspector.
 1. Öffne in Claude **Einstellungen → Connectors → Eigenen Connector hinzufügen** und trag die Adresse deines Saga
    mit `/mcp` dahinter ein, zum Beispiel `https://saga.example/mcp`. Die genaue Adresse kopierst du in Saga unter
    **Einstellungen → Verbundene Apps → So verbindest du Claude**.
-2. Claude öffnet Saga. Melde dich an, falls nötig – auch mit Passkey, Code oder SSO.
+2. Claude öffnet Saga. Melde dich an, falls nötig – auch mit Passkey, Code oder SSO. Danach fragt Saga wie beim
+   Anlegen eines API-Tokens zur Sicherheit noch einmal nach deinem **Passwort** (oder einem Code aus der
+   Authenticator-App). Meldest du dich über SSO an, reicht eine Anmeldung der letzten 5 Minuten – sonst wählst du
+   **Neu anmelden**.
 3. Die Seite **App verbinden** zeigt, welche App fragt, mit welchem Konto du angemeldet bist, die Adresse deines Saga,
    wohin es danach weitergeht und was die App darf: Seiten, Datenbanken, Aufgaben, Dateien, Kommentare und Kalender,
    jeweils Lesen und Ändern getrennt. Nimm die Häkchen weg, die Claude nicht braucht, und wähl **Erlauben** – oder
