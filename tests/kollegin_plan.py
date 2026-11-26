@@ -524,6 +524,18 @@ def part_task_why(pages):
         ok(f"2508: context.note ungueltig ({bad!r}) -> kein Fehler, nichts gelesen ({st_})", st_ == 200 and pv.get("job")
            and not any(x["ref"] in (f"note:{bad}",) for x in pv.get("read") or []))
         jobs.cancel(pv.get("job") or 0, A)
+    # 1e400 im JSON-Koerper wird zu float inf (parse_json verbietet nur Infinity/NaN als Wort) - still draussen, kein Fehler
+    for bad in (float("inf"), float("-inf"), float("nan"), 1e30):
+        try:
+            got = ai_plan._candidates(A, None, bad)
+        except Exception as ex:  # noqa: BLE001
+            got = repr(ex)
+        ok(f"2508: context.note {bad!r} -> still draussen ({got})", got == [], got)
+    st_, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Kümmer dich um die Grillkohle bis Freitag", "context": {"note": True}})
+    pv = K.get(ev, "plan") or {}
+    ok(f"2508: context.note true liest nicht die Seite 1 ({[x['ref'] for x in pv.get('read') or []]})", st_ == 200
+       and not any(x["ref"] == "note:1" for x in pv.get("read") or []))
+    jobs.cancel(pv.get("job") or 0, A)
 
 
 def part_api(pages):

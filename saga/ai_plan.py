@@ -739,7 +739,7 @@ def _candidates(uid, cx, note=None):
         from saga.sharing import access
         try:
             nid = int(note) if not isinstance(note, bool) else 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):     # 1e400 im JSON = inf -> OverflowError (sonst Fehler statt still draussen)
             nid = 0
         if 0 < nid < 2 ** 63:                    # 2508: ausserhalb BIGINT nie an die Datenbank (sonst Fehler statt still draussen)
             with _db() as c:
