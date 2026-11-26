@@ -23,6 +23,9 @@
     {{ field(_('API-Schlüssel'), 'api_key', '', max=500, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if has_key else _('optional – Ollama braucht keinen'))) }}
     {% if has_key %}{{ check(_('Gespeicherten Schlüssel löschen'), 'clear_key', false) }}{% endif %}
     {% if a.pinned %}<p class="hk-hint">{{ _("Festgehaltene Adressen: {ips} – ändert sich die Adresse im DNS, hier einmal neu speichern.", ips=", ".join(a.pinned)) }}</p>{% endif %}
+    {# 2.6 (Bugs-DB 2269 K-I, M4/RT-39): den Hinweis bildet Saga aus der Adresse; der Admin kann nur einen Satz anfuegen #}
+    <p class="hk-hint" id="ai-hint">{% if hint %}{{ _("So sehen die Personen, wohin ihre Daten gehen: „{label}“", label=hint.label) }}{% if hint.note %} – {{ hint.note }}{% endif %}{% else %}{{ _("Nach dem Speichern einer Adresse zeigt Saga hier, wie die Personen den Anbieter sehen.") }}{% endif %}</p>
+    {{ field(_('Zusatzsatz zum Anbieter-Hinweis'), 'endpoint_note', a.endpoint_note or '', max=200, hint=_('Optional, ein Satz, z. B. „Der Dienst läuft bei unserem Verein.“ Den Hinweis selbst (Host, Heimnetz oder Internet, bekannter Anbieter mit Land) bildet Saga aus der Adresse. Bei einer Adresse im Internet fällt ein Satz, der „lokal“ oder „im Heimnetz“ behauptet, weg.')) }}
   </section>
   <section class="adm-card">
     <h3>{{ _("Zugang und Grenzen") }}</h3>

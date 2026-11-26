@@ -658,6 +658,25 @@ CREATE TABLE IF NOT EXISTS ai_history (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL,
     question TEXT NOT NULL, answer TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS ai_history_uid ON ai_history (uid, id DESC);
+-- 2.6 (Bugs-DB 2269 K-I, Konzept K10/K19/M7/M11): Ort "Saga" (saga/ai_saga.py). ai_consent = Einwilligungen je Person als
+-- Protokoll (action grant|later|withdraw, Zeitpunkt, Fassung des Textes, Host/Art/Anbieter des Endpunkts beim Erteilen;
+-- die letzte Zeile grant/withdraw ist der Zustand) - bleibt als Nachweis bis zur Kontoloeschung. ai_thread/ai_turn = das
+-- Gespraech mit der KI (kein E2E-Chat, nicht in der Chat-Liste): je Person ein Gespraech, Zuege role me|ai mit text,
+-- zug/fields (Baustein, z. B. Plan-Karte der Rolle kb), read (nur Kennungen), job_id. expires = 24 h nach dem Zug, wenn
+-- der Verlauf aus ist (NULL = Verlauf an, hoechstens 200 Zuege); ai_saga.cleanup raeumt stuendlich auf.
+CREATE TABLE IF NOT EXISTS ai_consent (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL, action TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '', ideas TEXT, host TEXT NOT NULL DEFAULT '', net TEXT NOT NULL DEFAULT '', provider TEXT);
+CREATE INDEX IF NOT EXISTS ai_consent_uid ON ai_consent (uid, id);
+CREATE TABLE IF NOT EXISTS ai_thread (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL UNIQUE, created DOUBLE PRECISION NOT NULL, updated DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS ai_turn (
+    id BIGSERIAL PRIMARY KEY, thread_id BIGINT NOT NULL REFERENCES ai_thread(id) ON DELETE CASCADE, uid TEXT NOT NULL,
+    n INTEGER NOT NULL, role TEXT NOT NULL, zug TEXT, text TEXT NOT NULL DEFAULT '', fields JSONB, read JSONB,
+    job_id BIGINT REFERENCES job(id) ON DELETE SET NULL, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS ai_turn_thread ON ai_turn (thread_id, n);
+CREATE INDEX IF NOT EXISTS ai_turn_uid ON ai_turn (uid);
+CREATE INDEX IF NOT EXISTS ai_turn_exp ON ai_turn (expires) WHERE expires IS NOT NULL;
 
 -- Foederation (2.0, saga/federation.py): Saga-Instanzen teilen Seiten untereinander. Inhalte bleiben beim Eigentuemer;
 -- hier stehen nur Schluessel, Gegenstellen, Protokoll und kleine Verweise (welche Instanz hat etwas mit wem geteilt).

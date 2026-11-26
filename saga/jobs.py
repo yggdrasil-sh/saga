@@ -15,7 +15,7 @@ Ein Schritt (Runner je kind, register()):
   1. Wiederaufnahme: steht der Schritt noch auf 'laeuft' (Absturz, Lease abgelaufen), gilt er als erledigt, wenn es einen
      Stempel gibt (job_change mit seinem idem_key), sonst wird er wiederholt.
   2. _precheck vor JEDEM Schritt: Konto da und aktiv, caps.can(uid, "ai"), bei klass 'out' zusaetzlich "ai_act",
-     consent_ok(uid) (bis K-I immer True). Fehlt etwas -> wartet_dich mit reason, nichts wird geschrieben (RT-07/RT-36).
+     consent_ok(uid) (K-I: saga/ai_saga.py). Fehlt etwas -> wartet_dich mit reason, nichts wird geschrieben (RT-07/RT-36).
   3. Beanspruchen (eigene Transaktion): state 'laeuft', idem_key = "<job>:<n>:<plan_v>".
   4. Runner unter actor.acting(Actor(service, svc:..., on_behalf_of=uid, job_id, step, idem, attempt)) im Worker-Thread
      (with-Block je Schritt, danach kein Akteur; darunter startet die Maschine weder Tasks noch Threads). Jede Wirkung
@@ -44,7 +44,8 @@ zurueckgenommen - nach einem Absturz geht es mit dem Rest weiter. Vorher-Stand/K
 Absturzpunkte fuer tests/kollegin_fehler.py: _crash(name) mit name in CRASH_POINTS beendet den Prozess per SIGKILL - nur
 mit aktiven Testhaken (testclock.enabled()) und SAGA_TEST_CRASH=<name>.
 Aufbewahrung (cleanup, stuendlich): Klartext (plan, args, result, before/after) 30 Tage nach ended_at, alles 90 Tage;
-nicht freigegebene Auftraege mit abgelaufener Frist (due_at) werden abgebrochen. Kontoloeschung: USER_TABLES "job".
+nicht freigegebene Auftraege mit abgelaufener Frist (due_at) werden abgebrochen; dazu ai_saga.cleanup (Gespraech ohne
+Verlauf nach 24 h, K-I). Kontoloeschung: USER_TABLES "job".
 Tests: tests/kollegin_jobs.py, tests/kollegin_fehler.py; Messung: tools/perf/kollegin_takt.py."""
 import hashlib
 import json
@@ -129,8 +130,10 @@ def now():
 
 
 def consent_ok(uid):
-    """Einwilligung der Person fuer die Kollegin (K-I) - bis dahin immer True."""
-    return True
+    """Einwilligung der Person fuer die Kollegin (K-I 2269, saga/ai_saga.py): erteilt und fuer den jetzigen Endpunkt.
+    Widerruf oder neuer Endpunkt -> False -> der naechste Schritt geht nach wartet_dich 'einwilligung' (RT-36)."""
+    from saga import ai_saga                     # spaet: ai_saga importiert jobs erst beim Widerruf
+    return ai_saga.consent_ok(uid)
 
 
 def group_of(state):
@@ -818,6 +821,11 @@ def cleanup():
         late = 0
         for (jid,) in c.execute("SELECT id FROM job WHERE state='wartet_ok' AND due_at IS NOT NULL AND due_at < ?", (t,)).fetchall():
             late += _to(c, jid, "wartet_ok", "abgebrochen", t, reason="abgelaufen")
+    try:                                         # K-I (2269): Gespraech im Ort "Saga" - ohne Verlauf nach 24 h weg
+        from saga import ai_saga
+        ai_saga.cleanup()
+    except Exception as ex:  # noqa: BLE001 - Aufraeumen des Gespraechs haelt die Auftraege nicht auf
+        print(f"jobs: ai_saga.cleanup {type(ex).__name__}", flush=True)
     return gone + late
 
 

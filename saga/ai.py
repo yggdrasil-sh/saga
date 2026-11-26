@@ -2033,6 +2033,8 @@ def api_ai_status(request: Request):
         used, hist = used_today(conn, uid), history_on(conn, uid)
         caps_now = [x for x in caps.CAPS if caps.can(uid, x, conn, c)]   # 2261
         srcs = ai_ctx.prefs(uid, conn)                                   # 2.6 K-A4: Schalter der Person je Quelle
+        from saga import ai_saga                                         # 2.6 K-I (2269): Einwilligung, Anbieter-Hinweis (M4)
+        saga_f = ai_saga.status_fields(uid, conn, c)
     units = ai_units.left(uid, c)                                        # 2.6 K-A5: Messwert (Einheiten), nur angehaengt
     web_cap = "ai_act" in caps_now
     quota = int(c.get("quota") or 0)
@@ -2045,7 +2047,8 @@ def api_ai_status(request: Request):
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
                          "caps": caps_now, "sources": srcs, "units": units,
                          "style": ai_say.style(uid),                         # 2.6 K-H (2268): Persona-Form, Lebhaftigkeit, Anrede
-                         **_jobs_status(uid)},                           # 2.6 K-B: Auftraege (jobs, level)
+                         **_jobs_status(uid),                           # 2.6 K-B: Auftraege (jobs, level)
+                         **saga_f},                                      # 2.6 K-I (2269): endpoint, consent, intro (hinten)
                         headers={"Cache-Control": "no-store"})
 
 
@@ -2592,6 +2595,8 @@ async def api_ai_settings(request: Request):
                 else:
                     conn.execute("DELETE FROM user_kv WHERE uid=? AND k='ai_history'", (uid,))
                     conn.execute("DELETE FROM ai_history WHERE uid=?", (uid,))
+                    from saga import ai_saga                       # 2.6 K-I: Gespraech im Ort "Saga" nur noch 24 h
+                    ai_saga._set_history(conn, uid, False)
                 out["history"] = on
             if srcs is not None:
                 out["sources"] = ai_ctx.set_prefs(uid, srcs, conn)

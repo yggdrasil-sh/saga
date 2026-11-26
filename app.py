@@ -62,6 +62,7 @@ from saga import jobs                         # 2.6 (K-A2 2266): Auftrags-Maschi
 from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Status /api/account/status, reachability()
 from saga import ai_task                      # 2.6 (K-A6 2266): Runner ai.task (Geruest, Planer mit K-B)
 from saga import ai_jobs                      # 2.6 (K-B 2267): Planer + Auftraege-API (saga/ai_plan.py, saga/ai_undo.py)
+from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einwilligung, Meine Daten
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -361,6 +362,7 @@ app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api
 app.include_router(ai_say.router)           # 2.6 K-H (2268): GET/PUT /api/ai/prefs - Anrede und Lebhaftigkeit der Person
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai
 app.include_router(ai_jobs.router)          # 2.6 (K-B 2267): Auftraege der Kollegin /api/ai/jobs/...
+app.include_router(ai_saga.router)          # 2.6 (K-I 2269): /saga, /api/ai/consent|prefs|thread|mydata
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
 app.include_router(clientlog.router)        # 2.5: Fehlerberichte und "Diagnose senden" (Feature clientlog1)
 app.include_router(calldiag.router)         # vor calls.router: /api/calls/diag ist kein Anruf {cid}

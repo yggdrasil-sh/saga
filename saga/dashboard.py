@@ -227,6 +227,11 @@ def set_start_page(uid, nid):
         return True
 
 
+def _saga_on(uid):
+    from saga import ai_saga
+    return ai_saga.side_on(uid)
+
+
 @router.get("/notes", response_class=HTMLResponse)
 def notes_page(request: Request):
     """Eigene Seite fuer die Notizen (Seitenbaum + Editor im ganzen Fenster)."""
@@ -245,6 +250,7 @@ def notes_page(request: Request):
                                                   chat_enabled=chat.enabled(), chat_unread=n_chat, me_avatar=avatars.my_url(uid),
                                                   admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "",
                                                   editor=editor_engine(uid),      # 2.5 (T2): editorjs | tiptap
+                                                  saga_on=_saga_on(uid),          # 2.6 (K-I 2269): Seitenleiste "Saga"
                                                   search_enabled=bool(SEARXNG_URL))   # Websuche in der Schnellsuche (SearXNG)
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     if embed:
@@ -296,6 +302,7 @@ def _dashboard(request, start):
         title=title(), name=request.session.get("name", uid), uid=uid,
         favorites=[mine[k] for k in fav_keys], categories=cats, acct=account_ctx(info),
         search_enabled=bool(SEARXNG_URL), v=ASSET_V, me_avatar=avatars.my_url(uid), side_cur="today",
+        saga_on=_saga_on(uid),                       # 2.6 (K-I 2269): Eintrag "Saga" in der Seitenleiste
     )
     return HTMLResponse(html, headers=icon_csp(SEC_HEADERS, uid))      # img-src: Origins der eigenen Lesezeichen
 

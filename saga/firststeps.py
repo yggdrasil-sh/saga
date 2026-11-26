@@ -9,7 +9,8 @@ Inhalten fragt Saga nach dem Update nicht).
 
 Punkte (Reihenfolge = Liste): avatar (Profilbild), chat (Chats einrichten + Wiederherstellungsschluessel - nur wenn Chats an
 sind; die Einrichtung verlangt die letzten Zeichen des Schluessels), app (App gekoppelt = Geraete-Anmeldung), page (erste
-eigene Seite ausser dieser), task (erste Aufgabe). Abgehakt wird beim Abruf von GET /api/first-steps (Web: Heute und Seiten,
+eigene Seite ausser dieser), task (erste Aufgabe), ai (2.6 K-I: nur mit Faehigkeit ai - "{Persona} kennenlernen", erledigt
+mit der Einwilligung; ohne KI fehlt der Punkt ganz). Abgehakt wird beim Abruf von GET /api/first-steps (Web: Heute und Seiten,
 Apps: beim Start) - nur neu Erledigtes, ein Punkt nie zweimal (wer selbst wieder abhakt, behaelt das). Gefunden wird die
 Zeile ueber ihren gespeicherten Text; hat man ihn geaendert, bleibt sie, wie sie ist.
 
@@ -41,8 +42,21 @@ def _chat_on():
     return bool(auth.settings().get("chat_enabled", True))
 
 
-def keys():
-    return [k for k in KEYS if k != "chat" or _chat_on()]
+def _ai_on(uid):
+    """2.6 (K-I 2269, UX R1): mit Faehigkeit ai kommt als letzter Punkt "{Persona} kennenlernen" dazu - ohne KI bleibt
+    die Liste genau wie vorher (vollstaendig ohne KI)."""
+    if not uid:
+        return False
+    try:
+        from saga import caps
+        return caps.can(uid, "ai")
+    except Exception:  # noqa: BLE001 - KI-Einstellung kaputt: Liste ohne KI-Punkt
+        return False
+
+
+def keys(uid=None):
+    out = [k for k in KEYS if k != "chat" or _chat_on()]
+    return out + ["ai"] if _ai_on(uid) else out
 
 
 def _texts():
@@ -53,7 +67,16 @@ def _texts():
         "app": t("Eine App koppeln – Handy, Tablet oder Desktop (Einstellungen › Apps & Geräte)"),
         "page": t("Eine eigene Seite anlegen (Heute › Neue Seite)"),
         "task": t("Eine erste Aufgabe notieren (Heute › Aufgabe)"),
+        "ai": t("{name} kennenlernen (Seitenleiste › Saga)", name=_persona()),
     }
+
+
+def _persona():
+    try:
+        from saga import ai
+        return ai.persona_name()
+    except Exception:  # noqa: BLE001
+        return "Saga KI"
 
 
 def _load(c, uid):
@@ -104,6 +127,10 @@ def done_keys(c, uid, page=None):
         out.add("page")
     if c.execute("SELECT 1 FROM task WHERE uid=? LIMIT 1", (uid,)).fetchone():
         out.add("task")
+    if _ai_on(uid):                                  # K-I: kennengelernt = Einwilligung erteilt
+        from saga import ai_saga
+        if ai_saga.consent_ok(uid, c):
+            out.add("ai")
     return out
 
 
@@ -131,7 +158,7 @@ def _lock(c, uid):
 def create_page(uid):
     """Seite "Erste Schritte" anlegen -> id (in user_kv gemerkt)."""
     from saga import api_v1
-    texts, ks = _texts(), keys()
+    texts, ks = _texts(), keys(uid)
     _, d = api_v1.page_create(_tok(uid), {"title": t("Erste Schritte"), "icon": "👋", "markdown": _markdown(texts, ks)})
     nid = d["id"]
     with _db() as c, c:
@@ -154,9 +181,9 @@ def _sync(uid):
         v = _load(c, uid) or {}
         page = v.get("page") if _page_ok(c, uid, v.get("page")) else None
         done = done_keys(c, uid, page)
-    items = [{"key": k, "done": k in done} for k in keys()]
+    items = [{"key": k, "done": k in done} for k in keys(uid)]
     texts, ticked = v.get("texts") or {}, set(v.get("ticked") or [])
-    todo = [k for k in keys() if k in done and k not in ticked and isinstance(texts.get(k), str)]
+    todo = [k for k in keys(uid) if k in done and k not in ticked and isinstance(texts.get(k), str)]
     if page is None or not todo or v.get("state") != "yes":
         return items, page
 

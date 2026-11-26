@@ -1859,7 +1859,8 @@ def ai_page(request: Request):
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
                  caps_act_text=", ".join(cp.get("ai_act") or []), caps_ideas_text=", ".join(cp.get("ai_ideas") or []),
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL, units=ai.units_today(), cache=ai.cache_view(),
-                 models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx(), **_plan_ctx())
+                 models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx(), **_plan_ctx(),
+                 hint=_ai_hint(a))       # 2.6 (K-I 2269, M4): Anbieter-Hinweis, wie ihn die Personen sehen
 
 
 def _plan_ctx():
@@ -1881,6 +1882,14 @@ def _persona_ctx():
             "av_max": avatars.UPLOAD_MAX // 1048576}
 
 
+def _ai_hint(a):
+    from saga import ai_saga
+    try:
+        return ai_saga.endpoint_hint(a)
+    except Exception:  # noqa: BLE001 - Vorschau ist nur Anzeige
+        return None
+
+
 def _ai_from(f, cur):
     """Formular -> (werte, fehler). Leerer Schluessel = bisherigen behalten (auth.save_setting)."""
     prov = f.get("provider") if f.get("provider") in ai.PROVIDERS else "openai"
@@ -1899,6 +1908,9 @@ def _ai_from(f, cur):
          # 2.6 (Bugs-DB 2261): Gruppen je Faehigkeit (saga/caps.py) - leer = alle
          "caps": {k: (_groups_list(_s(f, "caps_" + k, 1000)) if ("caps_" + k) in f else list(((cur.get("caps") or {}).get(k)) or []))
                   for k in ("ai_act", "ai_ideas")}}   # fehlt ein Feld im Formular: bisherigen Wert behalten (nie "alle")
+    # 2.6 (K-I 2269, M4/RT-39): EIN Zusatzsatz zum Anbieter-Hinweis - den Hinweis selbst bildet der Server aus der Adresse
+    from saga import ai_saga
+    v["endpoint_note"] = ai_saga.clean_note(f.get("endpoint_note")) if "endpoint_note" in f else str(cur.get("endpoint_note") or "")
     return v, err
 
 

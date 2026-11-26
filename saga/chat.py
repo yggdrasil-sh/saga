@@ -2943,6 +2943,11 @@ notify.RENDER["chat.mention"] = _notif                 # 2.5 (chatmention1): erw
 
 
 # --- Seite /chats -------------------------------------------------------------------------------------------------
+def _saga_on(uid):
+    from saga import ai_saga
+    return ai_saga.side_on(uid)
+
+
 @router.get("/chats", response_class=HTMLResponse)
 def chats_page(request: Request, panel: str = ""):
     """Chats im eigenen Tab (panel=1: kompakt im Seitenpanel neben Seiten/Heute, static/chatdock.js). Nur diese Seite darf WebAssembly kompilieren ('wasm-unsafe-eval' fuer libsodium.js) -
@@ -2962,7 +2967,7 @@ def chats_page(request: Request, panel: str = ""):
                                                   me_avatar=avatars.my_url(uid),
                                                   chat_enabled=enabled(), chat_unread=n_chat, side_cur="chats",   # Seitenleiste (_side.html)
                                                   search_enabled=bool(SEARXNG_URL),   # Websuche in der Schnellsuche (UX-10)
-                                                  panel=panel)
+                                                  panel=panel, saga_on=_saga_on(uid))   # 2.6 (K-I 2269): Seitenleiste "Saga"
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'") \
         + "; media-src 'self' blob:"          # 2.4: Videos (Service Worker /_m/..., ohne ihn als Blob)
