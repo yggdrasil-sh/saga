@@ -129,7 +129,7 @@ async function breite(br, cfg, pre) {
   const br = await engine.launch();
   try {
     if (E.NUR_BILDER === 'vorher') { await vorher(br, cfg); return; }
-    if (E.NUR_BILDER === 'breite') { await breite(br, cfg, E.BILD_PREFIX || 'nachher'); return; }
+    if (E.NUR_BILDER === 'breite') { await breite(br, cfg, E.BILD_PREFIX || 'nachher'); return; }   // Ergebnis: ende() unten
 
     // ================= 1. Vertrag: Vektoren (vorgetaeuscht) =================
     {
@@ -361,8 +361,11 @@ async function breite(br, cfg, pre) {
     await br.close();
     if (!E.KEEP) py('--teardown');
   }
+})().then(ende).catch((e) => { console.error(e); try { if (!E.KEEP) py('--teardown'); } catch (x) { /* egal */ } process.exit(1); });
+
+function ende() {
   if (errs.length) ok('keine Skriptfehler', false, errs.slice(0, 5));
   const bad = R.filter((x) => !x[1]).length;
   console.log(`\n${R.length - bad}/${R.length} OK` + (OFFEN.length ? `, ${OFFEN.length} offen: ${OFFEN.join('; ')}` : '') + (FF ? ' (Firefox)' : ' (Chromium)'));
   process.exit(bad ? 1 : 0);
-})().catch((e) => { console.error(e); try { if (!E.KEEP) py('--teardown'); } catch (x) { /* egal */ } process.exit(1); });
+}

@@ -361,6 +361,9 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   (2547).
 - **Russisch: „Auftrag“ heißt überall „Поручение“** – zwei Sätze der Kollegin sagten noch „Задание“ (Sitzung
   abgelaufen, fehlende Rechte); jetzt wie in den Systemtexten und APP-API-KI §11.7 (2544).
+- **„Heute“ auf breiten Fenstern mittig** (2546): Die Spalte (höchstens 1080 px) steht jetzt mittig im Platz zwischen
+  Seitenleiste und Aufgabenleiste statt links zu kleben – mit und ohne Seitenleiste, beim Ein-/Ausklappen gleitet sie mit
+  (wie der Ort „Saga“, 2541). Handy unverändert.
 - **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
   der Gegenstand); ✓ in der Auftragsliste nur bei „Erledigt“ (Abgebrochen –, Zurückgenommen ↶); per Knopf eingetragene
   Aufträge heißen nach der ersten Zeile statt „Auftrag“; im Protokoll steht „Freigegeben“ vor „Läuft“; ein schon

@@ -3254,7 +3254,16 @@ body.cm-open .cd-btn,body.cm-open .np-head .ai-btn,body.cd-open .np-head .ai-btn
 /* ===== Heute (Design-Runde 05: UX-8/9/12/13/14, AE-25/26/27, VD-39/40/41, A11Y-09) ==============================
    /dashboard als ruhiger Tagesstart: Begruessung + Lagezeile, Schnellaktionen, "Weitermachen", kompakte Lesezeichen.
    Kopf = Seitenleisten-Kopf (.np-head) wie auf /notes und /chats; schmal steht er oben als normale Kopfzeile. */
-body.heute-page>main.hz{padding:2.6rem 2.4rem 3rem;max-width:1080px}
+body.heute-page{--hz-w:1080px}
+body.heute-page>main.hz{padding:2.6rem 2.4rem 3rem;max-width:var(--hz-w)}
+/* 2546: breit - Spalte mittig im freien Platz (wie der Ort "Saga", 2541). style.css setzt bei has-side nur margin-left
+   side-w bzw. 0, die Spalte klebte links. Prozent im Rand = Inhaltsbreite des Body (ohne Scrollleiste und ohne die
+   Aufgabenleiste rechts, die per padding-right Platz nimmt) -> mittig zwischen den Leisten; max() haelt sie neben der
+   Seitenleiste. Bleibt margin-left: die Transition (has-side>main) gleitet beim Ein-/Ausklappen mit. Mobil unveraendert. */
+@media (min-width:761px){
+  body.heute-page.has-side:not(.embed)>main.hz{margin-left:max(var(--side-w),calc((100% + var(--side-w) - var(--hz-w)) / 2))}
+  body.heute-page.has-side.side-hidden:not(.embed)>main.hz{margin-left:max(0px,calc((100% - var(--hz-w)) / 2))}
+}
 body.heute-page>main.hz:focus{outline:none}
 .hz-top{margin-bottom:2rem}
 .hz-greet{margin:0;font-size:1.9rem;font-weight:700;line-height:1.2;color:var(--fg);letter-spacing:-.01em}
