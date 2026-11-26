@@ -19,8 +19,9 @@ Chatverlauf gibt es hier nicht (M10, RT-41): Felder wie history/chat/messages we
 Persona (Einstellung der Person) bzw. fuer Entwuerfe aus fields["address"] (Kontaktfeld contact.form oder vom Geraet).
 
 persona (norm_persona): {name, form: sie|er|neutral (Standard sie, D3), lively: sachlich|warm|verspielt (Standard warm),
-address: du|sie (Anrede DIESER Person, Standard du), level: plaene|rezepte|antworten, big: bool}. None = Standard des
-Servers ohne Person. persona_for(uid) liest Admin-Persona (setting ai_persona) und Einstellung der Person (user_kv ai_prefs).
+address: du|sie (Anrede DIESER Person, Standard du), level: plaene|rezepte|antworten, big: bool}. None = feste Standards
+(Saga KI, sie, warm, du - ohne Datenbank). Aufrufer mit Person uebergeben persona_for(uid): Admin-Persona (setting
+ai_persona) + Einstellung der Person (user_kv ai_prefs); level/big setzt der Planer aus der Faehigkeitsstufe dazu.
 Namensregel M1: label() = "{Persona} · KI" ist, wer spricht; "Saga" bleibt Ort/App/Kennzeichen.
 
 Weitere Wege:
@@ -860,7 +861,8 @@ def check_gap(zug, gap, text, lang, persona=None, fields=None, channel="card"):
     P3 Anrede, P4 Form, P5 Identitaet/Gefuehle, P6 Tat ohne Protokoll, P8 Vorwurf, P9 Weichmacher, P10 Fakten, P11
     Unterwuerfigkeit, P13 Bot-Ton. Entwuerfe (draft) sprechen fuer die Person: dort gelten P4/P5/P6/P8 nicht."""
     lang = lang_of(lang)
-    p = persona if isinstance(persona, dict) and "form" in persona and persona.get("form") in ("f", "m", "n") else norm_persona(persona, lang)
+    done = isinstance(persona, dict) and {"name", "form", "lively", "address", "big"} <= set(persona) and persona["form"] in ("f", "m", "n")
+    p = persona if done else norm_persona(persona, lang)       # schon normalisiert (aus _Ctx) oder Rohangabe
     f = fields if isinstance(fields, dict) else {}
     rules = []
     s = re.sub(r"[\x00-\x08\x0b-\x1f\x7f  ]+", " ", str(text or ""))
