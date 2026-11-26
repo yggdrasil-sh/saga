@@ -37,8 +37,11 @@ CAPS24 = ["reneg", "want", "bye", "screen2", "multi"]
 CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
          "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True, "horn_on_y": True}
 NODE = "yg-knoten.example.org"
-USERS = [("ca-yga", "Anna Eins"), ("ca-ygb", "Bert Zwei"), ("ca-ygc", "Cora Drei"), ("ca-ygd", "Dora Vier"), ("ca-yge", "Emil Fuenf"),
-         ("ca-ygf", "Fritz Alt")]
+# Konten je Lauf mit eigenem Anhang (Bugs-DB 2453): die Instanz zaehlt neue Anrufe je Konto und Stunde (CALL_RATE_H 40) im
+# Speicher - mit festen Namen lief schon der zweite Lauf in derselben Stunde in 429.
+SUF = secrets.token_hex(2)
+USERS = [(f"ca-yga{SUF}", "Anna Eins"), (f"ca-ygb{SUF}", "Bert Zwei"), (f"ca-ygc{SUF}", "Cora Drei"), (f"ca-ygd{SUF}", "Dora Vier"),
+         (f"ca-yge{SUF}", "Emil Fuenf"), (f"ca-ygf{SUF}", "Fritz Alt")]
 
 
 def setting(**kw):
@@ -170,18 +173,18 @@ def run():
 
     # --- L1-Nacharbeit: Mitglied nur mit alter App -------------------------------------------------------------------
     setting()
-    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ygb", "ca-ygf"]})
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": [f"ca-ygb{SUF}", f"ca-ygf{SUF}"]})
     g3a = d["chat"]["id"]
-    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ygb", "ca-ygc", "ca-ygd", "ca-ygf"]})
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": [f"ca-ygb{SUF}", f"ca-ygc{SUF}", f"ca-ygd{SUF}", f"ca-ygf{SUF}"]})
     g5a = d["chat"]["id"]
     M[g3a], M[g5a] = P[:2], P[:4]
     r = start(M[g3a], g3a)
     hm = (LAST[0] or {}).get("horn_mesh") or ""
-    ok(f"3er mit Fritz (nur 2.4-Geraet): direkt mit Hinweis, Fritz klingelt ({r}, {hm[:90]}, {inv(LAST[0], 'ca-ygf')})",
-       r == ("mesh", False) and "Fritz Alt" in hm and "ältere Saga-Version" in hm and inv(LAST[0], "ca-ygf") == "ringing", LAST[0])
+    ok(f"3er mit Fritz (nur 2.4-Geraet): direkt mit Hinweis, Fritz klingelt ({r}, {hm[:90]}, {inv(LAST[0], 'ca-ygf' + SUF)})",
+       r == ("mesh", False) and "Fritz Alt" in hm and "ältere Saga-Version" in hm and inv(LAST[0], f"ca-ygf{SUF}") == "ringing", LAST[0])
     r = start(M[g5a], g5a)
-    ok(f"5er mit Fritz (ueber der Mesh-Grenze): Knoten, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf')})",
-       r == H and inv(LAST[0], "ca-ygf") == "old" and not (LAST[0] or {}).get("horn_mesh"), LAST[0])
+    ok(f"5er mit Fritz (ueber der Mesh-Grenze): Knoten, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf' + SUF)})",
+       r == H and inv(LAST[0], f"ca-ygf{SUF}") == "old" and not (LAST[0] or {}).get("horn_mesh"), LAST[0])
     f2 = Fz.add_device()
     caps(Fz, CAPS, f2)
     age(Fz.dev, 40)
@@ -198,8 +201,8 @@ def run():
     ok(f"nur alte Geraete ohne Lebenszeichen (alle 2.4): zaehlen alle -> direkt ({r})", r == ("mesh", False), LAST[0])
     setting(horn_all=False, horn_all_y=True, horn_from=3)
     r = start(M[g3a], g3a)
-    ok(f"horn_all aus + horn_from 3: 3er mit Fritz ueber den Knoten wie bisher, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf')})",
-       r == H and inv(LAST[0], "ca-ygf") == "old", LAST[0])
+    ok(f"horn_all aus + horn_from 3: 3er mit Fritz ueber den Knoten wie bisher, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf' + SUF)})",
+       r == H and inv(LAST[0], f"ca-ygf{SUF}") == "old", LAST[0])
 
     # --- ohne Gjallarhorn (ab Werk): alles Mesh --------------------------------------------------------------------------
     setting(horn=False)
