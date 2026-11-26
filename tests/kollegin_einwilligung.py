@@ -656,6 +656,41 @@ def dns_case(ai_saga):
         so.getaddrinfo = real
     ok("2494: Pruefung mit fremden (ungespeicherten) Werten setzt keine Markierung",
        not auth.settings(fresh=True)["ai"].get("left_home"))
+    # 7) Pruefer prr1: Admin speichert genau zwischen Lesen und Schreiben der Markierung -> seine Fassung bleibt
+    from contextlib import contextmanager
+    real_db = ai_saga._db
+
+    @contextmanager
+    def racing_db():
+        with real_db() as cc:
+            class W:
+                def __enter__(self):
+                    cc.__enter__()
+                    return self
+
+                def __exit__(self, *a):
+                    return cc.__exit__(*a)
+
+                def execute(self, sql, *a):
+                    r = cc.execute(sql, *a)
+                    if sql.startswith("SELECT v FROM setting"):
+                        row = r.fetchone()
+                        setai(wait=False, url=f"https://{EP_HOST}/v9", left_home=None)    # Admin speichert dazwischen
+
+                        class R:
+                            def fetchone(self):
+                                return row
+                        return R()
+                    return r
+            yield W()
+    ai_saga._db = racing_db
+    try:
+        ai_saga.mark_left_home(auth.settings(fresh=True)["ai"], "8.8.8.8")
+    finally:
+        ai_saga._db = real_db
+    cur = auth.settings(fresh=True)["ai"]
+    ok("2494 (prr1): gleichzeitiges Speichern im Admin-Bereich wird von der Markierung nicht ueberschrieben",
+       cur.get("url") == f"https://{EP_HOST}/v9" and not cur.get("left_home"), (cur.get("url"), cur.get("left_home")))
 
 
 # --- Hilfen fuer tests/browser_kollegin_kennenlernen.js ---------------------------------------------------------------

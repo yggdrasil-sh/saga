@@ -210,8 +210,12 @@ def mark_left_home(c, ip):
                     or left_home(st):
                 return
             st["left_home"] = {"url": st.get("url"), "pinned": _pins(st), "ip": str(ip), "at": time.time()}
-            cc.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
+            # nur, wenn die Einstellung seit dem Lesen unveraendert ist: speichert der Admin gleichzeitig (neue Adresse,
+            # neuer Schluessel), bliebe sonst die alte Fassung stehen (Pruefer prr1)
+            n = cc.execute("UPDATE setting SET v=? WHERE k='ai' AND v=?", (json.dumps(st, ensure_ascii=False), r[0])).rowcount
         auth._settings_cache["v"] = None
+        if n != 1:
+            return
         print(f"ai: Modell-Endpunkt loest oeffentlich auf ({urlparse(c.get('url') or '').hostname}), festgehalten waren "
               "nur private IPs - Verbindung verweigert, Hinweis 'im Internet', Einwilligung neu", flush=True)
     except Exception as ex:  # noqa: BLE001 - Verbindung bleibt trotzdem verweigert
