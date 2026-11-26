@@ -189,8 +189,9 @@ def allowed(uid, c=None, conn=None):
 
 
 def host_of(c=None):
+    """Host[:Port] des Endpunkts - nie mit Zugangsdaten (user:pw@ aus einer alten/fremden Einstellung faellt weg)."""
     c = c or cfg()
-    return urlparse(c.get("url") or "").netloc
+    return urlparse(c.get("url") or "").netloc.rsplit("@", 1)[-1]
 
 
 # --- Persona (2.1): Name, Profilbild, Tonfall - im Admin-Bereich einstellbar -----------------------------------------
@@ -2042,7 +2043,7 @@ def api_ai_status(request: Request):
     return JSONResponse({"enabled": True, "host": host, "model": c.get("model"), "provider": c.get("provider"),
                          "quota": quota, "used": used, "quota_left": max(0, quota - used) if quota else None,
                          "history_allowed": bool(c.get("history", True)), "history": hist,
-                         "notice": t("Inhalte, die du dem Assistenten gibst, gehen an {host}.", host=host),
+                         "notice": t("Was du hier fragst, liest die KI auf {where}.", where=(saga_f.get("endpoint") or {}).get("label") or host),
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
                          "caps": caps_now, "sources": srcs, "units": units,

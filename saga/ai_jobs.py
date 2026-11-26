@@ -270,6 +270,9 @@ async def api_jobs_create(request: Request):
         allowed = await asyncio.to_thread(_allowed, uid)
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet.") if not allowed
                     else t("Aufträge gehen mit diesem Modell nicht – frag mich gern etwas."), 403)
+    from saga import ai_saga                                          # K-I (2269, K19/RT-36): Planen erst nach der Einwilligung
+    if not await asyncio.to_thread(ai_saga.consent_ok, uid):
+        return ai_saga.consent_needed()
     c, gerr = await ai._gate(uid)                                     # eine Anfrage je Person (Fragen-Spur)
     if gerr is not None:
         return gerr
@@ -352,6 +355,9 @@ async def api_jobs_plan(jid: str, request: Request):
         return _bad(t("ungültige Angabe"))
     if not await asyncio.to_thread(_allowed, uid):
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
+    from saga import ai_saga                                          # K-I (2269): Aendern ist Planen
+    if not await asyncio.to_thread(ai_saga.consent_ok, uid):
+        return ai_saga.consent_needed()
     st, out = await asyncio.to_thread(ai_plan.edit, i, uid, pv, b.get("edits"))
     return JSONResponse(out, status_code=st, headers=NO_STORE)
 
@@ -398,6 +404,9 @@ async def api_jobs_approve(jid: str, request: Request):
         return _bad(t("ungültige Angabe"))
     if not await asyncio.to_thread(_allowed, uid):
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
+    from saga import ai_saga                                          # K-I (2269): Freigeben erst nach der Einwilligung
+    if not await asyncio.to_thread(ai_saga.consent_ok, uid):
+        return ai_saga.consent_needed()
     st, out = await asyncio.to_thread(_approve, uid, i, pv, ph, _device(request))
     return JSONResponse(out, status_code=st, headers=NO_STORE)
 
