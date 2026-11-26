@@ -20,6 +20,15 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im KI-Bereich gibt es den Reiter „Aufträge“. Eine Bitte
+  („Erinnere mich Freitag an die Grillkohle“, „Trag auf Sommerfest ein, dass Ben die Kohle bringt“) wird zu einem
+  Plan: feste Schritte mit Klasse (rückgängig / nur löschbar / endgültig), „Ich lese dafür: …“ und den Knöpfen
+  „Passt, los · Ändern · Lieber nicht“. Erst nach dem OK trägt Saga ein (Aufgabe, Seite, Termin) und meldet sich mit
+  dem Ergebnis zurück – jede Änderung mit „Rückgängig“; wurde das Ziel inzwischen geändert, zeigt Saga die alte
+  Fassung, statt zu überschreiben. Liste in 4 Gruppen mit Detail und Protokoll. Admin › KI-Assistent › Aufträge:
+  Fähigkeitsstufe (Pläne / nur Rezepte / nur Antworten), Rezepte, Selbsttest. Pläne kommen als JSON nach Schema
+  (Ollama `format`, OpenAI `response_format`; sonst Zeilenformat), der Server prüft jeden Schritt. Schnittstelle:
+  docs/APP-API-KI.md Abschnitt 10; API-Token (`sga_`, MCP) erreichen `/api/ai/jobs` nie (403).
 - **Gjallarhorn ab Werk an – Anrufe laufen über den eingebauten Knoten** (2263-4, Entscheidung 24.11., Frage 3, nach der
   Messreihe 2263-9): Große Gruppenanrufe (bis 16 mit Video / 50 nur Ton über den eingebauten Knoten, 25 / 50 über einen
   Knoten mit UDP) sind jetzt Standard. **Beim Update:** Auch ein gespeichertes „aus“ von 2.5 gilt als an, solange der

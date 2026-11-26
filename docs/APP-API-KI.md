@@ -306,3 +306,51 @@ Kennzeichnungen und Fehlerarten bleiben Systemtext (i18n) – Apps bauen keine P
   (`detect_ident`) und antwortet immer aus der Vorlage; „im Auftrag von Anna“ nur mit gültigem `agent`-Beleg.
 - Web: Einstellungen › Saga (Anrede, ruhigere Lebhaftigkeit). Apps zeigen dieselben zwei Einstellungen über
   `/api/ai/prefs`; für Englisch gibt es keine Anrede-Unterscheidung (Auswahl darf dort entfallen).
+
+## 10. Aufträge (2.6, Bugs-DB 2267 K-B – Abbruchpunkt A)
+
+Eine Bitte wird zum **Plan**, der Plan nach dem OK der Person zum **Auftrag**. In 2.6-A gibt es nur Schritte zum Lesen
+und für **eigene Änderungen** (eintragen, Aufgabe, Termin – Werkzeuge der Registry `saga/tools.py` mit `kollegin=True`
+und Klasse `read`/`own`); Schritte nach außen (Nachrichten, `act`, `outbox`, `inbox`) kommen später (K-C/K-E). Das
+Modell schlägt nur vor – was gilt, prüft der Server (Registry, Rechte, Texte, Seiten).
+
+**Fähigkeit:** `GET /api/ai/status` hängt `"jobs": true|false` und `"level": "plans"|"recipes"|"answers"` hinten an
+(Fähigkeitsstufe, die der Admin einstellt; `answers` = keine Aufträge). Ältere Server senden die Felder nicht.
+
+**Schlüssel:** Sitzung (Web; Apps nach `/app/resume` mit `hkd_`) mit Kopf `X-Saga: 1`. Der Widget-Schlüssel `hk_` darf
+nur `GET /api/ai/jobs`. Jeder andere `Authorization: Bearer …` (API-Token `sga_`, MCP, OAuth) bekommt auf **allen**
+Pfaden unter `/api/ai/jobs` `403`, nie `2xx` (RT-42) – auch auf Pfaden, die es noch nicht gibt.
+
+| Endpunkt | Zweck |
+|---|---|
+| `POST /api/ai/jobs` (SSE) `{text, context?: {note}, choice?, source?}` | Auftrag geben. Ereignisse: `status {phase, text}` (zuerst), dann genau eines von `plan`, `ask {question, choices[]}`, `refuse {zug, case, text, alternative?}`, `error {status, error}` |
+| `POST /api/ai/jobs` `{recipe: "aufgabe", fields: {text}}` | Rezept direkt, ohne Modell (Knopf „Als Aufgabe anlegen“ aus `refuse.alternative`). Nur die Kennung eines eingeschalteten Rezepts – ein Rezept-Objekt ist 400 |
+| `GET /api/ai/jobs[?group=wartet_auf_dich|laeuft|fertig|nicht_geklappt]` | Liste: `{groups: [{key, label, items: [{id, title, state, state_text, sub, group, line, created, updated, plan_v}]}], counts}` – immer die 4 Gruppen in dieser Reihenfolge, „Fertig“ = letzte 30 Tage |
+| `GET /api/ai/jobs/{id}` | Detail: `state`/`state_text` (genaues Wort), `reason_text`, `plan` (wie Ereignis `plan`), `approved {at, device}`, `changes[]`, `report` (bei Erledigt/Zurückgenommen), `events[] {at, kind, text}` (Protokoll), `actions[]` |
+| `PUT /api/ai/jobs/{id}/plan` `{plan_v, edits: [{n, args}]}` | „Ändern“: nur die Felder aus `steps[].edit`. Antwort = neuer Plan (`plan_v`+1, neuer `plan_hash`, `edited: true`); die alte Freigabe gilt nicht mehr. 409 = veraltet, 400 = Text mit Adresse/Erwähnung oder festes Feld |
+| `POST /api/ai/jobs/{id}/approve` `{plan_v, plan_hash}` | „Passt, los“ → `{state: "laeuft", say}`. 409 `code: stale` (Plan geändert) bzw. `code: state` (schon freigegeben/abgebrochen). Zweimal gleichzeitig = genau eine Freigabe |
+| `POST /api/ai/jobs/{id}/cancel` | „Lieber nicht“ / „Auftrag abbrechen“ → `{state: "abgebrochen", text}` |
+| `POST /api/ai/jobs/{id}/undo` `{change?}` | Rückgängig – ganz oder eine Änderung. 409 `{code: "changed", version_url}` = das Ziel wurde seitdem geändert (nie still überschreiben) |
+| `GET /api/ai/jobs/{id}/changes/{c}/before` | „Alte Fassung holen“: `{target, title, text}` (Klartext 30 Tage nach Ende) |
+
+**Plan** (Ereignis `plan` und `detail.plan`): `{job, plan_v, plan_hash, title, state, steps[], read[], read_text, wording[],
+classes[], say, recipe}`; je Schritt `{n, tool, klass (read|own), kind_text, undo_class (undo|delete_only|final, bei read
+null), class_text, text, wording, edit[], fields{}}`. `text`, `kind_text`, `class_text`, `read_text` („Ich lese dafür: …“)
+sind Systemtext in der Sprache der Anfrage – Apps zeigen sie unverändert. `wording` ist der wörtliche Text eines Schritts
+(KI-Markdown-Teilmenge, Abschnitt 4). Der Plan ist ein Vertrag: Freigabe nur mit genau diesem `plan_v` + `plan_hash`.
+
+**Zustände** (K2): `wartet_ok` „Wartet auf dein OK“, `laeuft` „Läuft“, `wartet_dich` „Wartet auf dich“, `erledigt`
+„Erledigt“, `fehlgeschlagen` „Hat nicht geklappt“, `abgebrochen` „Abgebrochen“, `zurueckgenommen` „Zurückgenommen“; nach
+außen 4 Gruppen. Wörter immer aus `state_text`/`label` (Systemtext), nie selbst übersetzen.
+
+**Rückmeldung** (`detail.report`): `{text, lines: [{change, text, undone, can_undo}]}` – Ergebnis zuerst, je Änderung eine
+Zeile mit Knopf „Rückgängig“ (≥ 44 pt). Bei `undo_class` `delete_only` vor dem Löschen nachfragen. `changes[].why`
+`changed` + `version_url` → „Das wurde seitdem geändert.“ + „Alte Fassung ansehen“.
+
+**Live:** `ai.job.changed {id, state, sub, plan_v}` an die Besitzerin (nur Kennungen) – Liste/Detail neu laden.
+
+**Melden:** `POST /api/ai/report {where: "job", page: <auftrag>, reason, text?}` (wie Abschnitt 6).
+
+**Admin** (Admin-Port): Admin › KI-Assistent › Aufträge – Fähigkeitsstufe, eingebaute Rezepte an/aus, eigene Rezepte
+(JSON, nur Werkzeuge `read`/`own`), Knopf „Selbsttest“ = `POST /api/ai/selftest` (Admin-Sitzung + `X-CSRF-Token`) →
+`{level, valid, total, text: "Vorschlag: Stufe „…“ (x von y Plänen gültig)", note, cases}` – nur ein Vorschlag.

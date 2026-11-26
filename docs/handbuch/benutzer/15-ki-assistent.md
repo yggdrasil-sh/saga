@@ -137,6 +137,25 @@ Am Anfang ist der Verlauf **aus**.
 
 ---
 
+### 7. Aufträge geben (ab 2.6)
+
+Im Reiter **Aufträge** sagst du der KI, was sie für dich erledigen soll – zum Beispiel „Erinnere mich Freitag an die
+Grillkohle“ oder „Trag auf der Seite Sommerfest ein, dass Ben die Kohle mitbringt“. In 2.6 legt sie Aufgaben und
+Termine an und trägt in deine Seiten ein; Nachrichten an andere schreibt sie noch nicht.
+
+1. Schreib deinen Auftrag ins Feld und drück ⏎ (oder **Auftrag geben**).
+2. Die KI zeigt einen **Plan**: die Schritte, ob sich jeder **rückgängig** machen lässt (oder **nur löschbar** ist) und
+   die Zeile **„Ich lese dafür: …“**. Noch ist nichts passiert.
+3. **Passt, los** – erst jetzt trägt sie ein. **Ändern** – Text oder Datum anpassen (danach neu freigeben).
+   **Lieber nicht** – der Plan verfällt, nichts ist passiert.
+4. Danach kommt die **Rückmeldung**: das Ergebnis und je Änderung ein Knopf **Rückgängig**. Hast du die Seite
+   inzwischen selbst geändert, überschreibt Saga nichts, sondern zeigt dir die **alte Fassung**.
+
+Alle Aufträge stehen in vier Gruppen: **Wartet auf dich**, **Läuft**, **Fertig**, **Hat nicht geklappt**. Ein Klick zeigt
+den genauen Stand, den Plan, was die KI gelesen hat, und ein Protokoll. Weiß die KI nicht, welche Seite du meinst,
+fragt sie einmal nach. Kann sie etwas nicht (z. B. im Onlineshop bestellen), sagt sie es und bietet **Als Aufgabe
+anlegen** an.
+
 ## Beispiel aus dem Alltag
 
 **Anna plant das Sommerfest.** Anna hat in den letzten Wochen mehrere Seiten zum Sommerfest geschrieben und will

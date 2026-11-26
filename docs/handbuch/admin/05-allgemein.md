@@ -143,6 +143,15 @@ Klick im Menü auf **KI-Assistent**.
 
 Die Felder im Detail: Anleitung, Abschnitt 9, „KI-Assistent (optional)“.
 
+**Aufträge** (ab 2.6, gleiche Seite unten): Hier stellst du ein, wie viel das Modell beim Planen selbst entscheiden
+darf – **Pläne** (große Modelle planen frei aus den erlaubten Werkzeugen), **nur Rezepte** (kleine Modelle wählen nur
+ein Rezept und füllen die Lücken) oder **nur Antworten** (keine Aufträge). **Selbsttest** schickt eine kleine
+Stichprobe an das Modell und schlägt eine Stufe vor, z. B. „Vorschlag: Stufe „nur Rezepte“ (6 von 6 Plänen gültig)“ –
+übernehmen musst du sie selbst. Sicherheit setzt der Server durch, unabhängig vom Modell: Jeder Plan braucht das OK der
+Person, und Saga prüft jeden Schritt. Die drei eingebauten Rezepte (Aufgabe anlegen, In eine Seite eintragen, Termin
+eintragen) lassen sich abschalten; eigene Rezepte trägst du als JSON ein – nur mit Werkzeugen zum Lesen und für eigene
+Änderungen. Rezepte kommen nur von hier, nie aus Seiten, Vorlagen oder anderen Servern.
+
 ### 8. Eigene Seite: Mitteilungen
 
 Klick im Menü auf **Mitteilungen**.
