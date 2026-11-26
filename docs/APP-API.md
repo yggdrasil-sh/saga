@@ -2117,6 +2117,12 @@ eine später hinzukommende Verbindung bekommt den laufenden Bildschirm).
 Personen** im Anruf sind (Person = `who`, ohne `who` das Gerät; eigene Geräte sind eine Person, Begleitgeräte mit
 `role: companion` zählen nie als weitere Person) – gleich für Mesh, 1:1 über den Knoten und Gruppen. Sprecher-Erkennung,
 Bühne, Symbol und Markierung in der Teilnehmerliste bleiben. Vektoren: `tests/meeting_vectors.json` → `speakRing`.
+**Eigener Sprechring (2.6, Bugs-DB 2472):** die eigene Kachel bekommt den Ring nach derselben Regel auf allen Plattformen
+und Wegen (Mesh und Knoten): eigener Pegel (`media-source` des Ton-Senders, `audioLevel`) über 0,03 → an, 600 ms Nachlauf,
+Mikrofon aus → sofort aus, ein Messwert älter als 1,5 s zählt nicht. Den eigenen Pegel nur messen, solange das eigene Bild
+eine Kachel ist (nicht schwebend), im Takt der Pegelmessung (Web 330 ms, Apps 500 ms); die eigene Stimme geht nicht in
+die Sprecher-Hysterese (Bühne). Sichtbar wie alle Ringe erst ab drei Personen. Vektoren: `tests/meeting_vectors.json` →
+`selfRing`.
 
 ### Beispiele
 

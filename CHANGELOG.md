@@ -247,6 +247,16 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Behoben
 
+- **Eigener Sprechring überall gleich** (Bugs-DB 2472, Entscheidung 26.11., Web inkl. Mac-Hülle/Linux): Spricht man selbst,
+  bekommt jetzt auch im direkten Gruppenanruf (Mesh) die eigene Kachel den grünen Ring – bisher nur über den Knoten
+  (2458). Gleiche Regel auf allen Plattformen und Wegen (`SagaMeeting.SelfRing`, neue gemeinsame Testvektoren `selfRing`
+  in `tests/meeting_vectors.json`, dieselben Fälle prüfen iOS und Android): eigener Pegel über 0,03, 600 ms Nachlauf für
+  Sprechpausen, stumm sofort aus. Sichtbar ist der Ring wie bei allen Kacheln nur ab drei Personen (2125, im 1:1 nie).
+  Gemessen wird der eigene Pegel (`getStats` am Ton-Sender) nur, solange das eigene Bild eine Kachel ist (nicht schwebend),
+  im Takt der Pegel-Schleife (330 ms); die eigene Stimme bewegt die Bühne weiterhin nie. `HKCalls.room().meshSelf` und
+  `horn().selfN` zeigen Messungen für Tests. Neue Fälle in `tests/browser_horn_pegel.js`: eigener Ring im Mesh zu dritt,
+  zu zweit kein eigener Ring, Messtakt (Mesh und Knoten mindestens 4 Messungen in 2 s), stumm sofort aus, zu zweit über
+  den Knoten ohne eigene Kachel keine Messung.
 - **Sprechring: stumm heißt sofort aus** (Bugs-DB 2459, Nacharbeit zu 2125/2458, Web inkl. Mac-Hülle/Linux): Schaltete
   jemand über den Knoten stumm, blieb der Ring an seiner Kachel bei den anderen noch bis zu 600 ms (Nachlauf für
   Sprechpausen); die eigene Kachel ging erst im nächsten Takt aus. Jetzt ist der Ring mit dem Stummschalten weg – wie im
