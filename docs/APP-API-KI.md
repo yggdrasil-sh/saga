@@ -266,3 +266,43 @@ Was der Assistent liest, wählt der Server an einer Stelle (`saga/ai_ctx.py`) un
 - **Stellgröße bleibt das Kontingent in Anfragen:** Ob eine Frage geht, entscheiden weiter `quota`/`used`/`quota_left`
   (auch in `done` und `error`). Einheiten werden für Fragen nur gemessen – eine App zeigt sie höchstens klein an und
   sperrt nie danach. Grenzen in Einheiten gelten nur für Aufträge und Ideen der Kollegin (ab K-B).
+
+## 9. Bausteine, Persona-Form und Anrede (2.6, Bugs-DB 2268 K-H)
+
+Was die Kollegin in Karten, Mitteilungen (`detail`) und beim Vorlesen sagt, entsteht auf dem Server aus **Bausteinen**:
+festen Satzrahmen je Gesprächszug in de/en/es/ru/th (`saga/say/<lang>.json`), deren Lücken der Server füllt (Plan,
+Protokoll, Kontakte). Das Modell füllt höchstens einzelne Lücken (`idea.observation`, `ask.question` nur bei großen
+Modellen, `draft.text`, `report.followup`) als JSON nach Schema; jede Modell-Lücke läuft durch den Stilprüfer (Regeln
+P1–P13) und fällt bei einem Verstoß auf den neutralen Rahmen **ohne** Modelltext zurück. Zustandswörter, Knöpfe,
+Kennzeichnungen und Fehlerarten bleiben Systemtext (i18n) – Apps bauen keine Persona-Sätze selbst.
+
+- **Server-Schnittstelle** (für Planer/Aufträge): `saga.ai_say.say(zug, fields, lang, persona=None) -> str`. Züge:
+  `intro greet idea ask plan draft start wait seen report fail oops cant undo quiet read ident hedge`; Kanal über
+  `fields.channel` = `card` (Standard) | `push` (≤ 100 Grapheme, ohne Folgeidee; nur `ask start wait seen report fail oops undo ident`, alle anderen → `""`, Ideen nie per Mitteilung) |
+  `voice` (ohne `[n]`, höchstens 3 Sätze, dann „Soll ich weiterlesen?“). Felder je Zug: Kopf von `saga/ai_say.py`
+  (`ZUEGE`). Berichte: `report_from_log(c, job_id, lang)` – nur aus `job_change` (nicht zurückgenommen), Ereignis
+  `job_event` `verdict {value: yes|no|unclear}`, Fristablauf (`job_step.result.timeout`) und `job.reason`; Namen und
+  Gegenstand für den Ergebnissatz aus `job.plan.say {recipe, person, item, deadline}`. Titel nur, wenn die Person sie
+  jetzt sehen darf, sonst „Eine Seite geändert“.
+- **Persona (Admin › KI › Persona):** Name (vorhandenes Feld, leer = „Saga KI“/„Saga AI“ …), Bild, Tonfall wie bisher,
+  neu **Sprachform** `sie` (Standard, D3) | `er` | `neutral` (wirkt auf RU-Vergangenheit, TH-Partikel ค่ะ/คะ bzw. ครับ,
+  ES-Adjektive), **Lebhaftigkeit** `sachlich` | `warm` (Standard) | `verspielt`, **Anrede (Standard)** `du` | `sie`.
+  Gespeichert in `ai_persona {name, tone, form, lively, salutation}`; `GET /api/ai/persona` bleibt unverändert.
+- **`GET /api/ai/status` → `"style": {"label": "Marin · KI", "form": "sie", "lively": "warm", "salutation": "du"}`**
+  – wirksam für diese Person, `label` in der Sprache der Anfrage (Namensregel M1: die Persona spricht, „Saga“ ist
+  Ort/App/Kennzeichen; ohne eigenen Namen nur „Saga KI“, keine doppelte Marke). Steht nach `units`; ältere Felder
+  unverändert, ältere Server senden es nicht.
+- **`GET /api/ai/prefs`** (Sitzung oder Geräteschlüssel, `X-Saga: 1`) → `{"salutation": null|"du"|"sie", "lively":
+  null|…, "effective": {salutation, lively}, "default": {salutation, lively}, "choices": {"salutation": ["du","sie"],
+  "lively": [… bis zur Stufe des Admins]}}`; KI für die Person aus → `{"enabled": false}`.
+  **`PUT /api/ai/prefs`** `{"salutation"?: "du"|"sie"|null, "lively"?: …|null}` – nur genannte Felder, `null` = Standard
+  des Servers; lebhafter als der Admin oder unbekannter Wert → 400; KI aus → 403. Unbekannte Felder werden ignoriert:
+  **andere Pakete ergänzen hier später ihre Felder** (Ideen-Stufe, „nie Inhalt in Mitteilungen“, Diktat „nur Gerät“);
+  gespeichert wird je Person ein JSON in `user_kv` `ai_prefs`, fremde Schlüssel darin bleiben beim Speichern erhalten.
+- **Anrede in Entwürfen** (Nachricht in deinem Namen) kommt **nie** aus dieser Einstellung und nie aus dem Chatverlauf
+  (M10, RT-41), sondern aus dem Kontaktfeld (`contact.form` informal/formal, Grußform `contact.salutation`) oder als
+  `du`/`sie` vom Gerät; unbekannt = Sie. Entwürfe sind kurz, ohne Unterschrift und ohne „Danke!“-Bot-Ton (M9).
+- **Identitätsfragen** („Bist du ein Mensch?“, „Bist du Anna?“, „Hast du Gefühle?“) erkennt der Server ohne Modell
+  (`detect_ident`) und antwortet immer aus der Vorlage; „im Auftrag von Anna“ nur mit gültigem `agent`-Beleg.
+- Web: Einstellungen › Saga (Anrede, ruhigere Lebhaftigkeit). Apps zeigen dieselben zwei Einstellungen über
+  `/api/ai/prefs`; für Englisch gibt es keine Anrede-Unterscheidung (Auswahl darf dort entfallen).

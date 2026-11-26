@@ -170,6 +170,14 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   „Annehmen“ – ohne Klingelton und Titel-Blinken; telefoniert man gerade in einem anderen Tab oder auf einem anderen
   Gerät, fehlt „Annehmen“ (Hinweis statt Knopf, sonst entstünden zwei Gespräche). Die anrufende Seite sieht „Klopft an …“ statt „Klingelt …“ und nach
   dem zweiten Versuch den Hinweis „… du hast schon angeklopft.“ (`again`). Test: `tests/browser_anklopfen.js`.
+- **Kollegin: Bausteine, Stilprüfer und Persona-Form** (Bugs-DB 2268 K-H, Server + Web/Admin): `saga/ai_say.py` baut die
+  Sätze der Kollegin aus festen Satzrahmen in Deutsch, Englisch, Spanisch, Russisch und Thai (`saga/say/`); das Modell
+  füllt höchstens einzelne Lücken, ein regelbasierter Stilprüfer (P1–P13: Länge, Sprache, Anrede, Form, keine
+  Gefühls- oder „Ich bin ein Mensch“-Behauptungen, keine Tat ohne Protokoll, kein Vorwurf, Fakten nur aus dem Material,
+  Entwürfe ohne Unterschrift) fällt sonst auf den neutralen Satz zurück. Rückmeldungen entstehen nur aus dem
+  Auftragsprotokoll. Admin › KI › Persona: neu Sprachform (sie/er/neutral, Standard sie), Lebhaftigkeit und
+  Standard-Anrede; Einstellungen › Saga: Anrede du/Sie und eine ruhigere Stufe je Person. API: `GET/PUT /api/ai/prefs`,
+  `style` in `/api/ai/status` (docs/APP-API-KI.md §9). Anrede und Stil kommen nie aus dem Chatverlauf (RT-41).
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
   Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.
