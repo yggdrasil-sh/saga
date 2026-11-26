@@ -208,10 +208,19 @@ def subs(c, uid):
     return c.execute("SELECT db_id, scope FROM task_source WHERE uid=? ORDER BY added, db_id LIMIT ?", (uid, SRC_MAX)).fetchall()
 
 
-def _rows(c, owner, db_id, m, scope, me):
-    """Aktive Zeilen der Quelle (nicht geloescht/archiviert, keine Vorlagen); 'assigned': nur mit me in der Personen-Spalte."""
-    sql = "SELECT id, title, props, created FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL AND is_template=0"
-    args = [owner, db_id]
+def _rows(c, owner, db_id, m, scope, me, until=None):
+    """Aktive Zeilen der Quelle (nicht geloescht/archiviert, keine Vorlagen); 'assigned': nur mit me in der Personen-Spalte.
+    until (2.6 K-D 2271, Tageszeile): nur Zeilen mit Faelligkeit, deren Beginn <= until (JJJJ-MM-TT) - und statt aller
+    Eigenschaften nur Erledigt/Faellig/Prioritaet (in Postgres ausgelesen, spart das JSON der ganzen Zeile)."""
+    if until is not None and m.due is not None:
+        keys = [p["id"] for p in (m.dp, m.due, m.prio) if p]
+        sel = "jsonb_build_object(" + ", ".join("CAST(? AS TEXT), props::jsonb -> ?" for _ in keys) + ")::text"
+        sql = (f"SELECT id, title, {sel}, created FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL "
+               "AND is_template=0 AND substr(props::jsonb ->> ?, 1, 10) <= ?")
+        args = [x for k in keys for x in (k, k)] + [owner, db_id, m.due["id"], until]
+    else:
+        sql = "SELECT id, title, props, created FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL AND is_template=0"
+        args = [owner, db_id]
     if scope == "assigned":
         if m.assignee is None:
             return []
@@ -220,15 +229,18 @@ def _rows(c, owner, db_id, m, scope, me):
     return c.execute(sql + " ORDER BY sort NULLS FIRST, created, id LIMIT ?", (*args, SCAN_MAX)).fetchall()
 
 
-def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=True):
+def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=True, until=None):
     """Zusammengefuehrte Liste fuer uid -> (items, sources, people). today: date in der Zeitzone der Anfrage.
-    clean: Abos ohne Zugriff entfernen (nur in einer schreibenden Transaktion)."""
+    clean: Abos ohne Zugriff entfernen (nur in einer schreibenden Transaktion). until (JJJJ-MM-TT, Tageszeile K-D 2271): nur
+    Eintraege mit Faelligkeit bis until (Zeilen ohne Datums-Zuordnung fallen weg), ohne Personen (assignees/people)."""
     acc = acc or Access(c, uid)
     t0 = today.isoformat()
     items, sources, canons, gone = [], [], [], []
     if with_inbox:
-        for tid, text, due, prio, rep in c.execute("SELECT id, text, due, prio, repeat FROM task WHERE uid=? AND done=0 "
-                                                   "ORDER BY prio, due IS NULL, due, created", (uid,)).fetchall():
+        lim = " AND due IS NOT NULL AND due <= ?" if until is not None else ""
+        for tid, text, due, prio, rep in c.execute("SELECT id, text, due, prio, repeat FROM task WHERE uid=? AND done=0" + lim +
+                                                   " ORDER BY prio, due IS NULL, due, created",
+                                                   (uid, until) if until is not None else (uid,)).fetchall():
             items.append({"key": f"t:{tid}", "kind": "task", "id": tid, "text": text, "due": due, "prio": prio, "repeat": rep,
                           "done": False, "overdue": bool(due and due < t0)})
     for db_id, scope in subs(c, uid) if not is_remote(uid) else []:
@@ -250,7 +262,16 @@ def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=
             src["no_assignee"] = True
         edit = RANK.get(role, 0) >= RANK["edit"]
         n = 0
-        for rid, rtitle, raw, _created in _rows(c, owner, db_id, m, scope, uid):
+        if until is not None and m.due is None:
+            continue
+        rows = None
+        if until is not None:
+            try:
+                with c.savepoint():              # Eigenschaften ohne gueltiges JSON: dann der gewohnte Weg
+                    rows = _rows(c, owner, db_id, m, scope, uid, until)
+            except Exception:  # noqa: BLE001
+                rows = None
+        for rid, rtitle, raw, _created in rows if rows is not None else _rows(c, owner, db_id, m, scope, uid):
             pv = _json_load(raw, {})
             if not isinstance(pv, dict) or (open_only and m.is_done(pv)):
                 continue
@@ -271,7 +292,7 @@ def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=
                     it["overdue"] = dp[2] < t0
             if m.prio is not None:
                 it["prio"] = m.prio_of.get(pv.get(m.prio["id"]), 2)
-            if m.assignee is not None:
+            if m.assignee is not None and until is None:
                 av = [x for x in (pv.get(m.assignee["id"]) or []) if isinstance(x, str)] if isinstance(pv.get(m.assignee["id"]), list) else []
                 canons.extend(av)
                 it["assignees"] = [people.to_ref(c, x, uid) for x in av]

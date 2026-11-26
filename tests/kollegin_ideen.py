@@ -514,6 +514,15 @@ def server():
         tg = [p["target"] for p in (d.get("line") or {}).get("parts") or ()]
         ok("normal: Ziele = Termine des Tages, die wichtigste Aufgabe, die Zeile der Quelle",
            len(tg) == 3 and tg[0] == {"type": "events", "date": "2026-07-07"} and tg[1]["type"] == "task" and tg[2] == {"type": "row", "id": row}, tg)
+        from saga import tasksrc
+        from datetime import date as _date
+        with connect() as c:
+            full = tasksrc.collect(c, A, _date(2026, 7, 7), BER, clean=False)[0]
+            lean = tasksrc.collect(c, A, _date(2026, 7, 7), BER, clean=False, until="2026-07-08")[0]
+        want_k = [x["key"] for x in full if x.get("due") and x["due"] <= "2026-07-08"]
+        ok(f"tasksrc.collect(until): dieselben Eintraege wie der volle Weg, nur mit Datum bis until ({len(lean)}/{len(full)})",
+           [x["key"] for x in lean] == want_k and all(x["overdue"] == y["overdue"] for x, y in zip(lean, [f for f in full if f["key"] in want_k])),
+           ([x["key"] for x in lean], want_k))
         st, d0, _ = get(tz=None)
         ok("Live: v im Ereignis = GET in Konto-Sprache und -Zone", ev and d0.get("v") == ev.get("v"), (ev, d0.get("v")))
         ok(f"Kalender einmal abgefragt, im Hintergrund - auch bei mehreren kalten Abrufen ({Dav.reports})", Dav.reports == 1, Dav.reports)

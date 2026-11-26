@@ -173,7 +173,7 @@ def _event_facts(events, loc):
 def _task_facts(c, uid, D, tz):
     """Offene Aufgaben (Eingang + Aufgabenquellen, Rechte wie die Aufgabenliste) -> over / due."""
     from saga import tasksrc
-    items, _src, _ppl = tasksrc.collect(c, uid, D, tz, clean=False)
+    items, _src, _ppl = tasksrc.collect(c, uid, D, tz, clean=False, until=(D + timedelta(days=1)).isoformat())   # schlanker Weg
     d0 = D.isoformat()
     out = []
     for it in items:
