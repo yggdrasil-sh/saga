@@ -139,6 +139,7 @@
       api('PUT', '/api/ai/jobs/' + cur.job + '/plan', { plan_v: cur.plan_v, edits: edits }).then(function (d) {
         cur = d; editing = false; inputs = {}; paint();
         say(opts.live, T('geändert – bitte neu freigeben'));
+        if (opts.onEdit) opts.onEdit(cur.job);
       }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
     }
     function approve(err, go) {
@@ -268,7 +269,7 @@
       run = post(body, function (ev, d) {
         if (ev === 'status') { if (d && d.text) dots.textContent = d.text; return; }
         stage.textContent = '';
-        if (ev === 'plan') { stage.appendChild(planCard(d, { live: live, onDone: onDone })); say(live, T('Plan bereit – wartet auf dein OK')); ta.value = ''; refresh(); }
+        if (ev === 'plan') { stage.appendChild(planCard(d, { live: live, onDone: onDone, onEdit: refresh })); say(live, T('Plan bereit – wartet auf dein OK')); ta.value = ''; refresh(); }
         else if (ev === 'ask') stage.appendChild(askCard(d, text));
         else if (ev === 'refuse') stage.appendChild(refuseCard(d, text));
         else { var e = el('div', 'kj-card'); e.appendChild(head('')); var p = el('p', 'kj-err', (d && d.error) || T('Das hat nicht geklappt.')); p.setAttribute('role', 'alert'); e.appendChild(p); stage.appendChild(e); }
