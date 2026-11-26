@@ -198,9 +198,11 @@ def _neutral(zug, f):
 
 _LEVEL_SAY = {"plans": "plaene", "recipes": "rezepte", "answers": "antworten"}
 # eigene Faelle -> (Zug, Felder) fuer saga.ai_say (Rolle kh): Zugnamen aus Persona §2
+# down (Planen gerade ohne Modell) und level (Stufe "nur Antworten") bleiben Systemtext: ai_say kennt dafuer keinen
+# passenden Satz (fail.modell meint "zu lange nicht erreichbar" bei laufenden Auftraegen)
 _SAY_MAP = {"start": ("start", {}), "cant": ("cant", {"alt": "add_task"}), "invalid": ("cant", {"alt": "add_task"}),
-            "level": ("cant", {}), "down": ("fail", {"reason": "modell"}), "budget": ("fail", {"reason": "budget"}),
-            "fail": ("fail", {"reason": "other"})}
+            "budget": ("fail", {"reason": "budget"}), "fail": ("fail", {"reason": "other"})}
+_SAY_OWN = ("plan", "ask", "down", "level")
 
 
 def _ai_say():
@@ -225,7 +227,7 @@ def say(zug, fields=None, lang=None, uid=None, job_id=None):
     dem Protokoll (ai_say.report_from_log). Eigene Faelle (invalid/down/budget/level) gehen als Zug cant/fail (_SAY_MAP).
     plan und ask bleiben Systemtext bzw. Frage des Modells: die Plan-Karte zeigt die Schritte selbst."""
     m = _ai_say()
-    if m is not None and zug not in ("plan", "ask"):
+    if m is not None and zug not in _SAY_OWN:
         lg = lang or i18n.get_lang()
         try:
             p = _persona(m, uid)
