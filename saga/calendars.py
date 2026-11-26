@@ -324,6 +324,71 @@ def _cal_collect(uid, d0, d1, fresh=False):
     return out, errors
 
 
+# --- Nur aus dem Speicher (2.6, Bugs-DB 2271 K-D: Tageszeile) -----------------------------------------------------
+_loaded_hooks = []                                       # fn(uid) - nach einem Nachladen durch cached()
+_warming, _warmed = set(), {}                            # (uid, start, end) laeuft bzw. -> Zeitpunkt des letzten Nachladens
+
+
+def on_loaded(fn):
+    """Haken nach dem Nachladen fuer cached(): fn(uid) (aus einem Hintergrund-Thread)."""
+    if fn not in _loaded_hooks:
+        _loaded_hooks.append(fn)
+
+
+def _warm(uid, d0, d1):
+    key = (uid, d0.isoformat(), d1.isoformat())
+    if key in _warming:
+        return
+    _warming.add(key)
+
+    def run():
+        try:
+            _cal_collect(uid, d0, d1)
+        except Exception as ex:  # noqa: BLE001 - Kalender gerade nicht lesbar: dann eben ohne Termine
+            print(f"calendars: Nachladen {type(ex).__name__}: {ex}", flush=True)
+        finally:
+            _warmed[key] = time.time()
+            if len(_warmed) > 2000:
+                _warmed.clear()
+            _warming.discard(key)
+        for fn in list(_loaded_hooks):
+            try:
+                fn(uid)
+            except Exception as ex:  # noqa: BLE001
+                print(f"calendars: Haken {type(ex).__name__}: {ex}", flush=True)
+    import threading
+    threading.Thread(target=run, name="cal-warm", daemon=True).start()
+
+
+def cached(uid, d0, d1):
+    """Termine aller angezeigten Kalender in [d0, d1) NUR aus dem Speicher (kein Netz in der Anfrage) -> (events, cold).
+    cold: mindestens ein Kalender fehlt im Speicher (oder ist aelter als CAL_STALE_S) - dann laedt ein Hintergrund-Thread
+    ueber _cal_collect nach (gleicher Schluessel wie Heute-Leiste/Widget) und ruft danach die Haken (on_loaded). Ist ein
+    Nachladen fuer diesen Zeitraum vor weniger als CAL_CACHE_S fertig geworden (Kalender z. B. nicht erreichbar), gilt der
+    Stand als bekannt (cold False, Termine soweit da). Ohne Kalender: ([], False)."""
+    with _db() as c:
+        rows = c.execute("SELECT id, calendars FROM cal_account WHERE uid=? ORDER BY id", (uid,)).fetchall()
+    start, end, now = d0.isoformat(), d1.isoformat(), time.time()
+    out, cold = [], False
+    for aid, cals in rows:
+        for cal in _json_load(cals, []):
+            if not isinstance(cal, dict) or not cal.get("show") or not cal.get("href"):
+                continue
+            hit = _cal_cache.get((uid, aid, cal["href"], start, end))
+            if not hit or now - hit[0] >= CAL_STALE_S:
+                cold = True
+                continue
+            out += [dict(e, account=aid, cal=cal["href"], calendar=cal.get("name") or "", color=cal.get("color")) for e in hit[1]]
+    if cold:
+        done = _warmed.get((uid, start, end))
+        if done is not None and now - done < CAL_CACHE_S:
+            cold = False
+        else:
+            _warm(uid, d0, d1)
+    out.sort(key=lambda x: x["start"])
+    return out, cold
+
+
 @router.get("/api/calendar/events")
 def api_cal_events(request: Request, start: str = "", end: str = "", fresh: int = 0):
     """Termine aller angezeigten Kalender im Zeitraum [start, end) (Datum JJJJ-MM-TT, max. 62 Tage)."""
