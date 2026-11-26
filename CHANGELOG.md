@@ -312,6 +312,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Person lesen darf. Schnittstelle für die Apps: docs/APP-API-KI.md Abschnitt 11.7.
 
 ### Behoben
+- **Ort „Saga“ auf breiten Fenstern (2541):** Gespräch und Aufträge stehen mittig im Platz neben der Seitenleiste statt
+  als schmale Spalte am linken Rand – mit und ohne Seitenleiste, beim Ein-/Ausklappen gleitend; Leiste oben und
+  Eingabezeile bleiben so breit wie der Verlauf. Die Spaltenbreite bleibt (gut lesbare Zeilen), schmal unverändert.
+- **Quellen unter Saga-Antworten (2542):** Unter einer Antwort stehen nur noch die Seiten, die sie mit [n] belegt –
+  „nichts gefunden“ kommt ganz ohne Quellenzeile (vorher alle gelesenen Seiten, z. B. 12 bei „What's coming up this
+  week?“). „aus:“ zeigt höchstens drei, der Rest steht hinter „{n} weitere“ (aufklappbar, auch per Tastatur und mit
+  Bildschirmleser). Apps: zweites Ereignis `sources` vor `done` (docs/APP-API-KI.md 11.3).
 - **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
   der Gegenstand); ✓ in der Auftragsliste nur bei „Erledigt“ (Abgebrochen –, Zurückgenommen ↶); per Knopf eingetragene
   Aufträge heißen nach der ersten Zeile statt „Auftrag“; im Protokoll steht „Freigegeben“ vor „Läuft“; ein schon

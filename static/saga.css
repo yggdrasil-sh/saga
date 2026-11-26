@@ -35,8 +35,18 @@ body.heute-page .sg-intro-slot{margin:1.4rem 0 0}
 .sg-intro-where .sg-info-b{vertical-align:middle;margin:-.5rem 0}     /* 2503: Ziel bleibt gross, die Zeile waechst nicht */
 
 /* Ort "Saga" (/saga): schmal = Vollbild */
-body.saga-page>main.sg{display:flex;flex-direction:column;gap:.9rem;max-width:52rem;padding:1.4rem 2.2rem 2rem;min-height:calc(100vh - 3.4rem);
+body.saga-page{--sg-w:52rem}
+body.saga-page>main.sg{display:flex;flex-direction:column;gap:.9rem;max-width:var(--sg-w);padding:1.4rem 2.2rem 2rem;min-height:calc(100vh - 3.4rem);
   box-sizing:border-box}
+/* 2541: breit - Spalte mittig im Platz rechts der Seitenleiste (style.css setzt bei has-side nur margin-left: side-w bzw. 0,
+   die Spalte klebte links). Prozent im Rand = Breite des Body ohne Scrollleiste -> exakt mittig; max() haelt sie neben der
+   Leiste, wenn der Platz knapp ist. Bleibt margin-left: die Transition aus style.css gleitet beim Ein-/Ausklappen mit.
+   Leiste B6 und Eingabe sitzen in main und sind so gleich breit wie der Verlauf. Keine breitere Stufe: 52rem geben in
+   Antworten schon ~90 Zeichen je Zeile (Messung tests/browser_saga_breite.js), mehr waere schlechter lesbar. */
+@media (min-width:761px){
+  body.saga-page.has-side:not(.embed)>main.sg{margin-left:max(var(--side-w),calc((100% + var(--side-w) - var(--sg-w)) / 2))}
+  body.saga-page.has-side.side-hidden:not(.embed)>main.sg{margin-left:max(0px,calc((100% - var(--sg-w)) / 2))}
+}
 body.saga-page>main.sg:focus{outline:none}
 .sg-bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:.35rem 0;border-bottom:1px solid var(--border)}
 .sg-bar-t{margin:0;display:flex;align-items:center;gap:.3rem;font-size:.875rem;color:var(--muted)}
@@ -54,6 +64,11 @@ body.saga-page>main.sg:focus{outline:none}
 .sg-stopped{opacity:.75}
 .sg-srcs{display:flex;flex-wrap:wrap;gap:.3rem .6rem;margin-top:.5rem;font-size:.875rem;color:var(--muted)}
 .sg-src{color:var(--accent)}
+.sg-srcs-more{display:contents}                       /* 2542: Rest der Quellen - im Fluss der Zeile, wenn aufgeklappt */
+.sg-srcs-more[hidden]{display:none}
+.sg-srcs-b{min-height:1.5rem;padding:0 .3rem;margin:-.1rem 0;border:1px solid var(--sg-quiet-edge);border-radius:var(--r-pill);background:transparent;
+  color:var(--fg);font:inherit;font-size:inherit;cursor:pointer}
+.sg-srcs-b:hover,.sg-srcs-b:focus-visible{border-color:var(--sg-btn-edge);color:var(--accent)}   /* Kante >= 3:1 wie 2515 */
 .sg-report{margin-top:.4rem;font-size:.875rem}
 .sg-empty{display:flex;flex-direction:column;align-items:flex-start;gap:.6rem;padding:1rem 0}
 .sg-empty-t{margin:0;font-size:1rem}
@@ -78,6 +93,7 @@ body.saga-page>main.sg:focus{outline:none}
   .sg-me{max-width:92%}
   body.saga-page{--sg-ask-b:calc(3.6rem + env(safe-area-inset-bottom))}
   .sg-chip{min-height:2.75rem}
+  .sg-srcs-b{min-height:2.25rem;padding:0 .7rem}         /* 2542: Tippziel */
   .sg-info-b{min-height:2.75rem;min-width:2.75rem}
   .sg-bar .sg-info-box{max-height:40vh;overflow:auto}             /* 2503: offenes ⓘ in der festen Leiste verdeckt nicht alles */
 }

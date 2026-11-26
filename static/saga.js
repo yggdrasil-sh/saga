@@ -215,13 +215,29 @@
     });
     return w;
   }
+  var SRC_SHOW = 3, srcSeq = 0;                       // 2542: hoechstens 3 Quellen, der Rest aufklappbar
   function srcLine(sources) {
-    if (!sources || !sources.length) return null;
+    var list = (sources || []).filter(function (s) { return s && s.id; });
+    if (!list.length) return null;
     var w = el('div', 'sg-srcs'); w.appendChild(el('span', 'sg-srcs-l', T('aus:')));
-    sources.forEach(function (s) {
-      if (!s || !s.id) return;
-      var a = el('a', 'sg-src', s.title || T('Unbenannt')); a.href = '/notes#' + s.id; w.appendChild(a);
+    function link(s) { var a = el('a', 'sg-src', s.title || T('Unbenannt')); a.href = '/notes#' + s.id; return a; }
+    list.slice(0, SRC_SHOW).forEach(function (s) { w.appendChild(link(s)); });
+    var rest = list.slice(SRC_SHOW);
+    if (!rest.length) return w;
+    var more = el('span', 'sg-srcs-more'); more.id = 'sg-srcs-' + (++srcSeq); more.hidden = true;
+    rest.forEach(function (s) { more.appendChild(link(s)); });
+    var b = el('button', 'sg-srcs-b'); b.type = 'button'; b.setAttribute('aria-controls', more.id);
+    function label(open) {                           // Name beginnt mit dem sichtbaren Text (WCAG 2.5.3) und nennt "Quellen"
+      b.textContent = open ? T('weniger') : T('{n} weitere', { n: rest.length });
+      b.setAttribute('aria-label', open ? T('Weniger Quellen anzeigen') : T('{n} weitere {n:Quelle|Quellen} anzeigen', { n: rest.length }));
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    label(false);
+    b.addEventListener('click', function () {
+      var open = more.hidden; more.hidden = !open; label(open);
+      if (open && more.firstChild) more.firstChild.focus();      // Tastatur: weiter in den aufgeklappten Quellen, dann "weniger"
     });
+    w.appendChild(more); w.appendChild(b);
     return w;
   }
   function reportBtn(text, where, id) {             // where: 'ask' (Antwort) | 'job' (Plan/Rueckmeldung, id = Auftrag)
