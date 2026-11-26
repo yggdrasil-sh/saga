@@ -734,8 +734,8 @@ def say_ex(zug, fields, lang, persona=None):
         text = _voice(text, x)
     if x.lang == "th" and text:                 # Thai: Leerzeichen zwischen Thai und lateinischen Namen/Zahlen
         text = re.sub(r"(?<=[A-Za-z0-9)»”])(?=[\u0e01-\u0e5b])|(?<=[\u0e01-\u0e5b])(?=[A-Za-z0-9(«“])", " ", text)
-    if x.channel == "push":
-        text = re.sub(r"[*_`#>\[\]]", "", text.replace("\n", " "))
+    if x.channel == "push":                     # Mitteilung: eine Zeile; Titel behalten # _ * ` [ ] < > (Textkanal wie card, 2547)
+        text = text.replace("\n", " ")
     if text and budget and graphemes(text) > budget:
         if "P1" not in x.rules:
             x.rules.append("P1")

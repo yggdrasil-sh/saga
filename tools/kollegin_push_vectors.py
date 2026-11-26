@@ -190,9 +190,9 @@ def cut(s, budget):
 
 
 def sv(v, n):
-    """Wie saga.ai_say._sv: eine Zeile ohne Steuerzeichen und Markierungen, gekuerzt auf n Grapheme."""
+    """Wie saga.ai_say._sv: eine Zeile ohne Steuerzeichen, gekuerzt auf n Grapheme. Zeichen wie # _ * ` [ ] < > bleiben
+    stehen ("C# lernen", "Plan_B" - Bugs-DB 2547; Apps setzen t1/t2 als Text, nie als HTML/Markdown)."""
     s = re.sub(r"[\x00-\x1f\x7f\u2028\u2029]+", " ", str(v if v is not None else ""))
-    s = re.sub(r"[<>`*_#\[\]]", "", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     return cut(s, n) if graphemes(s) > n else s
 

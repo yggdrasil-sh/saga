@@ -728,6 +728,10 @@ def day_cases():
         md = [S.say("day", {"part": "due", "title": x}, "de", P) for x in ("C# lernen", "Plan_B", "<b>x</b>", "[1] **fett**")]
     ok(f"2547: Markdown-Kanal maskiert mit \\ statt zu streichen ({md})", md == ["„C\\# lernen“ heute", "„Plan\\_B“ heute",
        "„\\<b\\>x\\</b\\>“ heute", "„\\[1\\] \\*\\*fett\\*\\*“ heute"], md)
+    rp = S.say("report", {"changes": [{"kind": "row", "title": "Plan_B"}, {"kind": "task", "title": "C# <b>x</b> [2]"}],
+                          "channel": "push"}, "de", P)
+    ok(f"2547: auch Kanal push (t2 der Mitteilungen) ohne Streichen ({rp})",
+       "Plan_B" in rp and "C# <b>x</b> [2]" in rp and "\n" not in rp and S.graphemes(rp) <= 100, rp)
     ok("2547: nach dem Markdown-Block wieder Textkanal", S.say("day", {"part": "due", "title": "C#"}, "de", P) == "„C#“ heute")
     ok("2547: Steuerzeichen und Zeilenumbrueche weiter weg", S.say("day", {"part": "due", "title": "A\nB\x00C"}, "de", P) == "„A B C“ heute")
     lg = S.say("day", {"part": "due", "title": "Wort " * 60}, "de", P)
