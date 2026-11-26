@@ -538,7 +538,6 @@ def _form(raw):
         return None
 
 
-@router.post("/oauth/authorize")
 def _confirm_secret(request, uid, secret):
     """N4: Eingabe erst als Passwort pruefen, dann (6 Ziffern, Konto mit Authenticator-App) als Code - ein Passwort aus
     6 Ziffern bleibt so moeglich. Je Versuch dieselben Zaehler/Sperren wie mfa.confirm. -> Fehlertext oder None."""
@@ -556,6 +555,7 @@ def _confirm_secret(request, uid, secret):
     return msg
 
 
+@router.post("/oauth/authorize")
 async def oauth_authorize_post(request: Request):
     """Zustimmung bzw. Ablehnung (Formular der Zustimmungsseite)."""
     raw = await request.body()
