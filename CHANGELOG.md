@@ -250,8 +250,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 - **Wiederherstellen aus dem externen Backup lässt keinen Klartext mehr liegen** (Bugs-DB 2464): `run.py restore
   --schluessel` entschlüsselte die Datenbank nach `/data/backups/<lauf>-extern.dump` und ließ die Datei danach liegen –
   auch wenn das Einspielen abbrach. Jetzt liegt der Klartext nur während des Einspielens in einem eigenen Arbeitsordner
-  (`extern-tmp/wiederherstellung-…`, nur für Saga lesbar) und wird danach gelöscht; Reste nach einem harten Abbruch und
-  alte `<lauf>-extern.dump` aus 2.5 löscht Saga beim Start. `backup-pruefen` räumte schon auf.
+  (`extern-tmp/wiederherstellung-…`, nur für Saga lesbar) und wird danach gelöscht – auch bei Fehlern, Strg+C und
+  `docker stop` (SIGTERM/SIGHUP, ebenso bei `backup-pruefen`). Bleibt nach einem harten Abbruch (`kill -9`, Stromausfall)
+  doch ein Rest, löscht Saga ihn beim Start oder bei der täglichen Runde, sobald er älter als 12 Stunden ist; alte
+  `<lauf>-extern.dump` aus 2.5 löscht Saga beim nächsten Start. `extern-tmp` selbst ist jetzt immer 0700.
 - **Rückweg 2.6 → 2.5: Backup zurückspielen entfernt auch die neuen 2.6-Tabellen** (Bugs-DB 2454): `run.py restore`
   entfernt vor dem Einspielen jetzt alle Tabellen, die die laufende Version kennt (bisher eine von Hand gepflegte
   Liste, für 2.6 nicht nachgezogen). Adressbuch, eigener Status, Aufträge und KI-Verbrauch blieben sonst nach dem

@@ -15,6 +15,7 @@ import json
 import os
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -385,8 +386,10 @@ try:
         _add("nicht-erlaubt/x.txt")
         _add("files/ok-boese.txt", b"harmlos")
     subprocess.run(["age", "-e", "-r", pub1, "-o", os.path.join(evil, "dateien.tar.age")], input=tb.getvalue(), check=True)
+    subprocess.run(["age", "-e", "-r", pub1, "-o", os.path.join(evil, "geheimnisse.env.age")], input=f"SECRET_KEY={SECRET}\n".encode(),
+                   check=True)
     ev_files = {p: {"size": os.path.getsize(os.path.join(evil, p)), "sha256": backups.sha256_file(os.path.join(evil, p))}
-                for p in ("db.dump.age", "dateien.tar.age")}
+                for p in ("db.dump.age", "dateien.tar.age", "geheimnisse.env.age")}
     with open(os.path.join(evil, "manifest.json"), "w") as f:
         json.dump({"name": "../../../boese-pfad", "files": ev_files}, f)
     r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, evil], cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""),
@@ -396,9 +399,10 @@ try:
                            ) if os.path.lexists(p)] + [p for p in (os.path.join(fresh_state, "files", "link"),) if os.path.islink(p)]
     ok(f"Boesartiges tar: nichts ausserhalb von files/chat/svc-icons, keine Links ({r.returncode} {outside})",
        r.returncode == 0 and not outside and os.path.isfile(os.path.join(fresh_state, "files", "ok-boese.txt")))
-    ok("Name aus manifest.json wird nicht als Pfad benutzt", not any(os.path.exists(os.path.join(d_, "boese-pfad-extern.dump"))
-                                                                    for d_ in ("/", TMPROOT, fresh_state, os.path.dirname(TMPROOT)))
-       and r.returncode == 0 and not plain_left())
+    ok("Name aus manifest.json wird nicht als Pfad benutzt (geheimnisse.env unter dem Ordnernamen)",
+       not any(os.path.exists(os.path.join(d_, f"boese-pfad-{x}")) for d_ in ("/", TMPROOT, fresh_state, fbk, os.path.dirname(TMPROOT))
+               for x in ("extern.dump", "geheimnisse.env"))
+       and os.path.isfile(os.path.join(fbk, "saga-20260101-000000-geheimnisse.env")) and r.returncode == 0 and not plain_left())
 
     # --- 2464: Abbruch beim Einspielen (kein Saga-Backup, 2461) laesst ebenfalls keinen Klartext liegen ---
     fremd = os.path.join(TMPROOT, "fremd", "saga-20260102-000000")
@@ -408,11 +412,36 @@ try:
         json.dump({"name": "saga-20260102-000000", "files": {"db.dump.age": {
             "size": os.path.getsize(os.path.join(fremd, "db.dump.age")),
             "sha256": backups.sha256_file(os.path.join(fremd, "db.dump.age"))}}}, f)
+    os.chmod(ftmp, 0o755)                               # wie von einer aelteren Version angelegt
     r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, fremd], cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""),
                        capture_output=True, text=True, timeout=300)
-    ok(f"restore --schluessel bricht ab (kein Saga-Backup) ohne Klartext-Rest (2464) ({r.returncode} {plain_left()})",
-       r.returncode != 0 and "Traceback" not in r.stderr and not plain_left()
+    ok(f"restore --schluessel bricht ab (kein Saga-Backup) ohne Klartext-Rest, extern-tmp wieder 0700 (2464) ({r.returncode} {plain_left()})",
+       r.returncode != 0 and "Traceback" not in r.stderr and not plain_left() and oct(os.stat(ftmp).st_mode & 0o777) == "0o700"
        and q("SELECT count(*) FROM note WHERE body = %s", (MARK,), url=FRESH_URL)[0][0] == 1)
+    priv3, _pub3 = backups.keygen()                     # Schluessel, fuer den das Backup NICHT verschluesselt ist
+    k3 = os.path.join(TMPROOT, "k3.key")
+    with open(k3, "w") as f:
+        f.write(priv3 + "\n")
+    r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k3, os.path.join(fbk, "extern", good_name)], cwd=APP,
+                       env=dict(fenv, SAGA_BACKUP_URL=""), capture_output=True, text=True, timeout=300)
+    ok(f"restore --schluessel mit falschem Schluessel: Abbruch ohne Klartext-Rest (2464) ({r.returncode} {plain_left()})",
+       r.returncode != 0 and "Traceback" not in r.stderr and not plain_left())
+    # SIGTERM mitten im Einspielen (docker stop): finally raeumt auf (Pruefer 2464). Entschluesseln kuenstlich angehalten.
+    sp = subprocess.Popen([sys.executable, "-c", "import sys, time\nfrom saga import backups\n"
+                           "def slow(src, dst, key):\n    open(dst, 'wb').write(b'PGDMP klartext')\n    time.sleep(60)\n"
+                           "backups.decrypt = slow\nbackups.restore_cmd(sys.argv[1], sys.argv[2])\n",
+                           k1, os.path.join(fbk, "extern", good_name)], cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""),
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    seen = False
+    for _ in range(100):
+        if any(x.startswith("wiederherstellung-") and os.path.exists(os.path.join(ftmp, x, "db.dump")) for x in os.listdir(ftmp)):
+            seen = True
+            break
+        time.sleep(0.1)
+    sp.send_signal(signal.SIGTERM)
+    _so, se = sp.communicate(timeout=30)
+    ok(f"SIGTERM waehrend restore --schluessel: Klartext weg (2464) ({seen} {sp.returncode} {plain_left()} {se.strip()[-120:]})",
+       seen and sp.returncode != 0 and "Traceback" not in se and not plain_left())
 
     # --- Login Flow: Login-Link nur http(s) ---
     ctl(loginlink="javascript:alert(1)")
@@ -772,14 +801,16 @@ try:
     for n_ in ("saga-20260101-000000-extern.dump", "saga-extern-extern.dump", "saga-20260101-000000.dump", "notiz-extern.dump"):
         with open(os.path.join(bdir, n_), "w") as f:
             f.write("PGDMP klartext")
+    os.symlink(os.path.join(bdir, "notiz-extern.dump"), os.path.join(bdir, "saga-20260103-000000-extern.dump"))   # Link bleibt
     nclean = backups.cleanup_tmp()
     left_b = sorted(x for x in os.listdir(bdir) if x.endswith(".dump"))
     ok(f"Start raeumt Klartext-Reste auf ({nclean}), laufende Pruefung/Wiederherstellung bleibt, eigene Backups bleiben {left_b}",
        sorted(os.listdir(tdir)) == ["pruefung-frisch", "wiederherstellung-frisch"] and nclean == 6
        and "saga-20260101-000000.dump" in left_b and "notiz-extern.dump" in left_b
-       and not any(x.endswith("-extern.dump") and x != "notiz-extern.dump" for x in left_b))
+       and os.path.islink(os.path.join(bdir, "saga-20260103-000000-extern.dump"))
+       and not any(x.endswith("-extern.dump") and x not in ("notiz-extern.dump", "saga-20260103-000000-extern.dump") for x in left_b))
     shutil.rmtree(os.path.join(tdir, "wiederherstellung-frisch"))
-    for n_ in ("saga-20260101-000000.dump", "notiz-extern.dump"):
+    for n_ in ("saga-20260101-000000.dump", "notiz-extern.dump", "saga-20260103-000000-extern.dump"):
         os.unlink(os.path.join(bdir, n_))
     time.sleep(1.1)
     good, fout = backups.run("test")

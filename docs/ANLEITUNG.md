@@ -2173,9 +2173,10 @@ ein lokaler Ordner mit dem heruntergeladenen Lauf (unter `/data/…` ablegen). D
 vergleicht Saga vor dem Entschlüsseln. Die Datenbank kommt über dasselbe `db.restore` zurück wie `run.py restore` (alles
 oder nichts); die Geheimnisse landen zusätzlich in `/data/backups/<lauf>-geheimnisse.env` (nur für Saga lesbar), und Saga
 warnt, wenn sie von der `.env` abweichen. Die entschlüsselte Datenbank liegt nur während des Einspielens in einem
-eigenen Arbeitsordner unter `/data/backups/extern-tmp/` (nur für Saga lesbar) und wird danach gelöscht – auch wenn das
-Einspielen abbricht. Versionen bis 2.5 ließen sie als `/data/backups/<lauf>-extern.dump` liegen; solche Reste löscht
-Saga beim nächsten Start.
+eigenen Arbeitsordner unter `/data/backups/extern-tmp/` (nur für Saga lesbar) und wird danach gelöscht – auch bei einem
+Fehler, Strg+C oder `docker stop`. Nur nach einem harten Abbruch (`kill -9`, Stromausfall) bleibt sie liegen, bis Saga sie
+beim Start oder in der täglichen Runde löscht (sobald älter als 12 Stunden). Versionen bis 2.5 ließen sie als
+`/data/backups/<lauf>-extern.dump` liegen; solche Reste löscht Saga beim nächsten Start.
 
 **Wiederherstellen ohne Saga** (nur `age` und die PostgreSQL-Werkzeuge; `age` gibt es für Linux, macOS und Windows):
 

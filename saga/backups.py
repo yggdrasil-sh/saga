@@ -93,6 +93,39 @@ def tmp_dir():
     return os.path.join(db.BACKUP_DIR, "extern-tmp")
 
 
+def _work_dir(prefix):
+    """Eigener 0700-Arbeitsordner unter tmp_dir() fuer Klartext (backup-pruefen, restore --schluessel); tmp_dir() selbst
+    wird ebenfalls auf 0700 gesetzt (auch wenn eine aeltere Version ihn mit 0755 angelegt hat)."""
+    import secrets as _sec
+    os.makedirs(tmp_dir(), mode=0o700, exist_ok=True)
+    try:
+        os.chmod(tmp_dir(), 0o700)
+    except OSError:
+        pass
+    work = os.path.join(tmp_dir(), prefix + _sec.token_hex(6))
+    os.makedirs(work, mode=0o700)
+    return work
+
+
+@contextlib.contextmanager
+def _exit_on_signal():
+    """SIGTERM/SIGHUP (docker stop, abgerissene ssh-Sitzung) als SystemExit -> die finally-Bloecke raeumen den Klartext
+    weg (2464, Pruefer). Nur im Hauptthread der Kommandozeile; vorherige Handler danach zurueck."""
+    import signal
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def _h(sig, _frame):
+        raise SystemExit(f"Abgebrochen (Signal {sig}) - Arbeitsordner aufgeraeumt.")
+    old = {sg: signal.signal(sg, _h) for sg in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield
+    finally:
+        for sg, h in old.items():
+            signal.signal(sg, h)
+
+
 def cleanup_tmp(max_age_pruefung=12 * 3600, now=None):
     """Reste abgebrochener Laeufe/Pruefungen loeschen (enthalten Klartext, z. B. db.dump). Lauf-Ordner nur, wenn gerade
     kein Lauf dieser Datenbank laeuft; Pruefungs- und Wiederherstellungs-Ordner (run.py backup-pruefen bzw. restore
@@ -1723,6 +1756,7 @@ _wake = threading.Event()
 
 def _loop():
     _wake.wait(min(30.0, TICK))
+    swept = time.time()                               # start() hat gerade aufgeraeumt
     while not _worker["stop"]:
         try:
             now = time.time()
@@ -1730,6 +1764,9 @@ def _loop():
             if slot:
                 run("zeitplan", slot=slot)
             check_stale()
+            if now - swept > 86400:                   # 2464: Klartext-Reste nach kill -9 nicht bis zum Neustart liegen lassen
+                swept = now
+                cleanup_tmp()
         except Exception as ex:  # noqa: BLE001 - Datenbank kurz weg o. ae.: naechste Runde
             print(f"backup: {type(ex).__name__}: {ex}", flush=True)
         _wake.wait(TICK)
@@ -1877,6 +1914,20 @@ def _resolve(ref, out):
     return fetch(ref or None, out=out)
 
 
+def _restore_db(d, work, keyfile, out):
+    dump = os.path.join(work, "db.dump")
+    out("Entschluessele Datenbank ...")
+    try:
+        decrypt(os.path.join(d, "db.dump.age"), dump, keyfile)
+    except RuntimeError as ex:
+        raise SystemExit(str(ex))
+    out("Spiele Datenbank zurueck ...")
+    try:
+        db.restore(dump)
+    except RuntimeError as ex:              # z. B. kein Saga-Backup (2461): Meldung statt Traceback, nichts geaendert
+        raise SystemExit(str(ex))
+
+
 def restore_cmd(keyfile, ref, out=print):
     """run.py restore --schluessel <datei> <lauf>: holen, pruefen, entschluesseln, Datenbank (db.restore) + Dateien +
     Geheimnisse. Saga vorher stoppen."""
@@ -1886,27 +1937,15 @@ def restore_cmd(keyfile, ref, out=print):
     man = verify_dir(d)
     # Name nur in bekannter Form (das Manifest liegt unverschluesselt im Ziel - kein Pfad aus fremden Daten)
     name = next((n for n in (str(man.get("name") or ""), os.path.basename(os.path.abspath(d))) if RUN_RE.match(n)), "saga-extern")
-    import secrets as _sec
     os.makedirs(db.BACKUP_DIR, exist_ok=True)
-    os.makedirs(tmp_dir(), mode=0o700, exist_ok=True)
-    # Klartext-Dump nur in einem eigenen 0700-Ordner, danach weg - auch bei Abbruch (2464; vorher blieb
-    # <lauf>-extern.dump in BACKUP_DIR liegen). Reste nach kill -9 raeumt cleanup_tmp beim Start auf.
-    work = os.path.join(tmp_dir(), "wiederherstellung-" + _sec.token_hex(6))
-    os.makedirs(work, mode=0o700)
-    try:
-        dump = os.path.join(work, "db.dump")
-        out("Entschluessele Datenbank ...")
+    # Klartext-Dump nur in einem eigenen 0700-Ordner, danach weg - auch bei Fehler, Strg+C, SIGTERM/SIGHUP (2464; vorher
+    # blieb <lauf>-extern.dump in BACKUP_DIR liegen). Reste nach kill -9 raeumt cleanup_tmp auf (Start + taeglich, ab 12 h).
+    work = _work_dir("wiederherstellung-")
+    with _exit_on_signal():
         try:
-            decrypt(os.path.join(d, "db.dump.age"), dump, keyfile)
-        except RuntimeError as ex:
-            raise SystemExit(str(ex))
-        out("Spiele Datenbank zurueck ...")
-        try:
-            db.restore(dump)
-        except RuntimeError as ex:          # z. B. kein Saga-Backup (2461): Meldung statt Traceback, nichts geaendert
-            raise SystemExit(str(ex))
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+            _restore_db(d, work, keyfile, out)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
     out(f"Datenbank zurueckgespielt (Schema-Stand {db.schema_version()}).")
     if os.path.isfile(os.path.join(d, "dateien.tar.age")):
         out(f"Dateien: {restore_files(os.path.join(d, 'dateien.tar.age'), keyfile)} nach {STATE_DIR} zurueckgeholt.")
@@ -1943,11 +1982,12 @@ def check_cmd(keyfile, ref=None, out=print):
     d = _resolve(ref, out)
     man = verify_dir(d)
     out(f"Lauf {man.get('name')}: Pruefsummen in Ordnung (Saga {man.get('saga')}, Schema {man.get('schema')}).")
-    work = os.path.join(tmp_dir(), "pruefung-" + _sec.token_hex(6))     # eigener Ordner: ein Lauf raeumt ihn nicht weg
-    os.makedirs(work, mode=0o700)
+    work = _work_dir("pruefung-")                                       # eigener Ordner: ein Lauf raeumt ihn nicht weg
     dbname = "saga_pruefung_" + _sec.token_hex(4)
     real = db.DATABASE_URL
+    sig = _exit_on_signal()
     try:
+        sig.__enter__()                                                 # SIGTERM/SIGHUP -> finally unten raeumt auf
         inner = json.loads(decrypt(os.path.join(d, "manifest.json.age"), "-", keyfile))
         dump = decrypt(os.path.join(d, "db.dump.age"), os.path.join(work, "db.dump"), keyfile)
         want = inner["plain"]["db.dump.age"]
@@ -2008,6 +2048,7 @@ def check_cmd(keyfile, ref=None, out=print):
         shutil.rmtree(work, ignore_errors=True)
         if not keep_dir:
             shutil.rmtree(d, ignore_errors=True)
+        sig.__exit__(None, None, None)
     set_state(last_check=time.time(), last_check_name=man.get("name"))
     out("Testwiederherstellung in Ordnung.")
     return True
