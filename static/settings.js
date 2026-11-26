@@ -378,8 +378,8 @@
       var until = +d.notify_quiet_until || 0;
       if (until * 1000 > Date.now()) {
         var tz = ps && ps.settings && ps.settings.quiet && ps.settings.quiet.tz, tm;
-        try { tm = new Intl.DateTimeFormat(HK.locale || undefined, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }).format(new Date(until * 1000)); }
-        catch (e) { tm = new Date(until * 1000).toLocaleTimeString(HK.locale || undefined, { hour: 'numeric', minute: '2-digit' }); }
+        try { tm = new Intl.DateTimeFormat(HK.locale || undefined, { hour: '2-digit', minute: '2-digit', timeZone: tz || undefined }).format(new Date(until * 1000)); }
+        catch (e) { tm = new Date(until * 1000).toLocaleTimeString(HK.locale || undefined, { hour: '2-digit', minute: '2-digit' }); }
         var qr = el('div', 'hk-avset-row sg-nquiet'); qr.id = 'hk-saga-nquiet';
         qr.appendChild(el('span', null, T('Ruhe bis {time}', { time: tm })));
         var on = el('button', 'btn', T('Wieder an')); on.type = 'button'; qr.appendChild(on); box.appendChild(qr);

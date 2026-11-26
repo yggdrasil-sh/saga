@@ -175,7 +175,7 @@ function macInit() {
   ok('Block im Abschnitt „Saga“, Überschrift „Mitteilungen“', S1.sec && S1.h === 'Mitteilungen', S1);
   ok('„Inhalt in Mitteilungen“: Wenn entsperrt / Nie, Standard „Wenn entsperrt“', S1.lab === 'Inhalt in Mitteilungen' && S1.opts.join('|') === 'Wenn entsperrt|Nie' && S1.sel === 'unlocked', S1);
   ok('Hinweis nennt „In Saga ansehen“ und Marin', /In Saga ansehen/.test(S1.hint) && /Marin/.test(S1.hint), S1.hint);
-  const tm = new Intl.DateTimeFormat('de-DE', { hour: 'numeric', minute: '2-digit' }).format(new Date(quietAt * 1000));
+  const tm = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date(quietAt * 1000));
   ok('„Ruhe bis ' + tm + '“ mit „Wieder an“' + (hasQuiet ? '' : ' (SIM)'), S1.q === 'Ruhe bis ' + tm + 'Wieder an', S1.q);
   if (hasCat) ok('„Mitteilungen von Marin“ (Bereich jobs) an', S1.jobs && /Mitteilungen von Marin/.test(S1.jl) && await p.evaluate(() => document.getElementById('hk-saga-njobs').checked), S1);
   else ok('„Mitteilungen von Marin“ erst mit Bereich jobs vom Server (S3 offen) - fehlt still', !S1.jobs, S1);
