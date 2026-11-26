@@ -22,13 +22,15 @@ Ablauf eines Schritts (saga.jobs hat vorher Konto, Faehigkeiten und Einwilligung
     (ai_ctx.record -> job_event 'read'). Fehler des Werkzeugs: 404/403 -> wartet_dich 'kein_zugriff' (Seite nicht mehr
     geteilt, ausserhalb der Ziele), 409 -> wartet_dich 'konflikt' (rev veraltet), 401 -> wartet_dich 'abgemeldet',
     429 -> zurueckgestellt 'rate' (RATE_WAIT s), 400 -> fehlgeschlagen 'ungueltig', sonst fehlgeschlagen 'werkzeug'.
-Ruecknahme (compensate) kommt mit K-B (Vorher-Stand in job_change).
+Ruecknahme (K-B, saga/ai_undo.py): vor einem schreibenden Schritt before() (Stand der Ziele), danach record() (Vorher-Stand,
+Kurzinfo, rev_after an die Stempel des Schritts; Termine bekommen eine eigene Zeile); compensate() nimmt je job_change
+zurueck, Konflikt (Ziel seitdem geaendert) -> jobs.UndoConflict, nie still ueberschreiben.
 Tests: tests/kollegin_jobs.py (run_step, Freigabe/Abmelden), tests/kollegin_fehler.py (kill -9, Tageslimit, Seite nicht
 mehr geteilt), tests/kollegin_werkzeuge.py (Stempel je Werkzeug), tests/kollegin_budget.py; Messung tools/perf/bench_kollegin.py."""
 import json
 
 from db import connect as _db
-from saga import ai_ctx, ai_units, jobs, tools
+from saga import ai_ctx, ai_undo, ai_units, jobs, tools
 from saga.api_v1 import Fail
 
 KIND = "ai.task"
@@ -104,6 +106,7 @@ def run(ctx, job, step):
     if not ai_units.lane_take("bg", key):
         return jobs.Outcome.defer(ctx.now + LANE_WAIT, "spur")
     out, fail, units = None, None, 0
+    snap = ai_undo.before(ctx.uid, spec, args) if spec.write else {}   # K-B: Vorher-Stand fuer Rueckgaengig
     try:
         res = _reserve(job, ctx.step, ai_units.units_of(wrote) + STEP_EST, ctx.step > 0)
         if res is None:
@@ -126,11 +129,16 @@ def run(ctx, job, step):
     if not spec.write:
         with _db() as c, c:
             ai_ctx.record(c, job_id=ctx.job_id, ctx=ai_ctx.Ctx(read=spec.refs(args)))
+    else:
+        try:
+            ai_undo.record(ctx.job_id, ctx.step, ctx.idem, ctx.attempt, spec, args, snap, out)
+        except Exception as ex:  # noqa: BLE001 - die Wirkung ist da; ohne Aufzeichnung bleibt nur "alte Fassung"
+            print(f"ai_task: Auftrag {ctx.job_id} Schritt {ctx.step}: Vorher-Stand {type(ex).__name__}", flush=True)
     return jobs.Outcome.done({"tool": spec.name, "chars": len(_text(out))}, units=units)
 
 
 def register():
-    jobs.register(KIND, run, resume=resume)
+    jobs.register(KIND, run, compensate=ai_undo.compensate, resume=resume)
 
 
 register()

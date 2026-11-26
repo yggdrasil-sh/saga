@@ -115,6 +115,15 @@ class ModelDown(Exception):
     """Runner: Modell gerade nicht erreichbar (wie Outcome.retry_model)."""
 
 
+class UndoConflict(Exception):
+    """compensate (K-B): das Ziel wurde seit der Wirkung geaendert - nicht still ueberschreiben. target = Kennung,
+    version_url = Weg zur alten Fassung (oder None)."""
+
+    def __init__(self, target, version_url=None, why="changed"):
+        super().__init__(f"{why}: {target}")
+        self.target, self.version_url, self.why = target, version_url, why
+
+
 def now():
     return testclock.now()
 
@@ -257,7 +266,48 @@ def _to(c, job_id, old, new, t, reason=None, where="", args=(), sets="", sargs=(
         _event(c, job_id, "state", t, frm=old, to=new, reason=_code(reason))
         if new == "laeuft":
             c.after_commit(wake)
+        _live(c, job_id)
     return bool(n)
+
+
+def _live(c, job_id):
+    """K-B: Live-Ereignis ai.job.changed {id, state, sub, plan_v} an die Besitzerin (nach dem Commit, nur Kennungen)."""
+    r = c.execute("SELECT uid, state, sub, plan_v FROM job WHERE id=?", (job_id,)).fetchone()
+    if r:
+        bus.emit_after(c, "direct", {"uids": [r[0]], "typ": "ai.job.changed",
+                                     "data": {"id": job_id, "state": r[1], "sub": r[2], "plan_v": r[3]}})
+
+
+def changed_after(job_id, c=None):
+    """K-B: ai.job.changed auch ohne Zustandswechsel (Plan geaendert, Schritt erledigt, einzelne Ruecknahme)."""
+    if c is not None:
+        return _live(c, job_id)
+    with acting(None), _db() as cc, cc:
+        _live(cc, job_id)
+
+
+def replan(job_id, uid, plan_v, plan, steps):
+    """K-B "Aendern": neuer Plan (plan + Schritte) fuer einen Auftrag in wartet_ok mit genau diesem plan_v -> neuer
+    plan_v oder None (veraltet/fremd). plan_hash neu; eine Freigabe mit dem alten plan_v/plan_hash greift nicht mehr."""
+    if not isinstance(plan, dict):
+        raise ValueError("plan muss ein Objekt sein")
+    st = _norm_steps(steps)
+    ph = plan_hash(plan, st)
+    t = now()
+    with acting(None), _db() as c, c:
+        r = c.execute("SELECT plan_v FROM job WHERE id=? AND uid=? AND state='wartet_ok' AND plan_v=? FOR UPDATE",
+                      (job_id, uid, plan_v)).fetchone()
+        if not r:
+            return None
+        nv = plan_v + 1
+        c.execute("DELETE FROM job_step WHERE job_id=?", (job_id,))
+        c.executemany("INSERT INTO job_step (job_id, n, tool, klass, undo_class, args, cond, client) VALUES "
+                      "(?, ?, ?, ?, ?, CAST(? AS JSONB), ?, ?)",
+                      [(job_id, i, x["tool"], x["klass"], x["undo_class"], None if x["args"] is None else _j(x["args"]), x["cond"],
+                        1 if x["client"] else 0) for i, x in enumerate(st)])
+        c.execute("UPDATE job SET plan=CAST(? AS JSONB), plan_v=?, plan_hash=?, updated=? WHERE id=?", (_j(plan), nv, ph, t, job_id))
+        _event(c, job_id, "plan", t, frm=plan_v, to=nv, steps=len(st))
+    return nv
 
 
 # --- Anlegen und Bedienen ----------------------------------------------------------------------------------------
@@ -719,8 +769,17 @@ def _compensate(j, t):
             if not _mine(c, j):
                 c.rollback()
                 return None
-            with acting(Actor("service", j.actor, on_behalf_of=j.uid, job_id=j.id)):
-                comp(c, j.view(), {"id": cid, "step": sn, "target": target})
+            try:
+                with acting(Actor("service", j.actor, on_behalf_of=j.uid, job_id=j.id)):
+                    comp(c, j.view(), {"id": cid, "step": sn, "target": target})
+            except UndoConflict as ex:               # K-B: Ziel seitdem geaendert - nicht ueberschreiben, Auftrag bleibt erledigt
+                c.rollback()
+                with _db() as c2, c2:
+                    if _mine(c2, j):
+                        c2.execute("UPDATE job SET undo_at=NULL, next_at=NULL, lease_until=NULL, updated=? WHERE id=?", (now(), j.id))
+                        _event(c2, j.id, "undo", now(), change=cid, target=target, conflict=_code(ex.why))
+                        _live(c2, j.id)
+                return None
             c.execute("UPDATE job_change SET undone_at=? WHERE id=?", (now(), cid))
             _event(c, j.id, "undo", now(), change=cid, target=target)
     with _db() as c, c:

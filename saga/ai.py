@@ -1592,15 +1592,38 @@ class ThinkFilter:
 
 _NO_TEMP = set()                                              # (provider, url, modell) ohne temperature-Parameter
 _NO_USAGE = set()                                             # (provider, url, modell) ohne stream_options (2.6 K-A5)
+_NO_SCHEMA = set()                                            # (provider, url, modell) ohne Schema-Ausgabe (2.6 K-B)
 
 
-def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None):
+class SchemaUnsupported(AIError):
+    """2.6 K-B: der Endpunkt lehnt die Schema-Ausgabe ab (400/422 mit Schema) - der Aufrufer faellt auf ein Zeilenformat
+    zurueck und merkt sich das mit no_schema(c), sobald es ohne Schema klappt (wie temperature/stream_options)."""
+
+
+def _mkey(c):
+    return (c.get("provider"), (c.get("url") or "").rstrip("/"), c.get("model"))
+
+
+def schema_ok(c):
+    """2.6 K-B: kann dieser Endpunkt (nach bisheriger Erfahrung) Antworten nach JSON-Schema liefern?"""
+    return _mkey(c) not in _NO_SCHEMA
+
+
+def no_schema(c):
+    """2.6 K-B: Endpunkt ohne Schema-Ausgabe merken (saga/ai_plan.py, nachdem das Zeilenformat geklappt hat)."""
+    _NO_SCHEMA.add(_mkey(c))
+
+
+def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None, schema=None):
     """Synchron (im Thread): sichtbare Antwort Stueck fuer Stueck an emit(text); status('thinking') einmal, sobald das
     Modell nachdenkt. stop() -> True bricht ab. -> {'cut': bool} (Antwort abgeschnitten). Wirft AIError.
     Zeitlimits: bis zum ersten Stueck und zwischen zwei Stuecken wait_limit, insgesamt total_limit.
     2.6 K-A5: echte Tokens des Endpunkts (nur Anzeige, saga/ai_units.py) -> zusaetzlich 'usage' {in, out}, wenn bekannt:
     Ollama prompt_eval_count/eval_count, OpenAI usage (stream_options.include_usage; lehnt der Endpunkt das mit 400 ab,
-    merkt Saga sich das wie bei temperature und fragt ohne)."""
+    merkt Saga sich das wie bei temperature und fragt ohne).
+    2.6 K-B: schema (JSON-Schema als dict) = Antwort als JSON nach diesem Schema - Ollama "format", OpenAI-kompatibel
+    response_format json_schema. Lehnt der Endpunkt das ab (400/422), kommt SchemaUnsupported (nicht gemerkt: das tut
+    der Aufrufer mit no_schema(), wenn es ohne Schema klappt)."""
     stop = stop or (lambda: False)
     prov, base = c.get("provider"), (c.get("url") or "").rstrip("/")
     if prov == "ollama":
@@ -1615,6 +1638,11 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
             body.pop("temperature", None)
         if (prov, base, c.get("model")) not in _NO_USAGE:
             body["stream_options"] = {"include_usage": True}
+    if schema is not None:                                 # 2.6 K-B: Plaene als JSON nach Schema
+        if prov == "ollama":
+            body["format"] = schema
+        else:
+            body["response_format"] = {"type": "json_schema", "json_schema": {"name": "saga_plan", "schema": schema}}
     cl, tmo = _client(c)
     total = total_limit(c)
     t0 = time.monotonic()
@@ -1645,6 +1673,10 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                         body.pop("temperature", None)          # neuere Modelle (z. B. Claude ueber /v1) lehnen temperature ab
                         _NO_TEMP.add(mkey)
                         continue
+                    if r.status_code in (400, 422) and schema is not None and (b"think" not in low or prov != "ollama") \
+                            and not (b"temperature" in low and "temperature" in body) \
+                            and not (b"stream_options" in low and "stream_options" in body):
+                        raise SchemaUnsupported(t("Der Modell-Endpunkt kann keine Antwort nach Schema liefern."))   # 2.6 K-B
                     if prov != "ollama" and r.status_code in (400, 422) and "stream_options" in body:
                         # 2.6 K-A5: Endpunkt ohne usage im Strom (nicht jeder nennt das Feld in der Meldung) - einmal ohne
                         # versuchen; gemerkt wird es erst, wenn es ohne klappt (sonst war es ein anderer Fehler)
@@ -1761,7 +1793,8 @@ def _usage(n_in, n_out):
     return None if ok == [None, None] else {"in": ok[0] or 0, "out": ok[1] or 0}
 
 
-def stream_metered(uid, pool, c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None, res=None, job_running=False):
+def stream_metered(uid, pool, c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None, res=None, job_running=False,
+                   schema=None):
     """stream_model mit Einheiten (2.6 K-A5, saga/ai_units.py): vorher schaetzen und im Pool belegen, nachher abrechnen
     (Zeichen/4, ohne Antwort 0, echte Tokens nur als Messwert). Pool ask misst nur - Fehler der Messung stoeren die Antwort
     nie. job/idea: res vom Aufrufer (ai_units.reserve) oder hier belegt; kein Platz im Tagespool -> ai_units.NoBudget."""
@@ -1783,7 +1816,7 @@ def stream_metered(uid, pool, c, messages, emit, stop=None, max_tokens=MAX_TOKEN
         emit(s)
     r = None
     try:
-        r = stream_model(c, messages, out, stop, max_tokens=max_tokens, status=status)
+        r = stream_model(c, messages, out, stop, max_tokens=max_tokens, status=status, schema=schema)
         return r
     finally:
         u = (r or {}).get("usage") or {}
@@ -2011,8 +2044,19 @@ def api_ai_status(request: Request):
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
                          "caps": caps_now, "sources": srcs, "units": units,
-                         "style": ai_say.style(uid)},                    # 2.6 K-H (2268): Persona-Form, Lebhaftigkeit, Anrede
+                         "style": ai_say.style(uid),                         # 2.6 K-H (2268): Persona-Form, Lebhaftigkeit, Anrede
+                         **_jobs_status(uid)},                           # 2.6 K-B: Auftraege (jobs, level)
                         headers={"Cache-Control": "no-store"})
+
+
+def _jobs_status(uid):
+    """2.6 K-B: {jobs: bool, level} - Auftraege geben (Stufe nicht 'answers'); level = Faehigkeitsstufe (Admin)."""
+    try:
+        from saga import ai_plan                                         # spaet: ai_plan importiert dieses Modul
+        lv = ai_plan.level()
+        return {"jobs": lv != "answers", "level": lv}
+    except Exception:  # noqa: BLE001 - Status nie wegen der Auftraege scheitern lassen
+        return {"jobs": False}
 
 
 @router.get("/api/ai/persona")
@@ -2497,11 +2541,11 @@ async def api_ai_report(request: Request):
         from saga import chat_grp
         from saga.federation import _clean_text
         where, reason, text = b.get("where"), b.get("reason"), b.get("text") or ""
-        if where not in ("ask", "page") or reason not in chat_grp.REASONS or not isinstance(text, str):
+        if where not in ("ask", "page", "job") or reason not in chat_grp.REASONS or not isinstance(text, str):
             return _bad(t("ungültige Angabe"))
         page = b.get("page")
-        if where == "page" and (isinstance(page, bool) or not isinstance(page, int) or not 0 < page < 2**63):
-            return _bad(t("ungültige Angabe"))
+        if where in ("page", "job") and (isinstance(page, bool) or not isinstance(page, int) or not 0 < page < 2**63):
+            return _bad(t("ungültige Angabe"))       # where=job (2.6 K-B): page = Auftrags-ID
         text = _clean_text(text.replace("\n", " "), chat_grp.REPORT_TEXT_MAX) if text else ""
         now = time.time()
         with _db() as conn, conn:
@@ -2510,7 +2554,10 @@ async def api_ai_report(request: Request):
             if not chat_grp.report_allowed(conn, uid, now):
                 return _bad(t("Zu viele Meldungen in kurzer Zeit – bitte später erneut."), 429)
             items = [{"ts": now * 1000, "ai": True, "where": where, "sender": {"handle": None, "name": f"{persona_name()} · KI"}}]
-            rid = chat_grp.store_report(conn, uid, None, "ai", f"page:{page}" if where == "page" else "ask", reason, text, items, now)
+            if where == "job" and not conn.execute("SELECT 1 FROM job WHERE id=? AND uid=?", (page, uid)).fetchone():
+                return _bad("not found", 404)
+            rid = chat_grp.store_report(conn, uid, None, "ai", f"page:{page}" if where == "page" else f"job:{page}" if where == "job" else "ask",
+                                        reason, text, items, now)
         print(f"ai: Meldung {rid} ({reason}, {where}, {len(text)} Zeichen)", flush=True)   # nie Inhalte loggen
         return JSONResponse({"ok": True, "id": rid}, headers={"Cache-Control": "no-store"})
     return await asyncio.to_thread(run)
