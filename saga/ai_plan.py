@@ -686,14 +686,15 @@ def check(uid, cand, mode, cands, rs, direct=False):
     return "plan", {"title": title, "steps": out, "recipe": recipe}, []
 
 
-def _auto_title(steps, recipe=None):
+def _auto_title(steps, recipe=None, wording=True):
     """Titel ohne Angabe des Modells: Text/Titel des ersten Schritts, sonst die erste Zeile des Wortlauts (eintragen),
-    sonst der Name des Rezepts - "Auftrag" nur, wenn gar nichts da ist (Bugs-DB 2504)."""
+    sonst der Name des Rezepts - "Auftrag" nur, wenn gar nichts da ist (Bugs-DB 2504). wording=False (Aendern): der
+    Wortlaut zaehlt nicht - ein geaenderter Eintrag behaelt seinen Titel (Pruefer pkb)."""
     a = steps[0]["args"] if steps else {}
     for k in ("text", "summary", "title"):
         if isinstance(a.get(k), str) and a[k].strip():
             return a[k].strip()[:TITLE_MAX]
-    md = a.get("markdown")
+    md = a.get("markdown") if wording else None
     if isinstance(md, str):
         for ln in md.splitlines():
             ln = re.sub(r"^\s*(?:[-*+>#]+|\d+[.)]|\[[ xX]\])\s*", "", ln).replace("**", "").replace("`", "").strip()
@@ -1057,7 +1058,7 @@ def edit(job_id, uid, plan_v, edits):
     if probs:
         return 400, {"error": t("Das bekomme ich so nicht sicher hin – bitte anders formulieren."), "problems": [p["code"] for p in probs]}
     pj = dict(pj, edited=True, labels=dict(pj.get("labels") or {}, **_labels(uid, [rf for s in steps for rf in tools.get(s["tool"]).refs(s["args"])])))
-    title = _auto_title(steps) if not pj.get("title_model") else None   # Titel folgt dem geaenderten Text
+    title = _auto_title(steps, wording=False) if not pj.get("title_model") else None   # Titel folgt dem geaenderten Text
     if title == t("Auftrag") and pj.get("title"):                     # kein Text im Plan (z. B. eintragen): Titel behalten
         title = None
     if title:

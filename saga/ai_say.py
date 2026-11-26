@@ -378,11 +378,14 @@ def _endpoint_where(lang):
     return (h["host"], h["label"]) if h and h.get("label") else (None, None)
 
 
-def _where(x):
-    """{where} - Bugs-DB 2495: ohne host oder mit dem Host des Modell-Endpunkts das Server-Label (endpoint_hint), damit
-    ident.who_reads & Co. genau dasselbe sagen wie Karte und Leiste; ein anderer Host (z. B. Sprach-Endpunkt) wie bisher."""
+def _where(x, auto=False):
+    """{where} - Bugs-DB 2495: mit dem Host des Modell-Endpunkts (bzw. bei auto ohne host: ident.who_reads) das
+    Server-Label (endpoint_hint), damit die Saetze genau dasselbe sagen wie Karte und Leiste; ein anderer Host (z. B.
+    Sprach-Endpunkt) wie bisher. Ohne host und ohne auto (intro): kein Satz - nie ein halber Hinweis."""
     f = x.f
     host = _sv(f.get("host"))
+    if not host and not auto:
+        raise _Missing("host")
     eh, label = _endpoint_where(x.lang)
     if label and (not host or host.lower() == str(eh).lower()):
         return label
@@ -613,7 +616,7 @@ def _b_ident(x):
         return (x.opt("ident.owner.agent") if x.f.get("agent") is True else None) or x.T("ident.owner")
     if k == "who_reads":
         try:
-            return x.T("ident.who_reads", where=_where(x))
+            return x.T("ident.who_reads", where=_where(x, auto=True))
         except _Missing:
             return x.T("ident.human")
     return x.T(f"ident.{k}")

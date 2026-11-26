@@ -522,6 +522,7 @@ def part_websaga(pages):
     from saga import ai_saga, ai_undo, api_calendar
     from saga.api_v1 import Fail
     i18n.set_lang("de")
+    setlevel("plans", wait=True)                 # part_api endet mit Stufe answers -> Server-Zwischenspeicher abwarten
     cA = K.ck(A)
     K.req("DELETE", "/api/ai/thread", cA)
     n0 = len(ai_saga.turns(A))
@@ -536,9 +537,10 @@ def part_websaga(pages):
        st == 200 and p.get("job") and p.get("turn") and len(tn) == 2 and tn[0]["role"] == "me" and tn[0]["zug"] == "job"
        and "Grillkohle" in tn[0]["text"] and tn[1]["zug"] == "plan" and tn[1]["job_id"] == p["job"] and tn[1]["n"] == p["turn"]
        and tn[1]["text"].startswith("Plan: "))
-    jid = p["job"]
-    s, d = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": p["plan_v"], "plan_hash": p["plan_hash"]})
-    run_jobs(jid)
+    jid = p.get("job") or 0
+    s, d = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": p.get("plan_v"), "plan_hash": p.get("plan_hash")})
+    if jid:
+        run_jobs(jid)
     s, det = K.req("GET", f"/api/ai/jobs/{jid}", cA)
     texts = [e["text"] for e in det.get("events") or []]
     ia = next((i for i, x in enumerate(texts) if x.startswith("Freigegeben")), -1)
