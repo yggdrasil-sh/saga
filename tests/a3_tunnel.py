@@ -438,7 +438,7 @@ def teil1(media, node):
     card = html[i:html.find("</div>", i)] if i >= 0 else ""
     ok("Admin -> Anrufe: Kasten \"Anrufe über die Saga-Adresse (Tunnel)\" mit Warnung \"Wohl nicht\"",
        "Anrufe über die Saga-Adresse (Tunnel)" in card and "Wohl nicht" in card and "Websockets Support" in card
-       and "Node64: „WebSockets“" in card, card[:1200])
+       and "Node64: „WebSockets“" in card and "&lt;time" not in card, card[:1200])   # Zeit als <time>, nicht als Text
     # Medien ueber die ganze Kette (pion, Go-Test) mit den Token von Saga
     toks = os.path.join(STATE, "tokens.json")
     devs = []
