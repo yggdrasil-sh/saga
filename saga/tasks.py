@@ -185,6 +185,7 @@ def _task_done(c, uid, tid, want, done, text, due, prio, rep, anchor, next_id, t
             c.execute("DELETE FROM task WHERE id=? AND uid=? AND done=0", (next_id, uid))
             next_id = None
         c.execute("UPDATE task SET done=0, done_at=NULL WHERE id=? AND uid=?", (tid, uid))
+        bus.fire("task.changed", c, uid=uid, task_id=tid)        # 2.6 (2188): Heute-Widget (saga.widget_push)
     return next_id, nd
 
 
@@ -239,6 +240,8 @@ def task_update(uid, tid, b):
 
         c.execute("UPDATE task SET text=?, due=?, prio=?, repeat=?, rep_anchor=?, next_id=? WHERE id=? AND uid=?",
                   (text, due, prio, rep, anchor, next_id, tid, uid))
+        if b.keys() & {"text", "due", "prio", "repeat"}:
+            bus.fire("task.changed", c, uid=uid, task_id=tid)    # 2.6 (2188): Heute-Widget (saga.widget_push)
     return JSONResponse(out)
 
 
@@ -249,6 +252,8 @@ def api_task_delete(tid: int, request: Request):
         return _bad("unauthorized", 401)
     with _db() as c, c:
         n = c.execute("DELETE FROM task WHERE id=? AND uid=?", (tid, uid)).rowcount
+        if n:
+            bus.fire("task.changed", c, uid=uid, task_id=tid)    # 2.6 (2188): Heute-Widget (saga.widget_push)
     return JSONResponse({"ok": True}) if n else _bad("not found", 404)
 
 
@@ -259,4 +264,6 @@ def api_task_clear(request: Request):
         return _bad("unauthorized", 401)
     with _db() as c, c:
         n = c.execute("DELETE FROM task WHERE uid=? AND done=1", (uid,)).rowcount
+        if n:
+            bus.fire("task.changed", c, uid=uid, task_id=None)   # 2.6 (2188): Heute-Widget (saga.widget_push)
     return JSONResponse({"deleted": n})

@@ -63,6 +63,7 @@ from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Stat
 from saga import ai_task                      # 2.6 (K-A6 2266): Runner ai.task (Geruest, Planer mit K-B)
 from saga import ai_jobs                      # 2.6 (K-B 2267): Planer + Auftraege-API (saga/ai_plan.py, saga/ai_undo.py)
 from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einwilligung, Meine Daten
+from saga import widget_push                  # 2.6 (Bugs-DB 2188): stiller Widget-Push, /api/app/widgets
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -349,6 +350,7 @@ app.include_router(bookorbit.router)                     # 2.5: BookOrbit (Lesel
 app.include_router(bookorbit_pages.router)               # 2.5: BookOrbit-Markierungen als Seite (nur lesen)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
+app.include_router(widget_push.router)        # 2.6 (Bugs-DB 2188): GET/PUT /api/app/widgets (Widgets dieses Geraets)
 app.include_router(page_widgets.router)       # 2.5: Widgets in Seiten - /api/notes/{nid}/widgets, .../widgets/preview
 app.include_router(publish.router)          # /@name/... (oeffentlich) und /api/notes/{nid}/publish, /api/account/public-name
 app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{nid}/shares, /api/share/targets

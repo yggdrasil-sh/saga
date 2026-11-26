@@ -16,7 +16,7 @@ from saga.databases import _first_image
 from saga.dashboard import bookmarks
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.links import add_bookmark
-from saga.notes import FILES_DIR, _FILE_URL, _clean_props, tree_changed
+from saga.notes import FILES_DIR, _FILE_URL, _clean_props, announce_row, tree_changed
 from saga.pages import clean_blocks
 from saga.sharing import Access, access
 from saga.tasks import TASK_MAX_LEN, _client_today, _due, _task_done
@@ -196,24 +196,59 @@ def api_app_today(request: Request):
 
 
 # --- Widgets: eng begrenzt (nur eigene Daten; lesen = Titel/Zeilen, schreiben = Aufgabe abhaken / Haekchen-Feld) ---
-@router.get("/api/app/pages")
-def api_app_pages(request: Request):
-    """Fuer die Widget-Auswahl: Seiten + Datenbanken (mit ihren Ansichten) - nur Titel, Symbol, Eltern."""
-    uid = _app_uid(request)
-    if not uid:
-        return _bad("unauthorized", 401)
-    with _db() as c:
-        rows = c.execute("SELECT id, title, icon, kind, parent_id, schema, cover, cover_pos FROM note WHERE uid=? AND deleted_at IS NULL "
-                         "AND is_template=0 AND archived IS NULL ORDER BY sort NULLS FIRST, created LIMIT 5000", (uid,)).fetchall()
+_PAGE_COLS = "id, title, icon, kind, parent_id, schema, cover, cover_pos, updated, body, format"
+_PAGE_WHERE = "uid=? AND deleted_at IS NULL AND is_template=0 AND archived IS NULL"
+
+
+def _cover_v(src):
+    """2.6 (Bugs-DB 2188): Versionsschluessel des Bildes, das /api/app/page-image/{id}/cover liefert (Titelbild, sonst erstes
+    Bild im Inhalt) - aendert sich mit dem Bild; "" = kein Bild. Apps merken das Bild unter diesem Schluessel."""
+    import hashlib
+    return hashlib.sha256(src.encode()).hexdigest()[:12] if src else ""
+
+
+def _page_items(c, uid, rows):
+    """Zeilen (_PAGE_COLS) -> Objekte fuer die Widget-Auswahl/Seiten-Karte. Erstes Bild im Inhalt wie _db_rows: aus
+    note_derived, nur fuer gerade geaenderte (note_stale) bzw. noch nicht abgeglichene am Inhalt gelesen."""
+    ids = [r[0] for r in rows if not r[6]]
+    pv = dict(c.execute("SELECT note_id, preview FROM note_derived WHERE note_id = ANY(?)", (ids,)).fetchall()) if ids else {}
+    stale = {r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE uid=?", (uid,)).fetchall()} if ids else set()
     out = []
     for r in rows:
+        img = r[6] or ((_first_image(r[9], r[10]) if r[0] in stale or r[0] not in pv else pv.get(r[0])) or "")
         o = {"id": r[0], "title": r[1] or "", "icon": r[2] or "", "kind": r[3] or "page", "parent_id": r[4],
-             "cover": bool(r[6]), "cover_pos": r[7] if r[7] is not None else 50}
+             "cover": bool(r[6]), "cover_pos": r[7] if r[7] is not None else 50, "cover_v": _cover_v(img), "updated": r[8]}
         if r[3] == "database":
             o["views"] = [{"id": v.get("id"), "name": v.get("name"), "type": v.get("type")}
                           for v in _json_load(r[5], {}).get("views", []) if isinstance(v, dict)]
         out.append(o)
+    return out
+
+
+@router.get("/api/app/pages")
+def api_app_pages(request: Request):
+    """Fuer die Widget-Auswahl: Seiten + Datenbanken (mit ihren Ansichten) - nur Titel, Symbol, Eltern.
+    2.6 (2188): dazu cover_v (Versionsschluessel des Titelbilds) und updated."""
+    uid = _app_uid(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c:
+        rows = c.execute(f"SELECT {_PAGE_COLS} FROM note WHERE {_PAGE_WHERE} ORDER BY sort NULLS FIRST, created LIMIT 5000", (uid,)).fetchall()
+        out = _page_items(c, uid, rows)
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/app/page/{nid}")
+def api_app_page(nid: int, request: Request):
+    """2.6 (Bugs-DB 2188): EINE Seite fuer die Seiten-Karte - dasselbe Objekt wie in /api/app/pages, dieselben Rechte (nur
+    eigene, nicht geloescht/archiviert, keine Vorlage); sonst 404 {"error"}."""
+    uid = _app_uid(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c:
+        r = c.execute(f"SELECT {_PAGE_COLS} FROM note WHERE id=? AND {_PAGE_WHERE}", (nid, uid)).fetchone()
+        out = _page_items(c, uid, [r]) if r else []
+    return JSONResponse(out[0], headers={"Cache-Control": "no-store"}) if out else _bad("not found", 404)
 
 
 def _private(resp):
@@ -318,7 +353,9 @@ async def api_app_row_check(nid: int, request: Request):
         if not any(p.get("id") == pid and p.get("type") == "checkbox" for p in schema.get("props", [])):
             return _bad(t("kein Häkchen-Feld"))
         merged = _clean_props(schema, {pid: bool(b.get("value"))}, _json_load(ps[1], {}))
-        c.execute("UPDATE note SET props=?, updated=? WHERE id=? AND uid=?", (json.dumps(merged, ensure_ascii=False), time.time(), nid, uid))
+        now = time.time()
+        c.execute("UPDATE note SET props=?, updated=? WHERE id=? AND uid=?", (json.dumps(merged, ensure_ascii=False), now, nid, uid))
+        announce_row(c, uid, nid, uid, now)       # 2.6 (2188): offene Tabellen und Widgets anderer Geraete (widget_push)
     return JSONResponse({"ok": True})
 
 

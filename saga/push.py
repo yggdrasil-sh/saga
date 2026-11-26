@@ -127,8 +127,10 @@ PAYLOAD_MAX = 3000
 # group_key, chat, lang) - Apps bauen den Satz in ihrer Sprache neu. Abos koennen beim Anlegen eine Sprache (lang) und
 # Faehigkeiten (caps) mitschicken; "update": nimmt Aktualisierungen bereits gezeigter Mitteilungen an (UPDATE_KIND).
 PAYLOAD_V = 2
-SUB_CAPS = ("update",)
+SUB_CAPS = ("update", "widgets")      # 2.6 (2188): "widgets" = stiller Widget-Push (saga.widget_push)
 UPDATE_KIND = "notify.update"         # interner Auftrag: Glocken-Eintrag geaendert (geloeschte Chat-Nachricht) -> Geraet anpassen
+WIDGET_KIND = "widgets.update"        # 2.6 (2188): interner Auftrag: Widgets neu laden (ohne Inhalt, saga.widget_push)
+WIDGET_TTL = 300                      # Widget-Push: Push-Dienst haelt ihn hoechstens 5 min vor (APNs: apns-expiration 0)
 UPDATE_TYPES = ("webpush", "unifiedpush", "stream", "apns")     # ntfy (Klartext ohne App) und VoIP: nie
 ENDPOINT_MAX = 1024
 TIME_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
@@ -828,7 +830,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
     names = with_names(prefs(c, uid), sub_kind, has_keys)
     lang = lang if lang in i18n.LANGS else account_lang(uid)
     silent = None
-    if kind not in (UPDATE_KIND, "test") and kind not in RING_KINDS:
+    if kind not in (UPDATE_KIND, "test", WIDGET_KIND) and kind not in RING_KINDS:
         rc = REACH(c, uid, actor, kind)   # auch status.digest (Bugs-DB 2365: Beschaeftigt "ohne Ton" -> silent)
         if not rc.push:
             return None
@@ -860,6 +862,10 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                    "kind": of, "ts": int(created or time.time())}
             return _fields(msg, lang, nm, n, notify.group_key(of, None, {"chat": int(chat)}), chat=int(chat), update=True,
                            removed=True if not n else None)
+        if kind == WIDGET_KIND:
+            # 2.6 (2188): Widgets neu laden - still, ohne Titel, Namen oder Inhalte (die App holt den Stand selbst)
+            return _fields({"title": "", "body": "", "url": "/", "tag": "widgets", "kind": kind, "ts": int(created or time.time()),
+                            "ttl": WIDGET_TTL}, lang, update=True)
         if kind == "test":
             body, url, tag = t("Testmitteilung – Mitteilungen kommen an."), "/", "test"
             return _fields({"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}, lang)
@@ -1110,19 +1116,23 @@ def _send_apns(endpoint, msg, voip=False, keys=None, topic=None):
         return "gone", "Schluessel ungueltig"
     collapse = e2e_collapse(auth_s, ctag) if e2e else ctag[:64]          # E2E: undurchsichtig (ohne Klartext-tag)
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
+    # 2.6 (2188): Widget-Push nur sofort (apns-expiration 0) - APNs haelt fuer ein Geraet ohne Netz nur EINE Mitteilung je
+    # App vor; ein spaeterer stiller Push wuerde eine wartende echte Mitteilung verdraengen
+    exp = 0 if msg.get("kind") == WIDGET_KIND else int(time.time()) + ttl
     if route == "relay":
-        return push_relay.send(tok, env, topic + (".voip" if voip else ""), push_type, prio, int(time.time()) + ttl, collapse,
+        return push_relay.send(tok, env, topic + (".voip" if voip else ""), push_type, prio, exp, collapse,
                                rate, body["aps"], body["saga"])
-    return _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse)
+    return _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse, exp=exp)
 
 
-def _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse):
+def _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse, exp=None):
     import httpx
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
     for attempt in (0, 1):
         try:
             h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"] + (".voip" if voip else ""),
-                 "apns-push-type": push_type, "apns-priority": str(prio), "apns-expiration": str(int(time.time()) + ttl),
+                 "apns-push-type": push_type, "apns-priority": str(prio),
+                 "apns-expiration": str(int(time.time()) + ttl if exp is None else exp),
                  "apns-collapse-id": collapse}     # Aktualisierung: eigene Kennung (wie Web-Push-Topic)
             r = _apns_client().post(f"{base}/3/device/{tok}", json=body, headers=h)
         except (httpx.HTTPError, OSError) as ex:
