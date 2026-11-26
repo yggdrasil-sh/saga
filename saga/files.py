@@ -496,12 +496,19 @@ def logo_png(fid):
         tmp = f"{out}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             r = subprocess.run([sys.executable, "-c", _LOGO_CODE, src, tmp, str(LOGO_EDGE)], capture_output=True, text=True,
-                               timeout=60, preexec_fn=_thumb_limits)
+                               timeout=90, preexec_fn=_thumb_limits)   # > RLIMIT_CPU 60 s: die CPU-Grenze greift zuerst
             if r.returncode != 0 or not os.path.isfile(tmp) or not os.path.getsize(tmp):
                 open(bad, "w").close()
                 return None
             os.replace(tmp, out)
             return out
+        except subprocess.TimeoutExpired:
+            # Pruefer 1530: auch nach Zeitueberschreitung merken - sonst rechnete jeder Abruf neu und hielte _thumb_sem
+            try:
+                open(bad, "w").close()
+            except OSError:
+                pass
+            return None
         except (OSError, subprocess.SubprocessError):
             return None
         finally:
