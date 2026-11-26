@@ -1000,9 +1000,17 @@ Bildadresse (PNG, Sitzung bzw. Cookie wie bisher):
   (beides: Anfangsbuchstabe zeigen, später erneut). `h` ändert sich mit dem Host der Adresse (Cache-Schlüssel).
   Auch `/api/services/icon/<icon>` antwortet `503` (no-store), wenn das CDN gerade nicht erreichbar ist (bisher `502`).
 - leer → kein Bild (z. B. Server ohne Internet, `ICON_CDN=` und „Favicons laden“ aus).
+- **Lesezeichen mit eigenem Logo** (2.6, Bugs-DB 1530): `icon` = `/files/<id>` (eigenes hochgeladenes Bild) →
+  `icon_url` = `/api/bookmarks/<id>/logo?v=<kurz>`: PNG, längste Kante 160 px, Seitenverhältnis bleibt, erstes Bild bei
+  GIF; nur für das eigene Konto (Sitzung/Cookie), sonst `404`; `v` wechselt mit dem Bild (lange zwischenspeichern ok,
+  `Cache-Control: private, max-age=604800`). Apps zeigen es ohne Änderung, weil `icon_url` mit `/api/` beginnt.
+  Setzen: Bild per `POST /api/files` (Feld `image`, PNG/JPEG/GIF/WebP) hochladen und dessen `url` als `icon` an
+  `POST`/`PATCH /api/bookmarks` (bzw. `POST /api/app/bookmarks`) schicken. Nur eigene Rasterbilder bis 2 MB, sonst `400`
+  (fremde Datei-ID, kein Bild, SVG, zu groß). Ein **unverändert** zurückgeschicktes `icon` wird nicht erneut geprüft –
+  Bearbeiten-Dialoge dürfen den Wert wie bisher einfach mitschicken; leerer Text entfernt das Logo.
 
 Apps nehmen `icon_url`, wenn vorhanden, sonst wie bisher `icon`. Das Feld `icon` bleibt unverändert der gespeicherte
-Name (beim Bearbeiten eines Lesezeichens zurückschicken, nie `icon_url`). Rückwärtskompatibel, `MIN_APP` bleibt.
+Name bzw. (2.6) `/files/<id>` des eigenen Logos (beim Bearbeiten eines Lesezeichens zurückschicken, nie `icon_url`). Rückwärtskompatibel, `MIN_APP` bleibt.
 
 ### `icon_direct`: Favicon direkt vom Gerät (2.5)
 

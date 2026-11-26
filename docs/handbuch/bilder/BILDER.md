@@ -82,6 +82,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b02-04-startseite-festlegen.png | B02 | Web | hell | Seitenmenü ⋯ von „Sommerfest“ mit „Als Startseite festlegen“ | 1 = Als Startseite festlegen |
 | b03-01-lesezeichen-dialog.png | B03 | Web | hell | Einstellungen → Lesezeichen (Clara): Vertretungsplan und Mensa, neues Lesezeichen mit Adresse schule.example.org | 1 = Adresse (Pflicht) |
 | b03-02-kacheln.png | B03 | Web | hell | Claras „Heute“ mit eigenen Lesezeichen (Mensa, Vertretungsplan) in der Kategorie „Schule“ | 1 = eigenes Lesezeichen; 2 = + Lesezeichen |
+| b03-06-eigenes-logo.png | B03 | Web | hell | Einstellungen → Lesezeichen: Formular „NAS“ mit hochgeladenem eigenem Logo (Vorschau, Ersetzen …, Entfernen), Feld Symbol gesperrt | – |
 | b04-01-seitenbaum.png | B04 | Web | hell | Seitenleiste: Suche, Heute/Chats/Aufgaben/Termine, Seitenbaum „Familie Sommer“, Neue Seite, „Mit mir geteilt“ (Radtour von Ben), Fußleiste | 1 = Seiten durchsuchen; 2 = + Neue Seite; 3 = Mit mir geteilt; 4 = Schnellsuche Strg/⌘+K (daneben Graph); 5 = Archiv; 6 = Papierkorb (30 Tage) |
 | b04-02-slash-menu.png | B04 | Web | hell | Slash-Menü in einer leeren Zeile von „Notizen Elternabend“ – Weitertippen filtert, Esc schließt | – |
 | b04-03-auswahl-leiste-farbe.png | B04 | Web | hell | Auswahl-Leiste (Tiptap) über markiertem Text in „Notizen Elternabend“, Farbauswahl „A“ geöffnet | 1 = fett; 2 = kursiv; 3 = Text- und Hintergrundfarbe; 4 = Formel im Text |

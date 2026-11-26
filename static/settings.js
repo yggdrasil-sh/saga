@@ -978,7 +978,7 @@
   function bookmarkSection(body) {
     var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
     sec.appendChild(el('h3', null, T('Lesezeichen')));
-    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf „Heute“ – nur für dich sichtbar, auch in den Apps. Symbol: Name von selfh.st/icons (z. B. „jellyfin“), leer = automatisch (passendes Symbol oder Favicon der Seite).')));
+    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf „Heute“ – nur für dich sichtbar, auch in den Apps. Symbol: Name von selfh.st/icons (z. B. „jellyfin“), leer = automatisch (passendes Symbol oder Favicon der Seite). Oder ein eigenes Bild als Logo hochladen.')));
     var list = el('div'); sec.appendChild(list);
     var add = el('button', 'btn', T('+ Lesezeichen')); add.type = 'button'; sec.appendChild(add);
     var formBox = el('div'); sec.appendChild(formBox);
@@ -1007,11 +1007,14 @@
     box.textContent = '';
     var f = el('div', 'hk-cal-form');
     var nm = input('text', b ? b.name : '', T('z. B. Router')), url = input('url', b ? b.url : '', 'https://…');
-    var ic = input('text', b ? b.icon : '', T('optional, z. B. openwrt')), cat = input('text', b ? b.category : T('Lesezeichen'));
+    // 2.6 (Bugs-DB 1530): eigenes Logo = hochgeladenes Bild (/files/<id>, Feld icon wie bei Seiten-Symbolen); ersetzt das Symbol
+    var logo = b && /^\/files\/[0-9a-f]{24}$/.test(b.icon || '') ? b.icon : '';
+    var ic = input('text', b && !logo ? b.icon : '', T('optional, z. B. openwrt')), cat = input('text', b ? b.category : T('Lesezeichen'));
     nm.maxLength = 80; url.maxLength = 500; ic.maxLength = 64; cat.maxLength = 40;
+    var lg = bmLogo(logo, ic);
     // Adresse zuerst (Pflichtfeld, Cursor steht dort): ohne Namen nimmt der Server den Rechnernamen der Adresse -
     // den zeigt das Namensfeld schon beim Tippen als Vorschlag.
-    [field(T('Adresse'), url), field(T('Name'), nm), field(T('Symbol'), ic), field(T('Kategorie'), cat)].forEach(function (x) { f.appendChild(x); });
+    [field(T('Adresse'), url), field(T('Name'), nm), field(T('Symbol'), ic), lg.row, field(T('Kategorie'), cat)].forEach(function (x) { f.appendChild(x); });
     var nmHint = nm.placeholder;
     url.addEventListener('input', function () {
       var v = url.value.trim(), h = '';
@@ -1026,14 +1029,53 @@
     setTimeout(function () { f.scrollIntoView({ block: 'center' }); (b ? nm : url).focus({ preventScroll: true }); }, 350);   // neu: erstes Feld (Adresse), bearbeiten: Name
     cc.addEventListener('click', function () { box.textContent = ''; });
     function save() {
-      var data = { name: nm.value.trim(), url: url.value.trim(), icon: ic.value.trim(), category: cat.value.trim() };
+      if (lg.busy()) { status(st, T('Logo wird noch hochgeladen …'), ''); return; }
+      var data = { name: nm.value.trim(), url: url.value.trim(), icon: lg.value() || ic.value.trim(), category: cat.value.trim() };
       (b ? api('PATCH', '/api/bookmarks/' + b.id, data) : api('POST', '/api/bookmarks', data))
         .then(function () { box.textContent = ''; HK.toast(b ? T('Lesezeichen gespeichert') : T('Lesezeichen hinzugefügt')); done(); })
         .catch(function (err) { status(st, err.message, 'err'); });
     }
     sv.addEventListener('click', save);
-    f.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); save(); } });   // Enter auf Knoepfen: deren Aktion
   }
+  // 2.6 (Bugs-DB 1530): Zeile "Logo" im Formular - Bild hochladen (/api/files, Feld image: nur PNG/JPEG/GIF/WebP wie
+  // ueberall in Saga), Vorschau, Ersetzen, Entfernen. Gesetztes Logo sperrt das Feld Symbol (das Logo gewinnt).
+  var LOGO_MAX = 2 * 1024 * 1024, LOGO_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  function bmLogo(cur, sym) {
+    var row = el('div', 'hk-field hk-bm-logo'), lab = el('span', null, T('Logo')), box = el('div', 'hk-bm-logo-box');
+    lab.id = 'hk-bm-logo-l' + (++bmLogo.n); row.setAttribute('role', 'group'); row.setAttribute('aria-labelledby', lab.id);
+    var pv = el('span', 'ic has-img'), up = el('button', 'btn'), rm = el('button', 'btn', T('Entfernen')), hint = el('span', 'hk-hint hk-bm-logo-hint');
+    var file = el('input'); file.type = 'file'; file.accept = LOGO_TYPES.join(','); file.hidden = true;
+    up.type = rm.type = 'button'; rm.setAttribute('aria-label', T('Logo entfernen'));
+    var symPh = sym.placeholder, busy = false;
+    function show() {
+      pv.textContent = '';
+      if (cur) { var img = el('img'); img.alt = T('Logo'); img.src = cur + '?w=160'; pv.appendChild(img); }
+      pv.hidden = rm.hidden = !cur;
+      up.textContent = cur ? T('Ersetzen …') : T('Bild hochladen …');
+      up.setAttribute('aria-label', cur ? T('Logo ersetzen') : T('Logo hochladen'));
+      hint.textContent = busy ? T('Lade Bild hoch …') : T('PNG, JPEG, GIF oder WebP, höchstens {n} MB', { n: LOGO_MAX / 1048576 });
+      sym.disabled = !!cur; sym.placeholder = cur ? T('eigenes Logo gesetzt') : symPh;
+      if (cur) sym.value = '';
+    }
+    up.addEventListener('click', function () { file.value = ''; file.click(); });
+    rm.addEventListener('click', function () { cur = ''; show(); up.focus(); });
+    file.addEventListener('change', function () {
+      var fl = file.files && file.files[0]; if (!fl) return;
+      if (LOGO_TYPES.indexOf(fl.type) < 0) { HK.toast(T('Logo: nur ein eigenes hochgeladenes Bild (PNG, JPEG, GIF oder WebP).')); return; }
+      if (fl.size > LOGO_MAX) { HK.toast(T('Logo zu groß (max. {n} MB).', { n: LOGO_MAX / 1048576 })); return; }
+      var fd = new FormData(); fd.append('image', fl); busy = true; show();
+      fetch('/api/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1' }, body: fd })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok || !d.success) throw new Error(d.error || ('HTTP ' + r.status)); return d.file.url; }); })
+        .then(function (u) { cur = u; })
+        .catch(function (err) { HK.toast(T('Bild nicht gespeichert: {err}', { err: err.message })); })
+        .then(function () { busy = false; show(); });
+    });
+    [pv, up, rm, file].forEach(function (x) { box.appendChild(x); });
+    box.appendChild(hint); row.appendChild(lab); row.appendChild(box); show();
+    return { row: row, value: function () { return cur; }, busy: function () { return busy; } };
+  }
+  bmLogo.n = 0;
   // Einzelnes Lesezeichen direkt vom Dashboard aus bearbeiten/anlegen (✎ an der Kachel, "+ Lesezeichen")
   function editBookmark(id) {
     openSettings('bookmarks');

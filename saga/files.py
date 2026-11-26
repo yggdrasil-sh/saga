@@ -72,14 +72,16 @@ def tmp_cleanup(max_age=3600):
 def files_gc(min_age=86400):
     """Dateien loeschen, die in keiner Seite und keiner Version ihres Besitzers mehr vorkommen
     (erst nach min_age Sekunden - frisch hochgeladene Bilder sind evtl. noch nicht gespeichert).
-    2.5 (Paket 1): auch Werte von Datenbank-Zeilen (props, Datei-Eigenschaft) zaehlen als Benutzung."""
+    2.5 (Paket 1): auch Werte von Datenbank-Zeilen (props, Datei-Eigenschaft) zaehlen als Benutzung.
+    2.6 (Bugs-DB 1530): ebenso das eigene Logo eines Lesezeichens (bookmark.icon = /files/<id>)."""
     removed = 0
     with _db() as c, c:
         for fid, uid in c.execute("SELECT id, uid FROM file WHERE created < ?", (time.time() - min_age,)).fetchall():
             ref = f"/files/{fid}"
             used = c.execute("SELECT 1 FROM note WHERE uid=? AND (instr(body, ?) > 0 OR icon=? OR cover=? OR instr(props, ?) > 0) LIMIT 1",
                              (uid, ref, ref, ref, ref)).fetchone() or \
-                c.execute("SELECT 1 FROM note_version WHERE uid=? AND instr(body, ?) > 0 LIMIT 1", (uid, ref)).fetchone()
+                c.execute("SELECT 1 FROM note_version WHERE uid=? AND instr(body, ?) > 0 LIMIT 1", (uid, ref)).fetchone() or \
+                c.execute("SELECT 1 FROM bookmark WHERE uid=? AND icon=? LIMIT 1", (uid, ref)).fetchone()   # 2.6: Logo (1530)
             if not used:
                 c.execute("DELETE FROM file WHERE id=?", (fid,))
                 try:
@@ -445,6 +447,66 @@ def _drop_thumbs(fid):
         for ext in (".webp", ".gif", ".orig"):
             try:
                 os.remove(os.path.join(THUMB_DIR, f"{fid}-{w}{ext}"))
+            except OSError:
+                pass
+    for ext in (".png", ".bad"):                     # 2.6 (Bugs-DB 1530): Logo eines Lesezeichens
+        try:
+            os.remove(os.path.join(THUMB_DIR, f"{fid}-logo{ext}"))
+        except OSError:
+            pass
+
+
+# 2.6 (Bugs-DB 1530): eigenes Logo eines Lesezeichens als kleines PNG (erstes Bild bei Animationen, Ausrichtung aus
+# EXIF, Seitenverhaeltnis bleibt, laengste Kante LOGO_EDGE). PNG koennen alle Apps (auch die Linux-App ohne WebP-Lader).
+# Eigener, speicherbegrenzter Prozess wie bei den Vorschaubildern (Dekompressionsbombe sprengt hoechstens ihn).
+LOGO_EDGE = 160
+_LOGO_CODE = r"""
+import sys, warnings
+from PIL import Image, ImageOps
+path, tmp, edge = sys.argv[1], sys.argv[2], int(sys.argv[3])
+Image.MAX_IMAGE_PIXELS = 50_000_000
+warnings.simplefilter("error", Image.DecompressionBombWarning)
+with Image.open(path, formats=["PNG", "JPEG", "GIF", "WEBP"]) as im:
+    if im.format == "JPEG":
+        im.draft("RGB", (edge, edge))
+    im.seek(0)
+    try:
+        im = ImageOps.exif_transpose(im)
+    except Exception:
+        pass
+    im = im.convert("RGBA")
+    im.thumbnail((edge, edge), Image.LANCZOS)
+    im.save(tmp, "PNG", optimize=True)
+"""
+
+
+def logo_png(fid):
+    """Pfad des Logo-PNG (einmal erzeugt, zwischengespeichert) oder None (kaputt/zu gross - nicht nochmal versuchen)."""
+    out = os.path.join(THUMB_DIR, f"{fid}-logo.png")
+    bad = os.path.join(THUMB_DIR, f"{fid}-logo.bad")
+    src = os.path.join(FILES_DIR, fid)
+    if os.path.isfile(out):
+        return out
+    if os.path.isfile(bad) or not os.path.isfile(src):
+        return None
+    with _thumb_sem:
+        if os.path.isfile(out):
+            return out
+        os.makedirs(THUMB_DIR, mode=0o700, exist_ok=True)
+        tmp = f"{out}.{os.getpid()}.{threading.get_ident()}.tmp"
+        try:
+            r = subprocess.run([sys.executable, "-c", _LOGO_CODE, src, tmp, str(LOGO_EDGE)], capture_output=True, text=True,
+                               timeout=60, preexec_fn=_thumb_limits)
+            if r.returncode != 0 or not os.path.isfile(tmp) or not os.path.getsize(tmp):
+                open(bad, "w").close()
+                return None
+            os.replace(tmp, out)
+            return out
+        except (OSError, subprocess.SubprocessError):
+            return None
+        finally:
+            try:
+                os.remove(tmp)
             except OSError:
                 pass
 

@@ -4,11 +4,11 @@ import time
 from urllib.parse import urlparse
 import httpx
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body, t
-from saga.dashboard import BOOKMARK_MAX, bookmarks
+from saga.core import RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body, _session_user, t
+from saga.dashboard import BOOKMARK_MAX, LOGO_MIME, LOGO_RE, bookmarks
 
 router = APIRouter()
 
@@ -17,8 +17,24 @@ router = APIRouter()
 _ICON_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 
 
-def _bm_input(b, cur=None):
-    """-> (werte, fehler). cur = bisherige Werte (PATCH)."""
+LOGO_MAX = 2 * 1024 * 1024            # 2.6 (Bugs-DB 1530): eigenes Logo hoechstens 2 MB (Upload selbst: ATTACH_MAX_MB)
+
+
+def logo_error(c, uid, icon):
+    """2.6 (Bugs-DB 1530): Logo /files/<id> - wie bei Seiten-Symbolen (pages._own_image) nur ein EIGENES, am Inhalt als
+    Bild erkanntes Upload, dazu nur Rasterbilder (PNG, JPEG, GIF, WebP - kein SVG) bis LOGO_MAX. -> Fehlertext oder None."""
+    m = LOGO_RE.fullmatch(icon)
+    r = m and c.execute("SELECT is_image, mime, size FROM file WHERE id=? AND uid=?", (m.group(1), uid)).fetchone()
+    if not r or not r[0] or r[1] not in LOGO_MIME:
+        return t("Logo: nur ein eigenes hochgeladenes Bild (PNG, JPEG, GIF oder WebP).")
+    if r[2] > LOGO_MAX:
+        return t("Logo zu groß (max. {n} MB).", n=LOGO_MAX // 1048576)
+    return None
+
+
+def _bm_input(b, cur=None, uid=None):
+    """-> (werte, fehler). cur = bisherige Werte (PATCH). Symbol: Name aus selfh.st oder (2.6) eigenes Logo /files/<id>
+    - unveraendert zurueckgeschickt wird es nicht erneut geprueft (Apps schicken beim Bearbeiten das Feld icon mit)."""
     cur = cur or {}
     name = str(b.get("name", cur.get("name", "")) or "").strip()[:80]
     url = str(b.get("url", cur.get("url", "")) or "").strip()[:500]
@@ -36,7 +52,13 @@ def _bm_input(b, cur=None):
         return None, t("Bitte eine Adresse mit http:// oder https:// angeben.")
     if not name:
         name = pu.netloc
-    if icon and not _ICON_RE.fullmatch(icon):
+    if icon.startswith("/files/"):
+        if icon != cur.get("icon"):
+            with _db() as c:
+                err = logo_error(c, uid, icon)
+            if err:
+                return None, err
+    elif icon and not _ICON_RE.fullmatch(icon):
         return None, t("Symbol: nur der Name aus selfh.st/icons (z. B. nextcloud).")
     return {"name": name, "url": url, "icon": icon, "category": cat}, None
 
@@ -59,7 +81,7 @@ async def api_bookmark_add(request: Request):
 
 def add_bookmark(uid, b):
     """Lesezeichen anlegen (Web/Apps per Sitzung, Teilen-Erweiterung per App-Schluessel: POST /api/app/bookmarks)."""
-    v, err = _bm_input(b)
+    v, err = _bm_input(b, uid=uid)
     if err:
         return _bad(err)
     with _db() as c, c:
@@ -80,7 +102,7 @@ async def api_bookmark_update(bid: int, request: Request):
         r = c.execute("SELECT name, url, icon, category FROM bookmark WHERE id=? AND uid=?", (bid, uid)).fetchone()
     if not r:
         return _bad("not found", 404)
-    v, err = _bm_input(await _body(request) or {}, dict(zip(("name", "url", "icon", "category"), r)))
+    v, err = _bm_input(await _body(request) or {}, dict(zip(("name", "url", "icon", "category"), r)), uid)
     if err:
         return _bad(err)
     with _db() as c, c:
@@ -98,6 +120,24 @@ def api_bookmark_delete(bid: int, request: Request):
         n = c.execute("DELETE FROM bookmark WHERE id=? AND uid=?", (bid, uid)).rowcount
         c.execute("DELETE FROM fav WHERE uid=? AND grp=?", (uid, f"bm{bid}"))
     return JSONResponse({"ok": True}) if n else _bad("not found", 404)
+
+
+@router.get("/api/bookmarks/{bid}/logo")
+def api_bookmark_logo(bid: int, request: Request):
+    """2.6 (Bugs-DB 1530): eigenes Logo eines Lesezeichens als PNG (laengste Kante files.LOGO_EDGE) - nur fuer das
+    eigene Konto (Sitzung/Cookie wie /api/services/icon, auch die Apps). Adresse aus icon_url (?v= wechselt mit dem Bild).
+    404: kein Logo, nicht das eigene Lesezeichen, Datei weg oder nicht lesbar (dann Anfangsbuchstabe zeigen)."""
+    uid = _session_user(request)
+    with _db() as c:
+        r = uid and c.execute("SELECT icon FROM bookmark WHERE id=? AND uid=?", (bid, uid)).fetchone()
+        m = r and LOGO_RE.fullmatch(r[0] or "")
+        f = m and c.execute("SELECT is_image, mime FROM file WHERE id=? AND uid=?", (m.group(1), uid)).fetchone()
+    from saga.files import logo_png
+    path = logo_png(m.group(1)) if f and f[0] and f[1] in LOGO_MIME else None
+    if not path:
+        return PlainTextResponse("not found", status_code=404, headers={"Cache-Control": "no-store"})
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=604800",
+                                                                "X-Content-Type-Options": "nosniff"})
 
 
 # --- Websuche (SearXNG) -----------------------------------------------------

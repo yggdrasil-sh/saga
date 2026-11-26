@@ -35,7 +35,7 @@ So erkennst du auf einen Blick, was von dir stammt.
 2. Das Fenster **Einstellungen** öffnet sich im Bereich **Lesezeichen**, darunter ein leeres Formular. Der
    Cursor steht schon im Feld **Adresse**.
 
-![Einstellungen, Bereich Lesezeichen: oben zwei vorhandene Lesezeichen „Vertretungsplan“ und „Mensa“, darunter das Formular mit Adresse, Name, Symbol und Kategorie](../bilder/b03-01-lesezeichen-dialog.png)
+![Einstellungen, Bereich Lesezeichen: oben zwei vorhandene Lesezeichen „Vertretungsplan“ und „Mensa“, darunter das Formular mit Adresse, Name, Symbol, Logo und Kategorie](../bilder/b03-01-lesezeichen-dialog.png)
 
 3. Trag bei ① **Adresse** die Internetadresse ein, zum Beispiel `https://schule.example.org/vertretungsplan`.
    Das ist das einzige Pflichtfeld. Lässt du `https://` weg, ergänzt Saga es selbst.
@@ -82,6 +82,22 @@ Jede Kachel zeigt links ein kleines Bild. Bei Lesezeichen kümmert sich Saga mei
 **Symbol selbst wählen:** Such auf [selfh.st/icons](https://selfh.st/icons) nach deinem Dienst und trag den
 **Namen** des Symbols in das Feld **Symbol** ein, zum Beispiel `jellyfin`, `nextcloud` oder `openwrt`. Nur den
 Namen, keine Adresse.
+
+**Eigenes Logo hochladen:** Gibt es für deine Seite kein passendes Symbol (etwa für das NAS im Keller), nimm ein
+eigenes Bild:
+
+1. Klick im Formular in der Zeile **Logo** auf **Bild hochladen …** und wähl eine Bilddatei aus – PNG, JPEG, GIF
+   oder WebP, höchstens 2 MB. Quadratische Bilder sehen am besten aus.
+2. Daneben erscheint eine kleine Vorschau. Das Feld **Symbol** ist jetzt gesperrt („eigenes Logo gesetzt“) – das
+   Logo hat Vorrang.
+3. Klick auf **Hinzufügen** bzw. **Speichern**. Das Logo steht jetzt in der Liste, auf der Kachel auf „Heute“ und
+   in den Apps.
+
+Mit **Ersetzen …** wählst du ein anderes Bild, mit **Entfernen** (und danach **Speichern**) gehst du zurück zum
+Symbol bzw. zum automatischen Bild. Das Logo siehst nur du – wie das Lesezeichen selbst. SVG-Dateien gehen nicht,
+weil Saga sie beim Hochladen aus Sicherheitsgründen nicht annimmt; speichere das Logo vorher als PNG.
+
+![Formular mit Logo: in der Zeile „Logo“ die Vorschau des hochgeladenen Bildes, daneben „Ersetzen …“ und „Entfernen“, das Feld Symbol zeigt „eigenes Logo gesetzt“](../bilder/b03-06-eigenes-logo.png)
 
 > **Hinweis:** Das automatische Symbol gibt es nur für Lesezeichen. Dienste vom Admin zeigen immer ihr fest
 > eingestelltes Symbol oder den Anfangsbuchstaben.
@@ -161,7 +177,11 @@ Adresse und kein Bild. Oder lass das Feld einfach leer.
 
 **Meine Kachel zeigt nur einen Buchstaben.**
 Saga hat weder ein passendes Symbol noch ein Favicon gefunden. Such auf selfh.st/icons nach einem passenden
-Symbol und trag dessen Namen ein.
+Symbol und trag dessen Namen ein – oder lade ein eigenes Logo hoch (Abschnitt 3).
+
+**Saga sagt „Logo: nur ein eigenes hochgeladenes Bild …“ oder „Logo zu groß“.**
+Das Logo muss ein Bild sein, das du selbst hochgeladen hast (PNG, JPEG, GIF oder WebP), und darf höchstens 2 MB
+groß sein. Verkleinere das Bild oder speichere es in einem dieser Formate.
 
 **Gibt es eine Höchstzahl?**
 Ja, aber eine großzügige: bis zu 500 Lesezeichen je Konto.
@@ -181,7 +201,8 @@ Im Handy-Browser funktioniert alles wie am Computer. Stern ★ und Stift ✎ sin
 <!-- App-Bild folgt: b03-03-dienste-ios.png -->
 
 - Deine Lesezeichen stehen in der App unter **Dienste**, zusammen mit den Diensten deines Admins.
-- **Anlegen:** in „Dienste“ auf **+** tippen. Die Felder sind dieselben: Adresse, Name, Kategorie, Symbol.
+- **Anlegen:** in „Dienste“ auf **+** tippen. Die Felder sind dieselben: Adresse, Name, Kategorie, Symbol. Ein
+  eigenes Logo lädst du im Browser hoch; die App zeigt es dann an.
 - **Bearbeiten und löschen:** lange auf die Kachel drücken (iPhone/iPad) bzw. Rechtsklick (Mac).
 - **Aus anderen Apps ablegen:** In Safari (oder einer anderen App) einen Link **teilen** → Saga wählen → als
   **Lesezeichen** ablegen. Der Name kommt aus dem Seitentitel, die Kategorie wählst du aus deinen vorhandenen.
@@ -201,7 +222,8 @@ Im Handy-Browser funktioniert alles wie am Computer. Stern ★ und Stift ✎ sin
 - Die Linux-App zeigt deine Lesezeichen unter **Dienste** an. **Anlegen und bearbeiten** geht dort nicht – das
   machst du im Browser.
 
-**In allen Apps** holt die App das Favicon notfalls direkt von der Webseite, genau wie der Browser.
+**In allen Apps** holt die App das Favicon notfalls direkt von der Webseite, genau wie der Browser. Ein eigenes
+Logo (im Browser hochgeladen) zeigen alle Apps an.
 
 ---
 

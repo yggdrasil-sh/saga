@@ -683,6 +683,8 @@ Symbol sucht Saga selbst eines: zuerst ein passendes von selfh.st nach dem Domai
 Shops antworten Servern mit „503“), lädt dein Browser bzw. die App das Favicon direkt von der Seite – wie ein
 Browser-Tab, ohne Cookies. Erst wenn alles fehlt, erscheint der Anfangsbuchstabe. Das gilt nur für Lesezeichen:
 Dienste aus dem Admin-Bereich zeigen ihr festes Symbol oder den Anfangsbuchstaben. Bearbeiten über **✎** an der Kachel.
+**Eigenes Logo** (2.6): im Formular unter **Logo** ein eigenes Bild hochladen (PNG, JPEG, GIF oder WebP, höchstens 2 MB,
+kein SVG) – es hat Vorrang vor dem Symbol, erscheint in Liste, Kachel und Apps und lässt sich ersetzen oder entfernen.
 
 ![Lesezeichen](screenshots/lesezeichen.png)
 

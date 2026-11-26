@@ -28,6 +28,16 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   mehr. Voraussetzung am Reverse Proxy wie bisher: eine Domain, Port 443, „Websockets Support“ an. Wer weiter direkt
   (Mesh) telefonieren will: Admin › Anrufe › „Große Gruppenanrufe über Gjallarhorn“ ausschalten und speichern.
   Ist kein Knoten bereit oder kann ein Gerät es nicht, läuft der Anruf wie bisher direkt.
+- **Eigene Logos bei Lesezeichen** (Bugs-DB 1530, ohne Migration): Im Formular „+ Lesezeichen“ (Einstellungen ›
+  Lesezeichen bzw. ✎ an der Kachel) gibt es die Zeile **Logo**: ein eigenes Bild hochladen (PNG, JPEG, GIF oder WebP,
+  höchstens 2 MB – SVG nicht, Saga nimmt SVG beim Hochladen generell nicht an), mit Vorschau, **Ersetzen …** und
+  **Entfernen**. Das Logo gewinnt vor dem Symbolnamen und erscheint überall, wo das Lesezeichen steht: Liste in den
+  Einstellungen, Kacheln auf „Heute“ und in allen Apps (iOS/iPadOS/Mac, Android, Linux – ohne App-Update, sie laden
+  `icon_url`). Gespeichert wird es wie ein Seiten-Symbol als `/files/<id>` im Feld `icon`; erlaubt ist nur ein **eigenes**
+  hochgeladenes Bild (fremde Datei-IDs, Nicht-Bilder, SVG → 400). Ausgeliefert als kleines PNG über
+  `GET /api/bookmarks/<id>/logo?v=…` (nur für das eigene Konto, sonst 404). Das Aufräumen alter Dateien lässt Logos
+  stehen; ein persönliches Backup nimmt Logo und Symbolnamen beim Einspielen jetzt mit (bisher fiel das Symbol weg).
+  Kleinigkeit nebenbei: `Enter` auf einem Knopf im Lesezeichen-Formular (z. B. „Abbrechen“) speichert nicht mehr.
 - **MCP: `update_row` ändert auch das Symbol** (Bugs-DB 2448): neues Feld `icon` (Emoji oder Saga-Siegel, leerer
   Text entfernt es) – wie bei `create_row`. Gesperrte Einträge antworten wie im Web mit 423.
 - **Sprechring nur noch in Gruppen** (Bugs-DB 2125, Web inkl. Mac-Hülle/Linux): Der grüne Ring um Bild bzw. Profilbild

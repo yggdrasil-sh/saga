@@ -1143,11 +1143,20 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
         if opts.get("tasks"):
             srcs = _import_task_sources(c, uid, data, nmap, set(made))
         if opts.get("bookmarks"):
+            from saga.links import _ICON_RE, logo_error
             for x in data.get("bookmarks") or []:
                 u = str((x or {}).get("url") or "") if isinstance(x, dict) else ""
                 if urlparse(u).scheme in ("http", "https") and len(u) <= 2000:
+                    # 2.6 (Bugs-DB 1530): Symbol mitnehmen - selfh.st-Name oder eigenes Logo (Datei aus DIESEM Backup, neue ID)
+                    ic = str(x.get("icon") or "")
+                    m = _FILE_URL.fullmatch(ic)
+                    if m:
+                        ic = f"/files/{fids[m.group(1)]}" if m.group(1) in fids else ""
+                        ic = ic if ic and not logo_error(c, uid, ic) else ""
+                    elif not _ICON_RE.fullmatch(ic):
+                        ic = ""
                     c.execute("INSERT INTO bookmark (uid, name, url, icon, category, sort, created) VALUES (?,?,?,?,?,?,?)",
-                              (uid, str(x.get("name") or u)[:200], u, "", str(x.get("category") or "Lesezeichen")[:60],
+                              (uid, str(x.get("name") or u)[:200], u, ic, str(x.get("category") or "Lesezeichen")[:60],
                                float(x["sort"]) if isinstance(x.get("sort"), (int, float)) else now, now))
                     bms += 1
         ncon = 0

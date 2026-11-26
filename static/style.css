@@ -1512,6 +1512,9 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-bm-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:.5rem;align-items:center;padding:.35rem 0;border-bottom:1px solid var(--border)}
 .hk-bm-row .ic{width:28px;height:28px;border-radius:var(--r-sm);font-size:var(--fs-sm)}
 .hk-bm-row .hk-hint{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hk-bm-logo-box{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}                 /* 2.6 (1530): eigenes Logo */
+.hk-bm-logo-box .ic{width:32px;height:32px;border-radius:var(--r-sm)}
+.hk-bm-logo-hint{flex-basis:100%;margin:0;font-size:var(--fs-sm)}
 
 /* Admin-Bereich (eigener Port) */
 .adm-head{display:flex;align-items:center;gap:1rem;padding:1rem 2rem;border-bottom:1px solid var(--border);flex-wrap:wrap}

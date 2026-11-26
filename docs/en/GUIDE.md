@@ -612,7 +612,9 @@ bookmarks – in the apps too; the admin only sees how many there are. The addre
 tile is named after the host (e.g. `wiki.example.org`). Icon: a name from [selfh.st/icons](https://selfh.st/icons).
 Without an icon, Saga looks for one itself: first a matching selfh.st icon by domain name (`youtube.com` → `youtube`,
 `jellyfin.example.org` → `jellyfin`), otherwise the site’s favicon; only if neither exists is the first letter
-shown. Edit via **✎** on the tile.
+shown. Edit via **✎** on the tile. **Own logo** (2.6): under **Logo** in the form, upload your own picture (PNG, JPEG,
+GIF or WebP, at most 2 MB, no SVG) – it takes precedence over the icon, shows in the list, on the tile and in the
+apps, and can be replaced or removed.
 
 ![Bookmarks](../screenshots/lesezeichen.png)
 

@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import ssl
 import time
 from urllib.parse import quote, urlparse
@@ -72,11 +73,18 @@ def favicons_on():
     return FAVICONS_ENV and bool(auth.settings().get("favicons", True))
 
 
+LOGO_RE = re.compile(r"/files/([0-9a-f]{24})")                       # 2.6 (Bugs-DB 1530): eigenes Logo (bookmark.icon)
+LOGO_MIME = ("image/png", "image/jpeg", "image/gif", "image/webp")
+
+
 def tile_icon_url(s):
     """Fertige Bildadresse einer Kachel fuer Web und Apps: das gesetzte selfh.st-Symbol, sonst - nur bei Lesezeichen
     (own) - das automatische Symbol (/api/services/favicon/<schluessel>: erst selfh.st nach dem Domainnamen raten, dann
     das Favicon der Seite). Dienste ohne Symbol bekommen nichts (Anfangsbuchstabe, 2.5).
     h = Kurz-Hash des Hosts: aendert sich die Adresse, laden Browser und Apps das Bild neu. Leer = Anfangsbuchstabe."""
+    m = LOGO_RE.fullmatch(s.get("icon") or "")
+    if m:                                    # 2.6 (1530): eigenes Logo - nur Lesezeichen; /api/... laden auch aeltere Apps
+        return f"/api/bookmarks/{int(s['id'])}/logo?v={m.group(1)[:8]}" if s.get("own") and s.get("id") else ""
     if s.get("icon"):
         return "/api/services/icon/" + s["icon"]
     if not s.get("own"):
