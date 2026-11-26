@@ -1403,9 +1403,9 @@ Instanz teilen“ bei der Föderation – der regelt nur, ob Personen anderer Se
   Kontakt entsteht oder ein vorhandener ergänzt wird; gesichert wird erst, wenn du es bestätigst. Die Saga-Adresse,
   Anrede und Grußform gehen nicht mit. Saga bekommt dafür keinen Zugriff auf deine Kontakte, liest sie nicht und gleicht
   nichts ab. Der Knopf erscheint nur bei Kontakten mit mindestens einer Nummer oder E-Mail-Adresse.
-- **Noch nicht dabei:** laufender Abgleich mit dem Adressbuch des Handys, „Über Saga anrufen“ ins Telefonnetz (Saga 3.0) und
-  Kontakte als Ausnahme bei „Nicht stören“. API-Tokens und MCP kommen nicht an das Adressbuch. Schnittstelle für Apps:
-  `docs/APP-API.md`, Abschnitt „Kontakte“.
+- **Noch nicht dabei:** laufender Abgleich mit dem Adressbuch des Handys, „Über Saga anrufen“ ins Telefonnetz (Saga 3.0)
+  und Kontakte als Ausnahme bei „Nicht stören“. API-Tokens und MCP kommen nicht an das Adressbuch. Schnittstelle für
+  Apps: `docs/APP-API.md`, Abschnitt „Kontakte“.
 
 **Admin – Update auf Schema-Stand 38:** Die erste Version mit Adressbuch hebt die Datenbank auf Schema-Stand **38**.
 Vorher legt Saga wie gewohnt die Sicherung `…-vor-schema-38.dump` in `/data/backups` an. Danach füllt Saga einmal die

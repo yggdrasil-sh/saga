@@ -1231,9 +1231,9 @@ de otros servidores os encuentran por el nombre.
   decides si se crea un contacto nuevo o se completa uno existente; no se guarda nada hasta que lo confirmas. La
   dirección de Saga, el tratamiento y el saludo no se copian. Saga no obtiene acceso a tus contactos, no los lee y no
   sincroniza nada. El botón solo aparece en contactos con al menos un número o una dirección de correo.
-- **Todavía no:** sincronización continua con la libreta del teléfono, «Llamar a través de Saga» a la red telefónica (Saga 3.0) y
-  contactos como excepción en «No molestar». Los tokens de API y MCP no acceden a la libreta. Interfaz para apps:
-  `docs/APP-API.md` (en alemán), sección «Kontakte».
+- **Todavía no:** sincronización continua con la libreta del teléfono, «Llamar a través de Saga» a la red telefónica
+  (Saga 3.0) y contactos como excepción en «No molestar». Los tokens de API y MCP no acceden a la libreta. Interfaz para
+  apps: `docs/APP-API.md` (en alemán), sección «Kontakte».
 
 **Administración – actualización al esquema 38:** la primera versión con libreta de direcciones sube la base de datos
 al esquema **38**. Antes, Saga crea como siempre la copia `…-vor-schema-38.dump` en `/data/backups`. Después rellena una

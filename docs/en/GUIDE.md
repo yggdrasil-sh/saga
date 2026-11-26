@@ -1180,8 +1180,8 @@ this instance” in federation – that only controls whether people on other se
   new contact or add to an existing one; nothing is saved until you confirm. The Saga address, form of address and
   greeting are not copied. Saga gets no access to your contacts, doesn't read them and doesn't sync. The button only
   appears for contacts with at least one number or email address.
-- **Not yet included:** ongoing sync with the phone's address book, “Call via Saga” into the phone network (Saga 3.0) and
-  contacts as exceptions for “Do not disturb”. API tokens and MCP can't access the address book. Interface for apps:
+- **Not yet included:** ongoing sync with the phone's address book, “Call via Saga” into the phone network (Saga 3.0)
+  and contacts as exceptions for “Do not disturb”. API tokens and MCP can't access the address book. Interface for apps:
   `docs/APP-API.md` (German), section “Kontakte”.
 
 **Admin – update to schema version 38:** the first version with the address book raises the database to schema

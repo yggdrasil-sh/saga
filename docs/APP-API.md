@@ -4335,7 +4335,7 @@ ignorieren.
 - **Anrede für die Kollegin (K-H):** `form`/`salutation` liest die Kollegin nur über eine eigene Lesefunktion im
   Kontakte-Modul, die genau diese beiden Felder eines eigenen Kontakts liefert – nicht über `GET /api/contacts` und nie
   aus Chats abgeleitet (RT-41). Gesetzt wird beides weiter nur von der Person selbst.
-- **Export ins System-Adressbuch (2027b, Beginn 2.6):** iOS/Android bieten im Kontakt-Detail „Zu Kontakten hinzufügen“
+- **Export ins System-Adressbuch (2027b, Saga 2.6):** iOS/Android bieten im Kontakt-Detail „Zu Kontakten hinzufügen“
   und öffnen den System-Dialog vorausgefüllt (iOS `CNContactViewController(forUnknownContact:)`, Android
   `ACTION_INSERT_OR_EDIT`) – ohne Kontakte-Berechtigung, ohne Lesen, ohne Abgleich. **Kein eigener API-Aufruf:** die
   Apps bauen die Vorbefüllung aus dem schon geladenen Kontakt. Übertragen werden nur der Name („Name für mich“, sonst
