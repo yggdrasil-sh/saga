@@ -16,7 +16,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Backup, Migrationen bis Schema 40,
+Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Backup, Migrationen bis Schema 41,
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
@@ -271,7 +271,7 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   denselben Rechten und Grenzen wie `sga_`-Tokens und denselben Werkzeugen (`tools.for_mcp()`); Bereiche nie `tel`,
   kein Zugang zu `/api/ai/jobs/*` und keine Chat-Werkzeuge (RT-42). Neu unter Einstellungen „Verbundene Apps“
   (Rechte, zuletzt benutzt, Trennen); Admin-Schalter „MCP-Clients ohne Token verbinden (OAuth)“ mit der Zahl der
-  Verbindungen. Bestehende API-Tokens bleiben unverändert. Migration 43 (`api_token.grant_id`), Testreihe
+  Verbindungen. Bestehende API-Tokens bleiben unverändert. Migration 41 (`api_token.grant_id`, `oauth_refresh.parent`), Testreihe
   `tests/mcp_oauth.py`, Doku `docs/API.md` und Handbuch B18 Abschnitt 5 (en/es: GUIDE/GUIA).
 
 ### Behoben

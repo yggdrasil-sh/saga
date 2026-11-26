@@ -1536,8 +1536,9 @@ SELECT lim FROM chat_call LIMIT 0;
     # 2.6 (Bugs-DB 2264, MCP mit OAuth, saga/oauth.py): Zugriffstoken einer verbundenen App stehen in api_token mit
     # grant_id (oauth_grant.id) - sie gelten nur fuer /mcp und erscheinen nicht unter "API-Tokens". Tabellen oauth_* legt
     # SCHEMA oben an. Bestand: NULL (alle bisherigen sga_-Tokens unveraendert). Beliebig oft ausfuehrbar.
-    43: """
+    41: """
 ALTER TABLE api_token ADD COLUMN IF NOT EXISTS grant_id BIGINT;
+ALTER TABLE oauth_refresh ADD COLUMN IF NOT EXISTS parent TEXT;
 CREATE INDEX IF NOT EXISTS api_token_grant ON api_token (grant_id) WHERE grant_id IS NOT NULL;
 SELECT 1 FROM oauth_client, oauth_grant, oauth_code, oauth_refresh LIMIT 0;
 """,
