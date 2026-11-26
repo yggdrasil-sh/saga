@@ -40,7 +40,7 @@ def state_text(st):
 
 
 def group_text(g):
-    return {"wartet_auf_dich": t("Wartet auf dich"), "laeuft": t("Läuft"), "fertig": t("Fertig"),
+    return {"wartet_auf_dich": t("Wartet auf dich"), "laeuft": t("Läuft"), "fertig": t("Fertig##Gruppe"),
             "nicht_geklappt": t("Hat nicht geklappt")}.get(g, g)
 
 

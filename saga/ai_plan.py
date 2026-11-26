@@ -853,7 +853,7 @@ def klass_text(undo_class, klass):
 
 
 def kind_text(klass):
-    return {"read": t("Lesen"), "own": t("Eigenes ändern"), "out": t("Nach außen")}.get(klass, "")
+    return {"read": t("Lesen##Schritt"), "own": t("Eigenes ändern"), "out": t("Nach außen")}.get(klass, "")
 
 
 def _lab(labels, ref):
