@@ -176,7 +176,7 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
       await L.p.waitForTimeout(800);
       await L.p.evaluate(() => HKAI.open('ask'));
       const foot = await until(() => L.p.evaluate(() => { const n = document.querySelector('.ai-notice'); return n && n.textContent ? { t: n.textContent, i: !!n.querySelector('.ai-info-b') } : null; }), 6000);
-      if (th === 'dark') ok('Frag deine Seiten: „Was du hier fragst, liest die KI auf … (im Heimnetz)“ mit ⓘ', foot && /^Was du hier fragst, liest die KI auf 127\.0\.0\.1:\d+ \(im Heimnetz\)/.test(foot.t) && foot.i, foot);
+      if (th === 'dark') ok('Frag deine Seiten: „Was du hier fragst, liest die KI auf … (im Heimnetz)“ mit ⓘ', foot && /Was du hier fragst, liest die KI auf 127\.0\.0\.1:\d+ \(im Heimnetz\)/.test(foot.t) && foot.i, foot);
       const ib = await L.p.$('.ai-info-b'); if (ib) await ib.click();
       await shot(L.p, `nachher2-frag-deine-seiten-hinweis-desktop-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
     }

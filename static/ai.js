@@ -129,7 +129,7 @@
       var ibox = el('div', 'ai-info-box'); ibox.hidden = true;
       det.forEach(function (x) { ibox.appendChild(el('p', null, x)); });
       ib.addEventListener('click', function () { ibox.hidden = !ibox.hidden; ib.setAttribute('aria-expanded', ibox.hidden ? 'false' : 'true'); });
-      notice.appendChild(document.createTextNode(' ')); notice.appendChild(ib);
+      notice.classList.add('ai-notice-i'); notice.insertBefore(ib, notice.firstChild);   // ersetzt das stille ⓘ davor
       foot.appendChild(ibox);
     }
     var q = A.st && A.st.quota ? T('Heute noch {n} von {m} Anfragen', { n: Math.max(0, A.st.quota - A.st.used), m: A.st.quota }) : '';
