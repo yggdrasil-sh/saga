@@ -80,7 +80,8 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('plan-hell'); await p.emulateMedia({ colorScheme: 'dark' });
   // Passt, los -> Rueckmeldung
   await p.click('.kj-go');
-  ok('Freigabe: Pille „Läuft“', await until(() => p.evaluate(() => /Läuft/.test((document.querySelector('.kj-stage .kj-state') || {}).textContent || ''))));
+  ok('Freigabe: Pille „Läuft“ (oder schon die Rückmeldung, wenn der Auftrag sofort fertig ist)', await until(() => p.evaluate(() =>
+    /Läuft/.test((document.querySelector('.kj-stage .kj-state') || {}).textContent || '') || !!document.querySelector('.kj-stage .kj-report'))));
   const fb = await until(() => p.evaluate(() => { const r = document.querySelector('.kj-stage .kj-report'); return r && { state: r.querySelector('.kj-state').textContent,
     res: r.querySelector('.kj-result').textContent, undo: !!r.querySelector('.kj-undo'), h: r.querySelector('.kj-undo') && r.querySelector('.kj-undo').getBoundingClientRect().height,
     line: (r.querySelector('.kj-change-t') || {}).textContent }; }), 15000);
