@@ -214,9 +214,9 @@ def lookup(raw):
         if r[7] is not None and r[7] <= now:
             return None, "expired"
         if not r[9] or now - r[9] > 60:                       # "zuletzt benutzt" grob mitfuehren
-            c.execute("UPDATE api_token SET last_used=? WHERE id=?", (now, r[0]))
-            if r[10]:
+            if r[10]:       # erst oauth_grant, dann api_token - dieselbe Sperrreihenfolge wie saga/oauth.py (N5)
                 c.execute("UPDATE oauth_grant SET last_used=? WHERE id=?", (now, r[10]))
+            c.execute("UPDATE api_token SET last_used=? WHERE id=?", (now, r[0]))
     info = user_info(r[1])
     if info is None:
         return None, "unauthorized"

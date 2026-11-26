@@ -19,8 +19,10 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "ai_units", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
                "fed_chat_block", "chat_invite", "nc_account", "chat_seen", "chat_hidden", "note_fresh", "import_run", "task_source",
+               # 2.6 (Bugs-DB 2264): verbundene Apps; oauth_code/oauth_refresh per CASCADE - vor api_token (Sperrreihenfolge
+               # oauth_grant -> api_token wie saga/oauth.py, N5)
+               "oauth_grant",
                "api_token", "webhook", "job",      # 2.6: job_step/job_wait/job_event/job_change gehen mit (ON DELETE CASCADE)
-               "oauth_grant",                      # 2.6 (Bugs-DB 2264): verbundene Apps; oauth_code/oauth_refresh per CASCADE
                "user_status",                      # 2.6 (Bugs-DB 2029): eigener Status; aus Ausnahmen anderer: user_status.drop_account
                "contact_addr", "contact")          # 2.6 (Bugs-DB 2027a): Adressbuch (bei anderen: contacts.drop_account)
 
@@ -111,10 +113,11 @@ def revoke_user_logins(uid, keep_device=None):
         else:
             a = c.execute("DELETE FROM device_login WHERE uid=?", (uid,)).rowcount
             b = c.execute("DELETE FROM app_token WHERE uid=?", (uid,)).rowcount
+        # 2.6 (Bugs-DB 2264): verbundene Apps (OAuth) getrennt - ihre Refresh-Token bekommen keine neuen Zugriffstoken mehr.
+        # Vor api_token: dieselbe Sperrreihenfolge wie saga/oauth.py (oauth_grant -> api_token, N5)
+        c.execute("UPDATE oauth_grant SET revoked=?, why='logout' WHERE uid=? AND revoked IS NULL", (time.time(), uid))
         # 2.5 (Paket 1): API-Tokens (sga_) gelten ab sofort nicht mehr; Webhooks dieser Tokens ruhen
         b += c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (time.time(), uid)).rowcount
-        # 2.6 (Bugs-DB 2264): verbundene Apps (OAuth) getrennt - ihre Refresh-Token bekommen keine neuen Zugriffstoken mehr
-        c.execute("UPDATE oauth_grant SET revoked=?, why='logout' WHERE uid=? AND revoked IS NULL", (time.time(), uid))
         c.execute("UPDATE webhook SET active=0, last_error='token revoked' WHERE uid=? AND token_id IS NOT NULL AND active=1", (uid,))
     forget_device(uid)                   # Sitzungen der abgemeldeten Geraete enden sofort (BUG-002)
     # 2.6 (Bugs-DB 2266 K-A6): laufende Auftraege der Kollegin halten an (wartet_dich 'abgemeldet') - ein Schritt, der

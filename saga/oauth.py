@@ -162,16 +162,20 @@ def gc(force=False):
         _last_gc[0] = now
         for k in [k for k, v in _pending.items() if now - v["at"] > PENDING_TTL]:
             _pending.pop(k, None)
-    with _db() as c, c:
-        c.execute("DELETE FROM oauth_code WHERE expires < ?", (now - 3600,))
-        c.execute("DELETE FROM oauth_refresh WHERE expires < ?", (now,))
-        c.execute("DELETE FROM api_token WHERE grant_id IS NOT NULL AND (expires < ? OR revoked < ?)", (now - 86400, now - 86400))
-        c.execute("DELETE FROM oauth_grant WHERE (revoked IS NOT NULL AND revoked < ?) OR (expires IS NOT NULL AND expires < ?)",
-                  (now - 30 * 86400, now - 30 * 86400))
-        c.execute("DELETE FROM oauth_grant WHERE created < ? AND NOT EXISTS (SELECT 1 FROM oauth_refresh r WHERE r.grant_id = oauth_grant.id)",
-                  (now - 86400,))                     # nie eingeloeste bzw. verfallene Verbindungen
-        c.execute("DELETE FROM oauth_client WHERE created < ? AND NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id)",
-                  (now - UNUSED_TTL,))
+    # N5: jede Anweisung in eigener Transaktion - sonst haelt gc Sperren auf oauth_refresh/api_token und wartet dann auf
+    # oauth_grant (umgekehrt zu token_refresh/_revoke_grant: oauth_grant -> oauth_refresh/api_token)
+    for sql, args in (("DELETE FROM oauth_code WHERE expires < ?", (now - 3600,)),
+                      ("DELETE FROM oauth_refresh WHERE expires < ?", (now,)),
+                      ("DELETE FROM api_token WHERE grant_id IS NOT NULL AND (expires < ? OR revoked < ?)", (now - 86400, now - 86400)),
+                      ("DELETE FROM oauth_grant WHERE (revoked IS NOT NULL AND revoked < ?) OR (expires IS NOT NULL AND expires < ?)",
+                       (now - 30 * 86400, now - 30 * 86400)),
+                      # nie eingeloeste bzw. verfallene Verbindungen
+                      ("DELETE FROM oauth_grant WHERE created < ? AND NOT EXISTS (SELECT 1 FROM oauth_refresh r WHERE r.grant_id = oauth_grant.id)",
+                       (now - 86400,)),
+                      ("DELETE FROM oauth_client WHERE created < ? AND NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id)",
+                       (now - UNUSED_TTL,))):
+        with _db() as c, c:
+            c.execute(sql, args)
 
 
 # --- Registrierung (RFC 7591) -------------------------------------------------------------------------------------
@@ -539,19 +543,21 @@ def _form(raw):
 
 
 def _confirm_secret(request, uid, secret):
-    """N4: Eingabe erst als Passwort pruefen, dann (6 Ziffern, Konto mit Authenticator-App) als Code - ein Passwort aus
+    """N4: Eingabe (6 Ziffern, Konto mit Authenticator-App) erst als Code pruefen, dann als Passwort - ein Passwort aus
     6 Ziffern bleibt so moeglich. Je Versuch dieselben Zaehler/Sperren wie mfa.confirm. -> Fehlertext oder None."""
     if not mfa.supported(user_info(uid)):
         return t("Bitte bestätigen: Passwort, Code oder Passkey.")
     have = mfa.methods(uid, request)
     msg = t("Bitte bestätigen: Passwort, Code oder Passkey.")
-    if "password" in have:
-        msg = mfa.confirm(request, uid, {"password": secret})
+    v = secret.strip()
+    # erst der Code (6 Ziffern, Konto mit App): sonst zaehlte jede Bestaetigung per Code als falsches Passwort fuer die
+    # Anmeldesperre (auth.note_fail, Bereich "") - ein falscher Code zaehlt nur im Bereich "mfa"
+    if "totp" in have and re.fullmatch(r"\d{6}", v):
+        msg = mfa.confirm(request, uid, {"code": v})
         if msg is None:
             return None
-    v = secret.strip()
-    if "totp" in have and re.fullmatch(r"\d{6}", v):
-        return mfa.confirm(request, uid, {"code": v})
+    if "password" in have:
+        return mfa.confirm(request, uid, {"password": secret})
     return msg
 
 
