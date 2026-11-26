@@ -476,11 +476,6 @@ async def oauth_authorize_post(request: Request):
     p = _get_pending(rid)
     if p is None:
         return _error_page(request, t("Diese Anfrage ist abgelaufen oder ungültig. Bitte starte die Verbindung in der App neu."))
-    if one.get("action") != "allow":
-        with _lock:
-            _pending.pop(rid, None)
-        print("oauth: Zustimmung abgelehnt", flush=True)
-        return _redirect(p["redirect_uri"], error="access_denied", error_description="the person declined", state=p["state"], iss=BASE)
     if one.get("action") == "confirm":
         # dieselbe Bestaetigung wie POST /api/account/security/confirm (mfa.confirm, setzt sec_at) - Passwort oder Code
         v = (one.get("secret") or "").strip()
@@ -491,6 +486,11 @@ async def oauth_authorize_post(request: Request):
         request.session["sec_at"] = int(time.time())
         print("oauth: Zustimmung bestaetigt", flush=True)
         return RedirectResponse("/oauth/authorize?r=" + rid, status_code=303, headers={"Cache-Control": "no-store"})
+    if one.get("action") != "allow":              # "deny" und alles Unbekannte: ablehnen (ohne Bestaetigung)
+        with _lock:
+            _pending.pop(rid, None)
+        print("oauth: Zustimmung abgelehnt", flush=True)
+        return _redirect(p["redirect_uri"], error="access_denied", error_description="the person declined", state=p["state"], iss=BASE)
     if not enabled() or not apitok.allowed_for(user_info(uid)) or mfa.setup_needed(uid) or not apitok._confirmed(request, uid):
         return _consent(request, rid)
     chosen = set(f.get("scope", [])) & set(p["scopes"])
