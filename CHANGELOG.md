@@ -567,6 +567,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Docker-Labels haben WebSockets ab Werk an; `docker-compose.yml` erklärt, dass `saga_default` vom Compose-Projektnamen
   abhängt. Laborreihe: Einrichtung per API (`tests/node64_einrichten.py`), aussagekräftige X-Forwarded-For-Prüfung, Labels
   (`N64_LABELS=1`).
+- **Testumgebung: Push- und OAuth-Reihen ohne Hand-Einstellungen** (Bugs-DB 2516, 2505, nur für Entwickler):
+  `tools/testumgebung/innen.sh` setzt für `fakerelay.py` und `widget_push.py` die Relais-Variablen (und
+  `SAGA_WIDGET_PUSH_GAP=6`) an Server und Reihe; `tests/mcp_oauth.py` prüft anonyme Autorisierungs-Anfragen mit dem
+  Wert des Servers (`SAGA_OAUTH_ANON_PER_IP`, Standard 30 statt fest 20).
 
 ## [2.5.0] – 2026-11-24
 
