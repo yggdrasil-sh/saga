@@ -767,9 +767,10 @@ def export(uid):
                  c.execute("SELECT day, pool, units, real_in, real_out FROM ai_units WHERE uid=? ORDER BY day, pool", (uid,)).fetchall()]
         pv = _prefs_view(uid, c)
         conv = turns(uid, c)
+    from saga import ai_today                                # 2.6 (K-D 2271): Tageszeile (Schalter, X, Ruhe)
     return {"format": "saga-ai-export/1", "exported_at": time.time(), "account": uid, "persona": ai.persona_name(),
             "endpoint": endpoint_hint(), "consent": cons, "prefs": pv, "jobs": jobs_out, "conversation": conv,
-            "history": hist, "counters": {"requests": usage, "units": units}}
+            "history": hist, "counters": {"requests": usage, "units": units}, "today": ai_today.export(uid)}
 
 
 def _ts(v):
@@ -806,6 +807,11 @@ def export_md(d):
     out += [f"## {t('Zähler')}", ""]
     out += [f"- {u['day']}: {u['n']}" for u in d["counters"]["requests"]] or ["–"]
     out += [f"- {u['day']} {u['pool']}: {u['units']}" for u in d["counters"]["units"]]
+    td = d.get("today") or {}                                # 2.6 (K-D 2271)
+    out += ["", f"## {t('Tageszeile')}", "", f"- {t('an') if td.get('on', True) else t('aus')}"]
+    if td.get("quiet_until"):
+        out.append(f"- {t('Ruhe bis morgen')}: {_ts(td['quiet_until'])}")
+    out += [f"- ✕ {_ts(x)}" for x in td.get("dismissed") or ()]
     return "\n".join(out) + "\n"
 
 

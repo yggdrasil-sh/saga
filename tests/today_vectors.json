@@ -1,6 +1,6 @@
 {
  "format": "saga-today/v1",
- "note": "Gemeinsame Testvektoren der Tageszeile „Kurz gesagt“ auf „Heute“ (Bugs-DB 2271 K-D, docs/APP-API-KI.md §13). Web (static/heute-kurz.js, tests/browser_kollegin_heute.js), iOS (Shared/TodayLineLogic.swift, Tests/Logic/TodayLineTests.swift) und Android (data/TodayLine.kt, TodayLineTest.kt) decodieren jede 'response' und prüfen die Anzeige gegen 'show'. Der Server (tests/kollegin_ideen.py) prüft Form und Felder seiner Antworten gegen dieselben Fälle. Texte sind fertige Sätze des Servers in der Sprache der Anfrage - Clients zeigen sie unverändert, bauen keine Sätze und vergleichen keine Texte, um Zustände zu erkennen. Unbekannte Felder ignorieren (spätere Server hängen an).",
+ "note": "Gemeinsame Testvektoren der Tageszeile „Kurz gesagt“ auf „Heute“ (Bugs-DB 2271 K-D, docs/APP-API-KI.md §13). Web (static/heute-kurz.js, tests/browser_kollegin_heute.js), iOS (Shared/TodayLineLogic.swift, Tests/Logic/TodayLineTests.swift) und Android (data/TodayLine.kt, TodayLineTest.kt) decodieren jede 'response' und prüfen die Anzeige gegen 'show'. Erzeugt mit tools/today_vectors.py gen aus saga.ai_today.build() - also genau der Wortlaut des Servers; tests/kollegin_ideen.py prüft die HTTP-Antwort für 'normal' Wort für Wort. Texte sind fertige Sätze des Servers in der Sprache der Anfrage - Clients zeigen sie unverändert, bauen keine Sätze und vergleichen keine Texte, um Zustände zu erkennen. Unbekannte Felder ignorieren (spätere Server hängen an).",
  "fields": {
   "enabled": "false = Konto ohne Fähigkeit 'ai' -> sonst keine Felder, nichts zeigen",
   "on": "Schalter der Person (PUT on); false -> line null, waiting bleibt",
@@ -32,41 +32,46 @@
  "live": {
   "event": "ai.today.changed",
   "data": {
-   "v": "4c01b4a34ebc"
+   "v": "16973930c82f"
   },
   "debounce_ms": 400,
-  "note": "neu laden, wenn data.v != eigenes v (Aufgaben, Aufträge in/aus 'Wartet auf dich', Kalender fertig, Ruhe/Schalter auf einem anderen Gerät)"
+  "note": "neu laden, wenn data.v != eigenes v (Aufgaben, Aufträge in/aus 'Wartet auf dich', Kalender fertig, Ruhe/Schalter auf einem anderen Gerät). v ist in Konto-Sprache und -Zone gerechnet - weicht die des Geräts ab, liefert das Neuladen eben 304."
  },
  "waiting_plural": {
   "de": {
    "du": {
     "1": "1 Auftrag wartet auf dich ›",
     "2": "2 Aufträge warten auf dich ›",
-    "5": "5 Aufträge warten auf dich ›"
+    "5": "5 Aufträge warten auf dich ›",
+    "21": "21 Aufträge warten auf dich ›"
    },
    "sie": {
     "1": "1 Auftrag wartet auf Sie ›",
     "2": "2 Aufträge warten auf Sie ›",
-    "5": "5 Aufträge warten auf Sie ›"
+    "5": "5 Aufträge warten auf Sie ›",
+    "21": "21 Aufträge warten auf Sie ›"
    }
   },
   "en": {
    "du": {
     "1": "1 job is waiting for you ›",
     "2": "2 jobs are waiting for you ›",
-    "5": "5 jobs are waiting for you ›"
+    "5": "5 jobs are waiting for you ›",
+    "21": "21 jobs are waiting for you ›"
    }
   },
   "es": {
    "du": {
     "1": "1 encargo te espera ›",
     "2": "2 encargos te esperan ›",
-    "5": "5 encargos te esperan ›"
+    "5": "5 encargos te esperan ›",
+    "21": "21 encargos te esperan ›"
    },
    "sie": {
     "1": "1 encargo le espera ›",
     "2": "2 encargos le esperan ›",
-    "5": "5 encargos le esperan ›"
+    "5": "5 encargos le esperan ›",
+    "21": "21 encargos le esperan ›"
    }
   },
   "ru": {
@@ -87,14 +92,15 @@
    "du": {
     "1": "มี 1 งานรอคุณอยู่ ›",
     "2": "มี 2 งานรอคุณอยู่ ›",
-    "5": "มี 5 งานรอคุณอยู่ ›"
+    "5": "มี 5 งานรอคุณอยู่ ›",
+    "21": "มี 21 งานรอคุณอยู่ ›"
    }
   }
  },
  "cases": [
   {
    "id": "normal",
-   "desc": "Normaler Tag: Termin, wichtigste überfällige Aufgabe (+2 weitere), heute fällige Zeile einer Aufgabenquelle; 1 Auftrag wartet.",
+   "desc": "Normaler Tag: Termin, wichtigste überfällige Aufgabe (+2 weitere), heute fällige Zeile einer Aufgabenquelle; 1 Auftrag wartet. Server-Gegenprobe Wort für Wort (tests/kollegin_ideen.py).",
    "request": {
     "method": "GET",
     "path": "/api/ai/today?tz=Europe/Berlin",
@@ -108,7 +114,7 @@
    },
    "status": 200,
    "headers": {
-    "ETag": "\"4c01b4a34ebc\"",
+    "ETag": "\"16973930c82f\"",
     "Cache-Control": "private, no-cache"
    },
    "response": {
@@ -132,11 +138,11 @@
       {
        "kind": "over",
        "text": "„Pavillon abholen“ überfällig (+2)",
-       "n": 3,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 3
       },
       {
        "kind": "due",
@@ -148,7 +154,7 @@
       }
      ]
     },
-    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30 und „Pavillon abholen“ ist überfällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -167,7 +173,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "4c01b4a34ebc"
+    "v": "16973930c82f"
    },
    "show": {
     "kurz": {
@@ -198,12 +204,12 @@
      "salutation": "du"
     },
     "headers": {
-     "If-None-Match": "\"4c01b4a34ebc\""
+     "If-None-Match": "\"16973930c82f\""
     }
    },
    "status": 304,
    "headers": {
-    "ETag": "\"4c01b4a34ebc\""
+    "ETag": "\"16973930c82f\""
    },
    "response": null,
    "show": {
@@ -223,7 +229,7 @@
   },
   {
    "id": "normal_en",
-   "desc": "Englisch, Mittag: zwei Termine (+1), eine heute fällige Aufgabe, nichts wartet (waiting null).",
+   "desc": "Englisch, Mittag: zwei Termine (+1), eine heute fällige Aufgabe, nichts wartet (waiting null). Uhrzeit wie im Kalender (en-US 12 h, schmales Leerzeichen vor AM/PM).",
    "request": {
     "method": "GET",
     "path": "/api/ai/today?tz=Europe/Berlin",
@@ -243,17 +249,17 @@
     "tz": "Europe/Berlin",
     "label": "In short",
     "line": {
-     "text": "Dentist 14:00 (+1) · “Call Clara” today",
-     "a11y": "In short: Dentist 14:00, plus 1, “Call Clara” today",
+     "text": "Dentist 02:00 PM (+1) · “Call Clara” today",
+     "a11y": "In short: Dentist 02:00 PM, plus 1, “Call Clara” today",
      "parts": [
       {
        "kind": "event",
-       "text": "Dentist 14:00 (+1)",
-       "n": 2,
+       "text": "Dentist 02:00 PM (+1)",
        "target": {
         "type": "events",
         "date": "2026-07-07"
-       }
+       },
+       "n": 2
       },
       {
        "kind": "due",
@@ -265,7 +271,7 @@
       }
      ]
     },
-    "sentence": "Hello, Ben. Today: Dentist at 14:00, “Call Clara” is due.",
+    "sentence": "Hello, Ben. Today: Dentist at 02:00 PM and “Call Clara” is due today.",
     "waiting": null,
     "counts": {
      "events": 2,
@@ -277,16 +283,16 @@
     "ask": null,
     "pending": [],
     "info": "Worked out without AI – from your tasks, appointments and jobs. None of it goes to a language model.",
-    "v": "d95539d1872b"
+    "v": "c1482c0be843"
    },
    "show": {
     "kurz": {
      "label": "In short",
      "parts": [
-      "Dentist 14:00 (+1)",
+      "Dentist 02:00 PM (+1)",
       "“Call Clara” today"
      ],
-     "a11y": "In short: Dentist 14:00, plus 1, “Call Clara” today"
+     "a11y": "In short: Dentist 02:00 PM, plus 1, “Call Clara” today"
     },
     "pill": null,
     "ask": null,
@@ -329,15 +335,15 @@
       {
        "kind": "over",
        "text": "«Recoger la carpa» vencida (+2)",
-       "n": 3,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 3
       }
      ]
     },
-    "sentence": "Buenos días, Clara. Hoy: reunión de padres a las 19:30, «Recoger la carpa» está vencida.",
+    "sentence": "Buenos días, Clara. Hoy: Reunión de padres a las 19:30 y «Recoger la carpa» está vencida.",
     "waiting": {
      "n": 2,
      "text": "2 encargos te esperan ›",
@@ -356,7 +362,7 @@
     "ask": null,
     "pending": [],
     "info": "Calculado sin IA: a partir de tus tareas, citas y encargos. Nada de esto va a un modelo de lenguaje.",
-    "v": "1580a7fe1bd0"
+    "v": "8e1f44603a4d"
    },
    "show": {
     "kurz": {
@@ -394,7 +400,7 @@
     "tz": "Europe/Berlin",
     "label": "Kurz gesagt",
     "line": null,
-    "sentence": "Guten Morgen, Anna.",
+    "sentence": "Guten Morgen, Anna. Heute steht nichts an.",
     "waiting": null,
     "counts": {
      "events": 0,
@@ -406,7 +412,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "451eaf0d21c2"
+    "v": "203ae45ef7e1"
    },
    "show": {
     "kurz": null,
@@ -437,7 +443,7 @@
     "tz": "Europe/Berlin",
     "label": "Kurz gesagt",
     "line": null,
-    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30 und „Pavillon abholen“ ist überfällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -460,7 +466,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "89c0cb5de019"
+    "v": "8189dde94e61"
    },
    "show": {
     "kurz": null,
@@ -494,7 +500,7 @@
     "tz": "Europe/Berlin",
     "label": "Kurz gesagt",
     "line": null,
-    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30 und „Pavillon abholen“ ist überfällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -521,7 +527,7 @@
     },
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "764a8f8da23f"
+    "v": "1fcb094cf57e"
    },
    "show": {
     "kurz": null,
@@ -560,7 +566,7 @@
     "tz": "Europe/Berlin",
     "label": "Kurz gesagt",
     "line": null,
-    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30 und „Pavillon abholen“ ist überfällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -579,7 +585,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "45c5a7a74c84"
+    "v": "54e061f69f46"
    },
    "show": {
     "kurz": null,
@@ -596,7 +602,7 @@
     "path": "/api/ai/today/quiet?tz=Europe/Berlin",
     "lang": "de",
     "auth": "session",
-    "now": "2026-07-07T08:16:00+02:00",
+    "now": "2026-07-07T07:40:00+02:00",
     "account": {
      "name": "Anna",
      "salutation": "du"
@@ -624,11 +630,11 @@
       {
        "kind": "over",
        "text": "„Pavillon abholen“ überfällig (+2)",
-       "n": 3,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 3
       },
       {
        "kind": "due",
@@ -640,7 +646,7 @@
       }
      ]
     },
-    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30 und „Pavillon abholen“ ist überfällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -659,7 +665,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "4c01b4a34ebc"
+    "v": "16973930c82f"
    },
    "show": {
     "kurz": {
@@ -730,11 +736,11 @@
       {
        "kind": "over",
        "text": "„Pavillon abholen“ überfällig (+2)",
-       "n": 3,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 3
       },
       {
        "kind": "due",
@@ -746,7 +752,7 @@
       }
      ]
     },
-    "sentence": "Guten Morgen, Anna. Heute: „Pavillon abholen“ ist überfällig.",
+    "sentence": "Guten Morgen, Anna. Heute: „Pavillon abholen“ ist überfällig und „Kuchen backen“ ist heute fällig.",
     "waiting": {
      "n": 1,
      "text": "1 Auftrag wartet auf dich ›",
@@ -767,7 +773,7 @@
      "calendar"
     ],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "986d7e9d21da"
+    "v": "7cd9ae226815"
    },
    "show": {
     "kurz": {
@@ -805,12 +811,12 @@
     "tz": "Europe/Berlin",
     "label": "Kurz gesagt",
     "line": {
-     "text": "Morgen 8:00 Zahnarzt",
-     "a11y": "Kurz gesagt: Morgen 8:00 Zahnarzt",
+     "text": "Morgen 08:00 Zahnarzt",
+     "a11y": "Kurz gesagt: Morgen 08:00 Zahnarzt",
      "parts": [
       {
        "kind": "tomorrow",
-       "text": "Morgen 8:00 Zahnarzt",
+       "text": "Morgen 08:00 Zahnarzt",
        "target": {
         "type": "events",
         "date": "2026-07-08"
@@ -818,7 +824,7 @@
       }
      ]
     },
-    "sentence": "Guten Abend, Anna. Morgen: Zahnarzt um 8:00.",
+    "sentence": "Guten Abend, Anna. Morgen: Zahnarzt um 08:00.",
     "waiting": null,
     "counts": {
      "events": 0,
@@ -830,15 +836,15 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "8443d98fdaa6"
+    "v": "5808305ec15f"
    },
    "show": {
     "kurz": {
      "label": "Kurz gesagt",
      "parts": [
-      "Morgen 8:00 Zahnarzt"
+      "Morgen 08:00 Zahnarzt"
      ],
-     "a11y": "Kurz gesagt: Morgen 8:00 Zahnarzt"
+     "a11y": "Kurz gesagt: Morgen 08:00 Zahnarzt"
     },
     "pill": null,
     "ask": null,
@@ -888,7 +894,7 @@
       }
      ]
     },
-    "sentence": "Guten Morgen, Lena. Heute: Zahnarzt um 10:00, „Steuererklärung abgeben“ ist heute fällig.",
+    "sentence": "Guten Morgen, Lena. Heute: Zahnarzt um 10:00 und „Steuererklärung abgeben“ ist heute fällig.",
     "waiting": {
      "n": 2,
      "text": "2 Aufträge warten auf Sie ›",
@@ -907,7 +913,7 @@
     "ask": null,
     "pending": [],
     "info": "Ohne KI berechnet – aus Ihren Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
-    "v": "0e5030856670"
+    "v": "cefd2f497bbb"
    },
    "show": {
     "kurz": {
@@ -946,7 +952,7 @@
     "label": "สรุปสั้น ๆ",
     "line": {
      "text": "ประชุมผู้ปกครอง 19:30 · “รับเต็นท์” เลยกำหนด (+2) · “อบเค้ก” วันนี้",
-     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด และอีก 2 รายการ, “อบเค้ก” วันนี้",
+     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด, และอีก 2 รายการ, “อบเค้ก” วันนี้",
      "parts": [
       {
        "kind": "event",
@@ -959,11 +965,11 @@
       {
        "kind": "over",
        "text": "“รับเต็นท์” เลยกำหนด (+2)",
-       "n": 3,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 3
       },
       {
        "kind": "due",
@@ -975,7 +981,7 @@
       }
      ]
     },
-    "sentence": "อรุณสวัสดิ์ค่ะ คุณAnna วันนี้มีประชุมผู้ปกครองเวลา 19:30 และ “รับเต็นท์” เลยกำหนดแล้วค่ะ",
+    "sentence": "อรุณสวัสดิ์ค่ะ คุณ Anna วันนี้มีประชุมผู้ปกครองเวลา 19:30 และ “รับเต็นท์” เลยกำหนดแล้วค่ะ",
     "waiting": {
      "n": 1,
      "text": "มี 1 งานรอคุณอยู่ ›",
@@ -994,7 +1000,7 @@
     "ask": null,
     "pending": [],
     "info": "คำนวณโดยไม่ใช้ AI จากงาน นัดหมาย และงานที่มอบหมายของคุณ ไม่มีข้อมูลใดถูกส่งไปยังโมเดลภาษา",
-    "v": "5fc6a4a34ec2"
+    "v": "57206270e68a"
    },
    "show": {
     "kurz": {
@@ -1004,7 +1010,7 @@
       "“รับเต็นท์” เลยกำหนด (+2)",
       "“อบเค้ก” วันนี้"
      ],
-     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด และอีก 2 รายการ, “อบเค้ก” วันนี้"
+     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด, และอีก 2 รายการ, “อบเค้ก” วันนี้"
     },
     "pill": null,
     "ask": null,
@@ -1047,11 +1053,11 @@
       {
        "kind": "over",
        "text": "«Забрать шатёр» просрочено (+4)",
-       "n": 5,
        "target": {
         "type": "task",
         "id": 7
-       }
+       },
+       "n": 5
       },
       {
        "kind": "due",
@@ -1063,7 +1069,7 @@
       }
      ]
     },
-    "sentence": "Доброе утро, Ben. Сегодня: родительское собрание в 19:30, «Забрать шатёр» просрочено.",
+    "sentence": "Доброе утро, Ben. Сегодня: Родительское собрание в 19:30 и «Забрать шатёр» просрочено.",
     "waiting": {
      "n": 2,
      "text": "2 поручения ждут тебя ›",
@@ -1082,7 +1088,7 @@
     "ask": null,
     "pending": [],
     "info": "Посчитано без ИИ – по твоим задачам, встречам и поручениям. Ничего из этого не уходит в языковую модель.",
-    "v": "f02575b87ca5"
+    "v": "f6b95ade23f8"
    },
    "show": {
     "kurz": {
@@ -1205,11 +1211,11 @@
        {
         "kind": "over",
         "text": "„Pavillon abholen“ überfällig (+2)",
-        "n": 3,
         "target": {
          "type": "task",
          "id": 7
-        }
+        },
+        "n": 3
        },
        {
         "kind": "due",
@@ -1236,7 +1242,7 @@
       "waiting": 1
      },
      "quiet": null,
-     "v": "4c01b4a34ebc"
+     "v": "16973930c82f"
     }
    },
    "show": {
@@ -1307,7 +1313,7 @@
       "text": "Ruhe bis morgen",
       "undo": "Wieder an"
      },
-     "v": "89c0cb5de019"
+     "v": "8189dde94e61"
     }
    },
    "show": {
