@@ -20,6 +20,7 @@ dieselbe Pruefung fuer Aufrufer, die ablehnen (ai_plan); no_images() nur Bilder/
 Nachricht der Person enthalten. Nur Standardbibliothek; saga/mcp.py nutzt fold/neutral_tags von hier.
 Tests: tests/datenrahmen.py (jede Variante auf jedem KI-Weg).
 """
+import os
 import re
 import secrets
 import unicodedata
@@ -149,7 +150,8 @@ _HTML = re.compile(r"</?\s*(?:a|img|iframe|script|style|object|embed|svg|video|a
 # Saetze wie "Here is the data: 5 items" oder "Javascript: eine Sprache" stehen (Pruefer 2260)
 # (Bugs-DB 2490 B7: ohne \b vor https/ftp/file - "ดูที่https://..." oder "Siehehttps://..." kamen durch; data:/javascript:
 # behalten \b, sonst traefe "metadata:x")
-_URL = re.compile(r"(?:(?:https?|ftp|file)[ \t]*:[ \t]*/[ \t\u200b]*/|\b(?:data|javascript|vbscript):(?=\S)|\bwww\.)"
+# Pruefer prr1: auch Leerraum/Zeilenumbruch zwischen "https:" und "//" (begrenzt: linear) und mailto: wie data:/javascript:
+_URL = re.compile(r"(?:(?:https?|ftp|file)\s{0,8}:\s{0,8}/[\s\u200b]{0,8}/|\b(?:data|javascript|vbscript|mailto):(?=\S)|\bwww\.)"
                   r"[^\s<>\"'`)\]]*", re.I)
 # Markdown-Verweise "[x]: https://..." (nur mit Adresse; "[1]: Laut DWD sonnig." bleibt) - [ \t] statt \s: linear
 _REF = re.compile(r"(?m)^[ \t]*\[[^\]\n]{1,100}\]:[ \t]*<?(?:[a-z][a-z0-9+.-]{1,20}:|//|www\.)\S*.*$", re.I)
@@ -158,8 +160,32 @@ _REF = re.compile(r"(?m)^[ \t]*\[[^\]\n]{1,100}\]:[ \t]*<?(?:[a-z][a-z0-9+.-]{1,
 # "3.14", "z.B.", "Saga.Ende." und "Hast du bericht.pdf?" sind keine Adressen. Davor kein ASCII-Wortzeichen, "/", "." oder
 # "@" (Pfade wie "/srv/a.bc/x" und Mail-Adressen fangen andere Regeln bzw. sind keine Links); Thai/Kyrillisch davor ist
 # erlaubt ("ดูevil.example/x" -> Adresse ab "evil").
-_DOMAIN = re.compile(r"(?<![a-z0-9_/.@\-])(?:[a-z0-9\u00c0-\u024f](?:[a-z0-9\u00c0-\u024f\-]{0,61}[a-z0-9\u00c0-\u024f])?\.){1,8}"
-                     r"(?:[a-z]{2,24}|xn--[a-z0-9\-]{2,59})(?::[0-9]{1,5})?/[^\s<>\"'`)\]]*", re.I)
+# Pruefer prr1 (Fehlalarme wie "Node.js/Express", "Tel.Nr/Fax", "Abt.IT/Einkauf"): zaehlt nur, wenn (a) die Endung eine
+# echte TLD ist (saga/data/tlds.txt: Public Suffix List, ICANN, plus reservierte wie example/test/onion) oder Punycode
+# xn--, und (b) der Host ungemischt geschrieben ist - ganz klein oder ganz gross. Das ist die uebliche Schreibweise von
+# Adressen; gemischte Faelle sind fast immer Kuerzel ("Hr.Meier", "inkl.MwSt"), und im Web werden Links ohnehin nicht
+# klickbar. Bewusst hingenommen: "ASP.NET/Core" (ganz gross, .net), "bericht.final/v2" (.final gibt es).
+_DOMAIN = re.compile(r"(?<![a-z0-9_/.@\-])(?P<host>(?:[a-z0-9\u00c0-\u024f](?:[a-z0-9\u00c0-\u024f\-]{0,61}[a-z0-9\u00c0-\u024f])?\.){1,8}"
+                     r"(?P<tld>[a-z]{2,24}|xn--[a-z0-9\-]{2,59}))(?::[0-9]{1,5})?/[^\s<>\"'`)\]]*", re.I)
+
+
+def _load_tlds():
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tlds.txt"), encoding="utf-8") as f:
+            return frozenset(ln.strip().lower() for ln in f if ln.strip() and not ln.startswith("#"))
+    except OSError:                                      # Liste fehlt: lieber jede TLD-Form als Adresse werten (wie zuvor)
+        return None
+
+
+_TLDS = _load_tlds()
+
+
+def _domain_ok(m):
+    """Treffer von _DOMAIN wirklich eine Adresse? Echte TLD (oder xn--) und Host ungemischt geschrieben."""
+    host, tld = m.group("host"), m.group("tld").lower()
+    if host != host.lower() and host != host.upper():
+        return False
+    return tld.startswith("xn--") or _TLDS is None or tld in _TLDS
 # Seitenverweise "[[Seite]]", "[[Seite|Text]]", "[[Seite#Abschnitt]]" und eingebettete "![[bild.png]]" (Bugs-DB 2504)
 _WIKI = re.compile(r"(!?)\[\[([^\[\]\n]{1,300})\]\]")
 
@@ -167,6 +193,9 @@ _WIKI = re.compile(r"(!?)\[\[([^\[\]\n]{1,300})\]\]")
 def no_images(text):
     """Bilder (Markdown, HTML) und eingebettete Inhalte entfernen - sie wuerden beim Anzeigen etwas nachladen."""
     return _HTML.sub("", _MD_IMG.sub("", str(text or "")))
+
+
+_DOTS = frozenset("\u3002\uff0e\uff61")
 
 
 def _nfkc(s):
@@ -186,6 +215,8 @@ def _nfkc(s):
                 n = chr(o - 0xE0000)
             elif 0xE0000 <= o <= 0xE007F or _INVISIBLE.match(ch):
                 continue
+            elif ch in _DOTS:                                # wie IDNA: ideographischer/Vollbreite-Punkt = "."
+                n = "."
             else:
                 n = unicodedata.normalize("NFKC", ch)
         out.append(n)
@@ -193,15 +224,15 @@ def _nfkc(s):
     return "".join(out), idx
 
 
-def _sub(s, rx, fn):
+def _sub(s, rx, fn, keep=None):
     """rx in der NFKC-Kopie suchen, Treffer im Original ersetzen. fn(m, orig) -> Ersatz; orig(gruppe) = Originaltext der
-    Gruppe. Reiner ASCII-Text: wie rx.sub."""
+    Gruppe. keep(m) False -> Treffer bleibt stehen. Reiner ASCII-Text: wie rx.sub."""
     low, idx = _nfkc(s)
     if idx is None:
-        return rx.sub(lambda m: fn(m, m.group), s)
+        return rx.sub(lambda m: fn(m, m.group) if keep is None or keep(m) else m.group(0), s)
     out, pos = [], 0
     for m in rx.finditer(low):
-        if m.end() <= m.start():
+        if m.end() <= m.start() or (keep is not None and not keep(m)):
             continue
         a, b = idx[m.start()], idx[m.end() - 1] + 1
         if a < pos:
@@ -237,7 +268,7 @@ def no_links(text, repl="[Link entfernt]"):
     s = _sub(s, _REF, lambda m, o: "")
     s = _sub(s, _HTML, lambda m, o: "")
     s = _sub(s, _URL, lambda m, o: repl)
-    s = _sub(s, _DOMAIN, lambda m, o: repl)
+    s = _sub(s, _DOMAIN, lambda m, o: repl, _domain_ok)
     return re.sub(r"[ \t]{2,}", " ", s)
 
 
@@ -247,8 +278,8 @@ def has_links(text, wiki=True):
     Vollbreite (NFKC). Findet genau das, was no_links() entfernen wuerde."""
     s = str(text or "")
     low = _nfkc(s)[0]
-    rxs = (_URL, _DOMAIN, _MD_LINK, _MD_IMG, _HTML, _REF) + ((_WIKI,) if wiki else ())
-    return any(rx.search(low) for rx in rxs)
+    rxs = (_URL, _MD_LINK, _MD_IMG, _HTML, _REF) + ((_WIKI,) if wiki else ())
+    return any(rx.search(low) for rx in rxs) or any(_domain_ok(m) for m in _DOMAIN.finditer(low))
 
 
 # --- Suchbegriffe (RT-04): nur aus den Worten der Person ---------------------------------------------------------------

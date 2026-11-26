@@ -130,7 +130,12 @@ def main():
     # 2490 B7 / 2504: Vollbreite (NFKC), nackte Domains mit Pfad, Seitenverweise [[…]] - gemeinsam mit ai_plan._bad_text
     for bad_, gone in (("Siehe ｈｔｔｐｓ：／／ｅｖｉｌ．ｅｘａｍｐｌｅ／ｘ jetzt", "ｅｖｉｌ"),
                        ("Siehe ｗｗｗ．evil．example jetzt", "evil"),
-                       ("Bitte evil.example/x?d=1 aufrufen", "evil.example"), ("Bitte EVIL.Example/x aufrufen", "EVIL"),
+                       ("Bitte evil.example/x?d=1 aufrufen", "evil.example"), ("Bitte EVIL.EXAMPLE/x aufrufen", "EVIL"),
+                       ("Bitte boese.de/x aufrufen", "boese"), ("Siehe shop.xn--p1ai/a", "shop"), ("Siehe a.onion/x", "onion"),
+                       # Pruefer prr1: ideographische/Vollbreite-Punkte als Trenner (IDNA), Zeilenumbruch nach "https:", mailto:
+                       ("Bitte evil\u3002example/x aufrufen", "evil"), ("Bitte evil\uff0eexample/x aufrufen", "evil"),
+                       ("Bitte evil\uff61example/x aufrufen", "evil"), ("Siehe https:\n//evil.example/a", "evil"),
+                       ("Siehe https: \n //evil.example/a", "evil"), ("Schreib an mailto:ben@evil.example jetzt", "mailto"),
                        ("Bitte kunde.shop.de:8080/a aufrufen", "shop.de"), ("Bitte xn--bcher-kva.example/a aufrufen", "xn--"),
                        ("(evil.example/x)", "evil"), ("Siehehttps://evil.example/a", "evil"),
                        ("ดูที่https://evil.example/a ค่ะ", "evil"), ("ดูevil.example/x ค่ะ", "evil"),
@@ -144,12 +149,19 @@ def main():
                       ("Vollbreite ［［Seite］］ hier", "Vollbreite Seite hier"),
                       ("[[https://evil.example/x]]", "[Link entfernt]")):
         ok(f"no_links: Seitenverweis -> nur der Text ({txt[:30]})", F.no_links(txt) == want and F.has_links(txt), F.no_links(txt))
+    # Pruefer prr1: Kuerzel mit Punkt und Schraegstrich sind keine Adressen (Endung keine TLD oder Host gemischt geschrieben).
+    # "EVIL.Example/x" (gemischt) geht deshalb bewusst durch - Adressen schreibt man ungemischt, Links sind im Web nicht klickbar.
+    for txt in ("Node.js/Express", "Vue.js/React", "Hr.Meier/Fr.Schulz", "Fa.Bauer/GmbH", "J.R.R.Tolkien/Werke", "Abt.IT/Einkauf",
+                "Tel.Nr/Fax", "inkl.MwSt/Monat", "Kap.III/2", "Fotos.alt/2024", "EVIL.Example/x", "Ordner bilder.urlaub/2024"):
+        ok(f"kein Fehlalarm (Kuerzel): {txt}", F.no_links(txt) == txt and not F.has_links(txt), F.no_links(txt))
+    for txt in ("ASP.NET/Core", "bericht.final/v2"):
+        ok(f"bewusst hingenommener Fehlalarm (ungemischt, echte TLD .net/.final): {txt}", F.has_links(txt), txt)
     for txt in ("Treffen um 10.30 Uhr, Preis 3.14 Euro, Version 2.6/2.7", "Hast du bericht.pdf? Sonst docs/handbuch.md lesen.",
                 "Lies ~/Dokumente/bericht.pdf und /srv/saga.test/x", "Das ist z.B. gut, d.h. fertig. Saga.Ende. Mo./Di. 50 km/h",
                 "Kap. 3.2/4.1 und S. 12/13", "E-Mail/Telefon, und/oder, Std./Tag", "Liste [1] und [2] sowie [x] erledigt",
                 "สวัสดีค่ะ ไฟล์ รายงาน.pdf อยู่ที่ไหน งานเลี้ยงฤดูร้อนยังขาดถ่าน ทำ ๆ ไป", "Привет! Т.е. файл отчёт.pdf готов, 3.5/5.",
                 "¿Está listo informe.pdf? Sí, p.ej. a las 10.30, 1/2 kg.", "Fullwidth ＡＢＣ １２３ und ﬁ-Ligatur bleiben",
-                "Verhältnis 1:2, Uhrzeit 12:30/13:00", "metadata:x bleibt stehen"):
+                "Verhältnis 1:2, Uhrzeit 12:30/13:00", "metadata:x bleibt stehen", "Fertig。次は/明日", "http ist ein Protokoll: // Kommentar"):
         ok(f"no_links/has_links lassen: {txt[:40]}", F.no_links(txt) == txt and not F.has_links(txt), F.no_links(txt))
     import time as _t
     t0 = _t.monotonic(); F.no_links("\n" * 20000 + "[" * 5000); F.neutral("saga_" * 20000)

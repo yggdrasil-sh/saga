@@ -538,7 +538,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   füllt, stehen jetzt auch die Felder (z. B. ein fremder Seitentitel) zwischen den Markern – vorher als JSON davor.
 - **Links in KI-Texten: eine gemeinsame Prüfung** (Bugs-DB 2490 B7, 2504): Was nach außen geht (Chat-Antwort an
   andere, Entwurf, Lücken) und was ein Auftrag einträgt, wird jetzt auch auf Vollbreite-Adressen („ｈｔｔｐｓ：／／…“),
-  nackte Domains mit Pfad („beispiel.example/x“) und Seitenverweise `[[…]]` geprüft. Wo bisher Links ersetzt wurden,
+  nackte Domains mit Pfad („beispiel.example/x“, nur mit echter Endung und ungemischt geschrieben – „Node.js/Express“
+  oder „Tel.Nr/Fax“ bleiben stehen), `mailto:` und Seitenverweise `[[…]]` geprüft. Wo bisher Links ersetzt wurden,
   wird ersetzt (Seitenverweis → nur der Text), wo abgelehnt wurde, wird abgelehnt. Dateinamen („bericht.pdf“), Zahlen und
   Sätze mit Punkt bleiben stehen; Thai, Russisch und Spanisch bleiben unverändert.
 - **KI im Heimnetz bleibt im Heimnetz** (Bugs-DB 2494, RT-39): Lagen beim Speichern alle IPs des Modell-Endpunkts im
