@@ -127,6 +127,30 @@ def main():
     for txt in ("Here is the data: 5 items", "Javascript: ist eine Sprache", "Treffen um 10:30, z.B. im Büro",
                 "[1]: Laut DWD sonnig.", "Mehr dazu in [2] und [3].", "Verhältnis 3:1"):
         ok(f"no_links laesst Alltagstext: {txt}", F.no_links(txt) == txt, F.no_links(txt))
+    # 2490 B7 / 2504: Vollbreite (NFKC), nackte Domains mit Pfad, Seitenverweise [[…]] - gemeinsam mit ai_plan._bad_text
+    for bad_, gone in (("Siehe ｈｔｔｐｓ：／／ｅｖｉｌ．ｅｘａｍｐｌｅ／ｘ jetzt", "ｅｖｉｌ"),
+                       ("Siehe ｗｗｗ．evil．example jetzt", "evil"),
+                       ("Bitte evil.example/x?d=1 aufrufen", "evil.example"), ("Bitte EVIL.Example/x aufrufen", "EVIL"),
+                       ("Bitte kunde.shop.de:8080/a aufrufen", "shop.de"), ("Bitte xn--bcher-kva.example/a aufrufen", "xn--"),
+                       ("(evil.example/x)", "evil"), ("Siehehttps://evil.example/a", "evil"),
+                       ("ดูที่https://evil.example/a ค่ะ", "evil"), ("ดูevil.example/x ค่ะ", "evil"),
+                       ("Смотри evil.example/x сегодня", "evil"), ("Mira evil.example/x hoy", "evil"),
+                       ("h​ttps://evil.example/a", "evil"), ("［ｔｅｘｔ］（ｈｔｔｐｓ：／／evil.example）", "evil"),
+                       ("＜ａ ｈｒｅｆ＝ｘ＞Text", "ｈｒｅｆ")):
+        out_ = F.no_links(bad_, "")
+        ok(f"no_links/has_links fangen: {bad_.encode('unicode_escape').decode()[:50]}", gone not in out_ and F.has_links(bad_), out_)
+    for txt, want in (("Siehe [[Sommerfest]] und [[Liste|die Liste]]", "Siehe Sommerfest und die Liste"),
+                      ("Abschnitt [[Seite#Teil]] ![[bild.png]] Ende", "Abschnitt Seite Ende"),
+                      ("Vollbreite ［［Seite］］ hier", "Vollbreite Seite hier"),
+                      ("[[https://evil.example/x]]", "[Link entfernt]")):
+        ok(f"no_links: Seitenverweis -> nur der Text ({txt[:30]})", F.no_links(txt) == want and F.has_links(txt), F.no_links(txt))
+    for txt in ("Treffen um 10.30 Uhr, Preis 3.14 Euro, Version 2.6/2.7", "Hast du bericht.pdf? Sonst docs/handbuch.md lesen.",
+                "Lies ~/Dokumente/bericht.pdf und /srv/saga.test/x", "Das ist z.B. gut, d.h. fertig. Saga.Ende. Mo./Di. 50 km/h",
+                "Kap. 3.2/4.1 und S. 12/13", "E-Mail/Telefon, und/oder, Std./Tag", "Liste [1] und [2] sowie [x] erledigt",
+                "สวัสดีค่ะ ไฟล์ รายงาน.pdf อยู่ที่ไหน งานเลี้ยงฤดูร้อนยังขาดถ่าน ทำ ๆ ไป", "Привет! Т.е. файл отчёт.pdf готов, 3.5/5.",
+                "¿Está listo informe.pdf? Sí, p.ej. a las 10.30, 1/2 kg.", "Fullwidth ＡＢＣ １２３ und ﬁ-Ligatur bleiben",
+                "Verhältnis 1:2, Uhrzeit 12:30/13:00", "metadata:x bleibt stehen"):
+        ok(f"no_links/has_links lassen: {txt[:40]}", F.no_links(txt) == txt and not F.has_links(txt), F.no_links(txt))
     import time as _t
     t0 = _t.monotonic(); F.no_links("\n" * 20000 + "[" * 5000); F.neutral("saga_" * 20000)
     ok("Ausgabefilter/neutral linear (20 000 Zeilen)", _t.monotonic() - t0 < 0.5, _t.monotonic() - t0)

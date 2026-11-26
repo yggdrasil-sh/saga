@@ -245,16 +245,36 @@ def say(zug, fields=None, lang=None, uid=None, job_id=None):
 
 
 # --- Texte pruefen ------------------------------------------------------------------------------------------------
-def _bad_text(s):
-    """Adresse, Link, Bild, HTML, Erwaehnung/Mail-Adresse oder Steuer-/Richtungszeichen im Text? (RT-20)"""
+def _bad_text(s, wiki=True):
+    """Adresse, Link, Bild, HTML, Seitenverweis [[…]], Erwaehnung/Mail-Adresse oder Steuer-/Richtungszeichen im Text?
+    (RT-20). Links ueber die gemeinsame Pruefung ai_frame.has_links (NFKC: auch Vollbreite, nackte Domains mit Pfad -
+    Bugs-DB 2490/2504). wiki=False nur fuer JSON-Text (verschachtelte Listen "[[...]]"; die Texte darin prueft _bad_json)."""
     if not isinstance(s, str):
         return True
     if _CTRL.search(s.replace("\n", " ").replace("\t", " ")):
         return True
-    if ai_frame._URL.search(s) or ai_frame._MD_LINK.search(s) or ai_frame._MD_IMG.search(s) or ai_frame._HTML.search(s) \
-            or ai_frame._REF.search(s):
+    if ai_frame.has_links(s, wiki=wiki):
         return True
-    return bool(_MENTION.search(s))
+    return bool(_MENTION.search(ai_frame._nfkc(s)[0]))
+
+
+def _bad_json(v):
+    """Objekt/Liste (properties, filters ...): der JSON-Text wie bisher (ohne [[ - das sind dort verschachtelte Listen),
+    dazu jeder Text darin einzeln auf Seitenverweise [[…]]."""
+    if _bad_text(json.dumps(v, ensure_ascii=False), wiki=False):
+        return True
+    stack = [v]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, str):
+            if ai_frame._WIKI.search(ai_frame._nfkc(x)[0]):
+                return True
+        elif isinstance(x, dict):
+            stack.extend(x.keys())
+            stack.extend(x.values())
+        elif isinstance(x, (list, tuple)):
+            stack.extend(x)
+    return False
 
 
 def _today():
@@ -548,7 +568,7 @@ def check_args(x, args, n, cands, uid, direct=False):
                 probs.append(_p("args", n))
                 continue
         else:                                    # Objekte/Listen (properties, filters ...): Texte darin pruefen
-            if len(json.dumps(v, ensure_ascii=False)) > 4000 or _bad_text(json.dumps(v, ensure_ascii=False)):
+            if len(json.dumps(v, ensure_ascii=False)) > 4000 or _bad_json(v):
                 probs.append(_p("text", n))
                 continue
         out[k] = v

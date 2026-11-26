@@ -132,6 +132,11 @@ def part_check(pages):
         "RT-20 Erwaehnung": [{"tool": "create_task", "args": {"text": "frag @bert"}}],
         "RT-20 Mail-Adresse (fremder Empfaenger)": [{"tool": "create_task", "args": {"text": "schreib ben@x.org"}}],
         "RT-20 Ueberlaenge": [{"tool": "create_task", "args": {"text": "x" * 201}}],
+        "2504 nackte Domain": [{"tool": "create_task", "args": {"text": "Kohle bei evil.example/x bestellen"}}],
+        "2504 Vollbreite-URL": [{"tool": "create_task", "args": {"text": "Kohle \uff48\uff54\uff54\uff50\uff53\uff1a\uff0f\uff0fevil.example"}}],
+        "2504 Seitenverweis": [{"tool": "append_to_page", "args": {"id": pages["fest"], "markdown": "siehe [[Geheim]]"}}],
+        "2504 Seitenverweis in Liste": [{"tool": "create_task", "args": {"text": "Kohle [[Seite|hier]]"}}],
+        "2504 Vollbreite-Erwaehnung": [{"tool": "create_task", "args": {"text": "frag \uff20bert"}}],
         "Richtungszeichen": [{"tool": "create_task", "args": {"text": "Kohle ‮ kaufen"}}],
         "Seite nicht in der Auswahl": [{"tool": "append_to_page", "args": {"id": pages["fest"] + 99999, "markdown": "x"}}],
         "Datum vorbei": [{"tool": "create_task", "args": {"text": "x", "due": "2001-01-01"}}],
@@ -145,6 +150,16 @@ def part_check(pages):
     kind, _r, probs = ai_plan.check(A, {"kind": "recipe", "recipe": "eintragen", "fields": {"page": pages["fest"], "text": "x https://a.example"}},
                                     "recipes", cands, rs)
     ok("RT-20: Rezept-Luecke mit Adresse verworfen", kind is None and [p["code"] for p in probs] == ["text"])
+    kind, _r, probs = ai_plan.check(A, {"kind": "recipe", "recipe": "eintragen", "fields": {"page": pages["fest"], "text": "x evil.example/a"}},
+                                    "recipes", cands, rs)
+    ok("2504: Rezept-Luecke mit nackter Domain verworfen", kind is None and [p["code"] for p in probs] == ["text"])
+    for txt in ("Bericht.pdf drucken", "Preis 3.14 Euro, um 10.30 Uhr", "z.B. Kohle, d.h. 2 Sack", "ซื้อถ่าน 2 ถุง ค่ะ",
+                "Купить уголь, т.е. 2 мешка", "Comprar carbón, p.ej. 2 sacos"):
+        kind, _res, probs = chk([{"tool": "create_task", "args": {"text": txt, "due": (ai_plan._today()).isoformat()}}])
+        ok(f"2504: kein Fehlalarm ({txt})", kind == "plan", probs)
+    ok("2504: verschachtelte Listen im JSON sind kein Seitenverweis, Texte darin schon",
+       not ai_plan._bad_json({"filters": [["Status", "=", "offen"]]}) and ai_plan._bad_json({"filters": [["Status", "=", "[[Geheim]]"]]})
+       and ai_plan._bad_json({"x": ["evil.example/a"]}))
     kind, _r, probs = ai_plan.check(A, {"kind": "recipe", "recipe": "aufgabe", "fields": {"text": "x", "calendar": "1-x"}}, "recipes", cands, rs)
     ok("Rezept: Server-Luecke (calendar) vom Modell -> verworfen", kind is None)
     kind, _r, probs = ai_plan.check(A, {"kind": "plan", "steps": [{"tool": "create_task", "args": {"text": "x"}}]}, "recipes", cands, rs)

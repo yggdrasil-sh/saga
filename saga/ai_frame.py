@@ -15,7 +15,8 @@ Zeichen) mit Rueckabbildung auf das Original. Vorher war der Marker fest und nur
 (SAGA_DATA + U+200B + >>>, Vollbreite-S oder U+2011 kamen durch).
 
 Ausgabefilter (RT-03): no_links() entfernt Links, Bilder und HTML aus Text des Modells, der nach aussen geht (Chat-Antwort
-an andere); no_images() nur Bilder/HTML (Antwort fuer die Person selbst, Verlauf). Suchbegriffe (RT-04): query_from_context() erkennt Suchanfragen, die Woerter aus dem Verlauf statt aus der
+an andere), auch Vollbreite-URLs, nackte Domains mit Pfad und Seitenverweise [[…]] (Bugs-DB 2490/2504); has_links() ist
+dieselbe Pruefung fuer Aufrufer, die ablehnen (ai_plan); no_images() nur Bilder/HTML (Antwort fuer die Person selbst, Verlauf). Suchbegriffe (RT-04): query_from_context() erkennt Suchanfragen, die Woerter aus dem Verlauf statt aus der
 Nachricht der Person enthalten. Nur Standardbibliothek; saga/mcp.py nutzt fold/neutral_tags von hier.
 Tests: tests/datenrahmen.py (jede Variante auf jedem KI-Weg).
 """
@@ -146,10 +147,21 @@ _MD_LINK = re.compile(r"\[([^\]\n]{1,500})\]\(\s*(?:[a-z][a-z0-9+.-]{1,20}:|//|w
 _HTML = re.compile(r"</?\s*(?:a|img|iframe|script|style|object|embed|svg|video|audio|source|link|meta|form|input)\b[^>]{0,2000}>?", re.I)
 # Adressen: Schema mit "//" (auch mit Leerraum dazwischen), data:/javascript:/vbscript: direkt vor Text, "www." - so bleiben
 # Saetze wie "Here is the data: 5 items" oder "Javascript: eine Sprache" stehen (Pruefer 2260)
-_URL = re.compile(r"(?:\b(?:https?|ftp|file)[ \t]*:[ \t]*/[ \t\u200b]*/|\b(?:data|javascript|vbscript):(?=\S)|\bwww\.)"
+# (Bugs-DB 2490 B7: ohne \b vor https/ftp/file - "ดูที่https://..." oder "Siehehttps://..." kamen durch; data:/javascript:
+# behalten \b, sonst traefe "metadata:x")
+_URL = re.compile(r"(?:(?:https?|ftp|file)[ \t]*:[ \t]*/[ \t\u200b]*/|\b(?:data|javascript|vbscript):(?=\S)|\bwww\.)"
                   r"[^\s<>\"'`)\]]*", re.I)
 # Markdown-Verweise "[x]: https://..." (nur mit Adresse; "[1]: Laut DWD sonnig." bleibt) - [ \t] statt \s: linear
 _REF = re.compile(r"(?m)^[ \t]*\[[^\]\n]{1,100}\]:[ \t]*<?(?:[a-z][a-z0-9+.-]{1,20}:|//|www\.)\S*.*$", re.I)
+# Nackte Domain mit Pfad (Bugs-DB 2490 B7, 2504): "evil.example/x", "kunde.shop.de:8080/a" - mindestens zwei Teile, der
+# letzte in TLD-Form (2-24 Buchstaben oder xn--...), danach "/" (mit Port davor). Ohne "/" bleibt es stehen: "bericht.pdf",
+# "3.14", "z.B.", "Saga.Ende." und "Hast du bericht.pdf?" sind keine Adressen. Davor kein ASCII-Wortzeichen, "/", "." oder
+# "@" (Pfade wie "/srv/a.bc/x" und Mail-Adressen fangen andere Regeln bzw. sind keine Links); Thai/Kyrillisch davor ist
+# erlaubt ("ดูevil.example/x" -> Adresse ab "evil").
+_DOMAIN = re.compile(r"(?<![a-z0-9_/.@\-])(?:[a-z0-9\u00c0-\u024f](?:[a-z0-9\u00c0-\u024f\-]{0,61}[a-z0-9\u00c0-\u024f])?\.){1,8}"
+                     r"(?:[a-z]{2,24}|xn--[a-z0-9\-]{2,59})(?::[0-9]{1,5})?/[^\s<>\"'`)\]]*", re.I)
+# Seitenverweise "[[Seite]]", "[[Seite|Text]]", "[[Seite#Abschnitt]]" und eingebettete "![[bild.png]]" (Bugs-DB 2504)
+_WIKI = re.compile(r"(!?)\[\[([^\[\]\n]{1,300})\]\]")
 
 
 def no_images(text):
@@ -157,16 +169,86 @@ def no_images(text):
     return _HTML.sub("", _MD_IMG.sub("", str(text or "")))
 
 
+def _nfkc(s):
+    """-> (Kopie fuer die Link-Suche, Index ins Original je Zeichen der Kopie; None = gleiche Stellen). NFKC je Zeichen
+    (Vollbreite "ｈｔｔｐｓ：／／" -> "https://", "［ｘ］（…）" -> "[x](…)"), unsichtbare Zeichen und Unicode-Tag-Zeichen
+    wie ihr ASCII-Zeichen bzw. weg. Anders als fold() ohne Akzent-Abbau und casefold: "Dr.Müller/Team" bleibt ohne
+    ASCII-Endung. Nur zum Suchen - ersetzt wird im Original, Thai/Russisch/Spanisch bleiben unveraendert."""
+    if s.isascii():
+        return s, None
+    out, idx = [], []
+    for i, ch in enumerate(s):
+        if ch < "\x80":
+            n = ch
+        else:
+            o = ord(ch)
+            if 0xE0020 <= o <= 0xE007E:
+                n = chr(o - 0xE0000)
+            elif 0xE0000 <= o <= 0xE007F or _INVISIBLE.match(ch):
+                continue
+            else:
+                n = unicodedata.normalize("NFKC", ch)
+        out.append(n)
+        idx.extend([i] * len(n))
+    return "".join(out), idx
+
+
+def _sub(s, rx, fn):
+    """rx in der NFKC-Kopie suchen, Treffer im Original ersetzen. fn(m, orig) -> Ersatz; orig(gruppe) = Originaltext der
+    Gruppe. Reiner ASCII-Text: wie rx.sub."""
+    low, idx = _nfkc(s)
+    if idx is None:
+        return rx.sub(lambda m: fn(m, m.group), s)
+    out, pos = [], 0
+    for m in rx.finditer(low):
+        if m.end() <= m.start():
+            continue
+        a, b = idx[m.start()], idx[m.end() - 1] + 1
+        if a < pos:
+            continue
+
+        def orig(g, m=m):
+            if m.start(g) < 0 or m.end(g) <= m.start(g):
+                return ""
+            return s[idx[m.start(g)]:idx[m.end(g) - 1] + 1]
+        out.append(s[pos:a])
+        out.append(fn(m, orig))
+        pos = b
+    out.append(s[pos:])
+    return "".join(out)
+
+
+def _wiki_text(m, orig):
+    """[[Seite|Text]] -> "Text", [[Seite#Abschnitt]] -> "Seite", ![[bild.png]] -> "" (wie Markdown-Links/Bilder)."""
+    if m.group(1):
+        return ""
+    t = orig(2)
+    return (t.split("|", 1)[1] if "|" in t else re.split(r"[#^]", t, 1)[0]).strip()
+
+
 def no_links(text, repl="[Link entfernt]"):
-    """Text des Modells fuer aussen: Bilder weg, Markdown-Links -> nur der Linktext, Adressen -> repl, HTML-Tags weg.
-    Quellen-Nummern [n] bleiben."""
+    """Text des Modells fuer aussen: Bilder weg, Markdown-Links und Seitenverweise [[…]] -> nur der Linktext, Adressen
+    (auch nackte Domains mit Pfad) -> repl, HTML-Tags weg. Gesucht wird in einer NFKC-Kopie (Vollbreite-URL), ersetzt
+    im Original. Quellen-Nummern [n] bleiben."""
     s = str(text or "")
-    s = _MD_IMG.sub("", s)
-    s = _MD_LINK.sub(lambda m: m.group(1), s)
-    s = _REF.sub("", s)
-    s = _HTML.sub("", s)
-    s = _URL.sub(repl, s)
+    s = _sub(s, _MD_IMG, lambda m, o: "")
+    s = _sub(s, _MD_LINK, lambda m, o: o(1))
+    s = _sub(s, _WIKI, _wiki_text)
+    s = _sub(s, _REF, lambda m, o: "")
+    s = _sub(s, _HTML, lambda m, o: "")
+    s = _sub(s, _URL, lambda m, o: repl)
+    s = _sub(s, _DOMAIN, lambda m, o: repl)
     return re.sub(r"[ \t]{2,}", " ", s)
+
+
+def has_links(text, wiki=True):
+    """Gemeinsame Pruefung (RT-20, Bugs-DB 2490/2504) fuer Aufrufer, die ablehnen statt ersetzen (ai_plan._bad_text):
+    Adresse, nackte Domain mit Pfad, Markdown-Link/-Verweis, Bild, HTML oder - mit wiki - Seitenverweis [[…]], auch in
+    Vollbreite (NFKC). Findet genau das, was no_links() entfernen wuerde."""
+    s = str(text or "")
+    low = _nfkc(s)[0]
+    rxs = (_URL, _DOMAIN, _MD_LINK, _MD_IMG, _HTML, _REF) + ((_WIKI,) if wiki else ())
+    return any(rx.search(low) for rx in rxs)
 
 
 # --- Suchbegriffe (RT-04): nur aus den Worten der Person ---------------------------------------------------------------
