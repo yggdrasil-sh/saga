@@ -14,7 +14,8 @@ entfernte Person (kick nach Verlassen), beendeter Anruf (close); POST /horn (fri
 Geraet); Grenze vom Admin gesenkt; Flag aus -> Knoten beendet, neue Gruppen wieder Mesh; Neustart mit Flag: Startzeit.
 Danach der Browser-Test tests/browser_horn_knoten.js (5 Personen ueber den Knoten, Frame-E2E) und die Pruefung des
 Mitschnitts am Knoten: jeder Rahmen traegt den E2E-Trailer, ffmpeg kann das Video nicht dekodieren. Dann
-tests/browser_horn_pegel.js (calls.horn_from 3: Gruppe 3, eine Person ohne Kamera - Sprechring aus dem Pegel des Knotens);
+tests/browser_horn_pegel.js (calls.horn_from 3: Gruppe 3, eine Person ohne Kamera - Sprechring aus dem Pegel des Knotens;
+danach 2459 PEGEL_MESH=1 direkt: Ring beim Wechsel von 2 auf 3 Personen, stumm sofort aus);
 HORN_BROWSER=pegel laesst den Test mit 5 Personen aus.
 Messwerte (PERF): Startzeiten, Beitritt, Token, CPU/RSS von saga-media, Python und Knoten. Wegwerf-Konten ca-k*."""
 import base64
@@ -65,6 +66,7 @@ USERS = [("ca-k1", "Anna Knoten"), ("ca-k2", "Bert Knoten"), ("ca-k3", "Cora Kno
          ("ca-k6", "Fritz Alt")]
 BUSERS = [("ca-kb1", "Ada Browser"), ("ca-kb2", "Ben Browser"), ("ca-kb3", "Cleo Browser"), ("ca-kb4", "Dirk Browser"), ("ca-kb5", "Eva Browser")]
 PGUSERS = [("ca-kp1", "Pia Pegel"), ("ca-kp2", "Paul Pegel"), ("ca-kp3", "Cleo Pegel")]   # eigene: neue Browser ohne Chat-Geraet
+PMUSERS = [("ca-km1", "Mia Mesh"), ("ca-km2", "Max Mesh"), ("ca-km3", "Cleo Mesh")]       # 2459: Mesh-Durchgang, eigene Konten
 PERF = {}
 P = {"proc": None, "log": None}
 
@@ -380,9 +382,9 @@ def main():
     auth.save_setting("chat_enabled", True)
     auth.save_setting("share_group_scope", False)
     flag(False)
-    for u, n in USERS + BUSERS + PGUSERS:
+    for u, n in USERS + BUSERS + PGUSERS + PMUSERS:
         auth.create_user(u, PW, n)
-    TK.ohne_einfuehrung(None, [u for u, _ in USERS + BUSERS + PGUSERS])   # Erste Schritte beantwortet (Bugs-DB 2428)
+    TK.ohne_einfuehrung(None, [u for u, _ in USERS + BUSERS + PGUSERS + PMUSERS])   # Erste Schritte beantwortet (Bugs-DB 2428)
     media, node = build("saga-media", "media", "SAGA_MEDIA_BIN"), build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok(f"saga-media und gjallarhorn gebaut ({bool(media)}, {bool(node)})", media and node)
     try:
@@ -592,6 +594,11 @@ def run(media, node):
     flag(True, horn_from=3)
     time.sleep(A_.WAIT)
     browser_pegel()
+    # 2459: dieselbe Pruefung direkt (Mesh): ohne "Alle Anrufe ueber Knoten" bleibt eine 3er-Gruppe unter der Mesh-Grenze
+    # direkt - zu zweit kein Ring, die dritte Person kommt -> Ring, stumm -> sofort aus
+    flag(True, horn_all=False, horn_all_y=True)
+    time.sleep(A_.WAIT)
+    browser_pegel(mesh=True)
     flag(True)
 
     # --- Flag aus: Knoten weg -----------------------------------------------------------------------------------------
@@ -686,15 +693,17 @@ def browser(people, gid):
     capture_check()
 
 
-def browser_pegel():
-    """tests/browser_horn_pegel.js: Pegel (audio-level) vom Knoten bis zum Sprechring, auch fuer ein Geraet ohne Bild."""
+def browser_pegel(mesh=False):
+    """tests/browser_horn_pegel.js: Pegel (audio-level) vom Knoten bis zum Sprechring, auch fuer ein Geraet ohne Bild.
+    mesh (2459): derselbe Test direkt (PEGEL_MESH=1, eigene Konten PMUSERS) - Ring beim Wechsel von 2 auf 3 Personen."""
     js = os.path.join(APP, "tests", "browser_horn_pegel.js")
     pw = os.environ.get("PLAYWRIGHT") or "/opt/npm-tools/node_modules/playwright"
     if os.environ.get("HORN_BROWSER") == "0" or not shutil.which("node"):
         print("SKIP Browser-Test Pegel")
         return
-    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in PGUSERS), SAGA_PASS=PW, PLAYWRIGHT=pw,
-               PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
+    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in (PMUSERS if mesh else PGUSERS)), SAGA_PASS=PW, PLAYWRIGHT=pw,
+               PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium",
+               PEGEL_MESH="1" if mesh else "")
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
     r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=600)
@@ -704,7 +713,7 @@ def browser_pegel():
     for ln in r.stdout.splitlines():
         if ln.startswith("OK  ") or ln.startswith("FAIL"):
             res.append(ln.startswith("OK"))
-    ok(f"Browser-Test Pegel lief durch (rc {r.returncode})", r.returncode == 0)
+    ok(f"Browser-Test Pegel{' (Mesh)' if mesh else ''} lief durch (rc {r.returncode})", r.returncode == 0)
 
 
 if __name__ == "__main__":

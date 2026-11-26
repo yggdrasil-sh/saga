@@ -2336,6 +2336,7 @@
     (c.local ? c.local.getAudioTracks() : []).forEach(function (t) { t.enabled = c.mic; });
     msMic(c.mic);
     micWatch(c); drawCtl(c); stateAll(c);
+    if (c.horn && c.horn.self) c.horn.self.box.classList.toggle('speaking', hornSelfSpeaking(c));   // 2459: eigene Kachel sofort
   }
   // 2.5 (Bugs-DB 2198): Media Session setMicrophoneActive nur aus einer Nutzergeste. WebKit (Safari, Mac-Huelle) schaltet
   // mit false die Aufnahme der Seite selbst stumm (Spur muted) und lehnt true ohne Geste ab (Promise mit InvalidStateError) -
@@ -4569,10 +4570,13 @@
     return H && micOn(R) && H.selfAt && Date.now() - H.selfAt <= 1500 ? (H.selfLevel || 0) : 0;
   }
   // 2458: eigene Kachel "spricht" (Schwelle 0,03, Nachlauf 600 ms wie die anderen Kacheln)
+  // Bugs-DB 2459: stumm = sofort aus (Nachlauf nur fuer Sprechpausen, wie die anderen Kacheln und iOS/Android); der alte
+  // Zeitpunkt faellt weg, damit der Ring beim Wieder-Einschalten nicht kurz aufleuchtet
   function hornSelfSpeaking(R) {
     var H = R.horn, now = Date.now();
+    if (!micOn(R)) { H.selfOnAt = 0; return false; }
     if (hornSelfLv(R) > 0.03) H.selfOnAt = now;
-    return !!H.selfOnAt && micOn(R) && now - H.selfOnAt < 600;
+    return !!H.selfOnAt && now - H.selfOnAt < 600;
   }
   // Qualitaet (RTT, Verlust, Einfrieren) und UDP-Regeln aus getStats
   function hornStats(R, conn) {
@@ -4929,7 +4933,9 @@
     H.spkT = setInterval(function () {
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
       ringSet(R);                                      // 2125: Ring nur ab 3 Personen (auch 1:1 ueber den Knoten: keiner)
-      if (H.cur && H.cur.rx) hornSelfLevel(R, H.cur);  // 2458: eigener Pegel jeden Takt (frueher nur beim Wechsel)
+      // 2458: eigener Pegel jeden Takt (frueher nur beim Wechsel). Bugs-DB 2459: nur, wenn ihn jemand braucht - die eigene
+      // Kachel (ab 3 Personen) bzw. ein laufender Wechsel (hornTick misst dort ohnehin selbst) -, sonst kein getStats je Takt
+      if (H.cur && H.cur.rx && (H.self || H.switching || H.olds.length)) hornSelfLevel(R, H.cur);
       if (H.self) H.self.box.classList.toggle('speaking', hornSelfSpeaking(R));
       // lvSeen (Bug 2126): je Verbindung bzw. Leitung, nicht je Anruf - nach einem Knotenwechsel auf einen Knoten ohne Pegel
       // (Rahmen-Weg ohne ok.level) bzw. eine neue Leitung ohne ok.level zurueck auf den Ring am Sprecherplatz
@@ -4959,9 +4965,10 @@
       if (!H.lvSeen && H.spk) lv[H.spk] = 1;           // Browser ohne Pegel: Sprechring am Sprecherplatz des Knotens
       var ch = false;
       Object.keys(H.tiles).forEach(function (d) {
-        var on = (lv[d] || 0) > 0.03 && (H.st[d] || {}).mic !== false;
+        var mic = (H.st[d] || {}).mic !== false, on = (lv[d] || 0) > 0.03 && mic;
         if (on) H.speakAt = H.speakAt || {}, H.speakAt[d] = now;
-        var keep = on || (H.speakAt && now - (H.speakAt[d] || 0) < 600);
+        else if (!mic && H.speakAt) delete H.speakAt[d];   // 2459: stumm = sofort aus, kein Nachlauf (wie iOS/Android)
+        var keep = on || (mic && H.speakAt && now - (H.speakAt[d] || 0) < 600);
         if (!!H.speaking[d] !== !!keep) { ch = true; if (keep) H.speaking[d] = true; else delete H.speaking[d]; }
         H.tiles[d].box.classList.toggle('speaking', !!keep);
       });

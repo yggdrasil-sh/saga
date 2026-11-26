@@ -247,6 +247,14 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Behoben
 
+- **Sprechring: stumm heißt sofort aus** (Bugs-DB 2459, Nacharbeit zu 2125/2458, Web inkl. Mac-Hülle/Linux): Schaltete
+  jemand über den Knoten stumm, blieb der Ring an seiner Kachel bei den anderen noch bis zu 600 ms (Nachlauf für
+  Sprechpausen); die eigene Kachel ging erst im nächsten Takt aus. Jetzt ist der Ring mit dem Stummschalten weg – wie im
+  Mesh und in den Apps; der Nachlauf gilt nur noch für Sprechpausen. Nebenbei misst der Browser den eigenen Pegel
+  (`getStats` am Ton-Sender) nur noch, wenn es eine eigene Kachel gibt (ab drei Personen) oder ein Knotenwechsel läuft
+  – im 1:1 über den Knoten nicht mehr dreimal je Sekunde. Neuer Browserfall in `tests/browser_horn_pegel.js`
+  (`PEGEL_MESH=1`, aus `tests/anrufe_horn_knoten.py`): Mesh zu zweit ohne Ring, die dritte Person kommt – Ring erscheint;
+  Stummschalten über den Knoten und im Mesh.
 - **Wiederherstellen aus dem externen Backup lässt keinen Klartext mehr liegen** (Bugs-DB 2464): `run.py restore
   --schluessel` entschlüsselte die Datenbank nach `/data/backups/<lauf>-extern.dump` und ließ die Datei danach liegen –
   auch wenn das Einspielen abbrach. Jetzt liegt der Klartext nur während des Einspielens in einem eigenen Arbeitsordner

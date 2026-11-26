@@ -3,8 +3,11 @@
 // (ssrc-audio-level) an jeden Empfaenger weiter; der Browser liest ihn per getSynchronizationSources (H.lvSeen) und zeigt
 // den Sprechring am Platz der Person, die spricht - auch ohne Bild (frueher nur der Sprecher-BILD-Platz des Knotens).
 // 2125: zu dritt mit Sprechring; legt C auf, sind A und B zu zweit - Sprecher erkannt, aber kein Ring (nur ab 3 Personen).
-// Laeuft aus tests/anrufe_horn_knoten.py, geht aber auch allein:
-//   SAGA_BASE=http://host:port SAGA_USERS=u1,u2,u3 SAGA_PASS=... [SHOTS=dir] node tests/browser_horn_pegel.js
+// 2459: stumm = Ring sofort aus (eigene Kachel im selben Takt wie der Klick, bei den anderen ohne 600-ms-Nachlauf).
+// PEGEL_MESH=1 (2459): dieselbe Gruppe DIREKT (Mesh; Server ohne "Alle Anrufe ueber Knoten", Gruppe unter der Mesh-Grenze):
+// A und B zu zweit - B spricht, kein Ring; C kommt dazu - Ring erscheint (Wechsel 2 -> 3); B stumm - Ring an B sofort aus.
+// Laeuft aus tests/anrufe_horn_knoten.py (beide Durchgaenge, eigene Konten je Durchgang), geht aber auch allein:
+//   SAGA_BASE=http://host:port SAGA_USERS=u1,u2,u3 SAGA_PASS=... [SHOTS=dir] [PEGEL_MESH=1] node tests/browser_horn_pegel.js
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -88,7 +91,66 @@ const selfLook = p => p.evaluate(() => {
   const t = document.querySelector('.cl-win .cl-tile.cl-me');
   return t ? { tile: true, speaking: t.classList.contains('speaking'), shadow: getComputedStyle(t).boxShadow } : { tile: false };
 });
+const room = p => p.evaluate(() => window.HKCalls && window.HKCalls.room());
+// 2459: Mikrofon ueber den Knopf der Anrufleiste; Rueckgabe: eigene Kachel direkt nach dem Klick (gleicher Takt) noch "spricht"?
+const micClick = (p, off) => p.evaluate(off => {
+  const b = document.querySelector('.cl-win [aria-label="' + (off ? 'Stummschalten' : 'Mikrofon einschalten') + '"]');
+  if (!b) return { btn: false };
+  b.click();
+  const t = document.querySelector('.cl-win .cl-tile.cl-me');
+  return { btn: true, selfSpeaking: !!(t && t.classList.contains('speaking')) };
+}, off);
 async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { recursive: true }); await p.screenshot({ path: path.join(E.SHOTS, name + '.png') }); }
+
+// --- 2459: Mesh (direkt) - zu zweit kein Ring, die dritte Person kommt -> Ring; stumm -> Ring sofort aus ----------------
+async function meshRun(ps, devs) {
+  for (const p of ps) await p.evaluate(() => window.__hornGain(0.004));
+  await ps[0].click('#ct-call-v');
+  const ra = await until(async () => { const r = await room(ps[0]); return r && r.topo && r; }, 20000);
+  ok('Mesh: A startet die Gruppe direkt (topo mesh, ohne Knoten)', ra && ra.topo === 'mesh' && !ra.horn, ra && { topo: ra.topo, horn: ra.horn });
+  if (!ra || ra.topo !== 'mesh') return;
+  const joinAs = async i => {
+    const rang = await ps[i].waitForSelector('.cl-ring', { timeout: 20000 }).then(() => true, () => false);
+    if (rang) await ps[i].click('.cl-ring .cl-big');
+    else await ps[i].evaluate(id => window.HKCalls.join(id, 'member', true), ra.id);
+  };
+  const conn = (r, d) => !!(r && r.links.some(l => l.device === d && l.connected));
+  await joinAs(1);
+  const two = await until(async () => { const a = await room(ps[0]), b = await room(ps[1]); return conn(a, devs[1]) && conn(b, devs[0]) && a.legs.length === 2 && [a, b]; }, 25000, 250);
+  ok('Mesh: B beigetreten - A und B verbunden (2 Personen)', !!two, (await Promise.all([room(ps[0]), room(ps[1])])).map(r => r && { legs: r.legs.length, links: r.links.map(l => [devs.indexOf(l.device), l.connected]) }));
+  // B spricht: A erkennt den Sprecher (Kachel "spricht"), aber zu zweit kein Ring
+  await ps[1].evaluate(() => window.__hornGain(0.6));
+  const sp2 = await until(async () => { const r = await ringLook(ps[0]); return r.tile && r; }, 12000, 250);
+  const r2 = await ringLook(ps[0]);
+  ok('2459: Mesh zu zweit - B spricht, A erkennt den Sprecher, aber kein Ring (keine Fensterklasse, kein Schatten)', !!sp2 && !r2.ring && r2.shadow === 'none', r2);
+  await ps[0].waitForTimeout(300); await shot(ps[0], PFX + 'mesh-zu-zweit-b-spricht-bei-a');
+  // C kommt dazu (Wechsel 2 -> 3): Ring erscheint bei A; die Liste zaehlt (Verbindung zu C muss dafuer noch nicht stehen)
+  const t0 = Date.now();
+  let legAt = 0, ringAt = 0, cConnAtRing = null;
+  await joinAs(2);
+  const r3 = await until(async () => {
+    const r = await room(ps[0]), lk = await ringLook(ps[0]);
+    if (!legAt && r && r.legs.indexOf(devs[2]) >= 0) legAt = Date.now();
+    if (!ringAt && lk.ring) { ringAt = Date.now(); cConnAtRing = conn(r, devs[2]); }
+    return lk.ring && lk.tile && lk.shadow !== 'none' && lk;
+  }, 25000, 100);
+  ok(`2459: Mesh - C kommt dazu (2 -> 3): Ring bei A erscheint (B spricht; Liste nach ${legAt ? legAt - t0 : '?'} ms, Ring nach ${ringAt ? ringAt - t0 : '?'} ms, Verbindung zu C da: ${cConnAtRing})`,
+     !!r3, await ringLook(ps[0]));
+  const c3 = await until(async () => { const r = await room(ps[0]); return conn(r, devs[2]) && r; }, 25000, 250);
+  ok('Mesh: A mit C verbunden', !!c3, (await room(ps[0])).links.map(l => [devs.indexOf(l.device), l.connected]));
+  const rc3 = await until(async () => { const r = await ringLook(ps[2]); return r.ring && r.tile && r.shadow !== 'none' && r; }, 12000, 250);
+  ok('2459: Mesh zu dritt - auch bei C (ohne Kamera) Ring an B', !!rc3, await ringLook(ps[2]));
+  await ps[0].waitForTimeout(300); await shot(ps[0], PFX + 'mesh-zu-dritt-b-spricht-bei-a');
+  // B schaltet stumm: Kachel bei A sofort ohne "spricht" (kein Nachlauf), der Ring bleibt erlaubt (3 Personen)
+  const mc = await micClick(ps[1], true), tm = Date.now();
+  const off = await until(async () => { const r = await ringLook(ps[0]); return !r.tile && r; }, 4000, 40);
+  const msOff = Date.now() - tm;
+  ok(`2459: Mesh - B stumm: bei A sofort ohne Ring (${msOff} ms nach dem Klick), Fensterklasse bleibt`, mc.btn && !!off && off.ring && msOff < 1500, { mc, ms: msOff, look: await ringLook(ps[0]) });
+  await micClick(ps[1], false);
+  await ps[1].evaluate(() => window.__hornGain(0.004));
+  for (const p of ps) await p.click('.cl-ctl .cl-red').catch(() => {});
+  await ps[0].waitForTimeout(1000);
+}
 
 (async () => {
   let rc = 1;
@@ -106,6 +168,8 @@ async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { rec
     await ps[0].waitForSelector('#ct-chat:not([hidden])'); await liveOk(ps);
     for (let i = 0; i < 3; i++) await api(ps[i], 'PUT', '/api/calls/caps', { device: devs[i], caps: await ps[i].evaluate(() => window.HKCalls.caps()) });
     await until(async () => ps[0].evaluate(() => { const v = document.getElementById('ct-call-v'); return v && !v.hidden; }), 10000);
+    hornRun: {                                         // 2459: PEGEL_MESH=1 - nur der Mesh-Durchgang
+    if (E.PEGEL_MESH === '1') { await meshRun(ps, devs); break hornRun; }
 
     // --- Anruf: A startet, B und C (ohne Kamera) treten bei ------------------------------------------------------------
     await ps[0].click('#ct-call-v');
@@ -159,6 +223,22 @@ async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { rec
     const selfOff = await until(async () => { const x = await selfLook(ps[0]); return x.tile && !x.speaking && x; }, 6000, 250);
     ok('2458: A wieder leise - eigene Kachel zeigt nach dem Wechsel nicht mehr "spricht"', !!selfOff, await selfLook(ps[0]));
     await ps[0].waitForTimeout(300); await shot(ps[0], PFX + '2458-nach-wechsel-a-leise-bei-a');
+    // --- 2459: A spricht und schaltet stumm - eigene Kachel im selben Takt aus, bei B ohne Nachlauf ----------------------
+    await ps[0].evaluate(() => window.__hornGain(0.6));
+    const both = await until(async () => { const x = await selfLook(ps[0]), h = await horn(ps[1]); return x.speaking && h.tiles.some(t => t.dev === devs[0] && t.speaking) && x; }, 8000, 200);
+    ok('2459: A spricht - eigene Kachel und Kachel bei B "spricht"', !!both, { self: await selfLook(ps[0]), b: (await horn(ps[1])).speaking.map(x => devs.indexOf(x)) });
+    const mc = await micClick(ps[0], true), tm = Date.now();
+    ok('2459: A stumm - eigene Kachel sofort ohne "spricht" (gleicher Takt wie der Klick, kein 600-ms-Nachlauf)', mc.btn && !mc.selfSpeaking, mc);
+    let stAt = 0;
+    const bOff = await until(async () => {
+      const h = await horn(ps[1]); if (!stAt && h.st[devs[0]] && h.st[devs[0]].mic === false) stAt = Date.now();
+      return !h.tiles.some(t => t.dev === devs[0] && t.speaking) && h.speaking.indexOf(devs[0]) < 0 && h;
+    }, 4000, 40);
+    const msOff = Date.now() - tm;
+    ok(`2459: A stumm - bei B ist A sofort ohne Ring (${msOff} ms nach dem Klick, Zustand bei B nach ${stAt ? stAt - tm : '?'} ms)`, !!bOff && msOff < 1500,
+       { ms: msOff, st: stAt ? stAt - tm : null });
+    await micClick(ps[0], false);
+    await ps[0].evaluate(() => window.__hornGain(0.004));
     // Ruhe: niemand laut -> kein Sprechring
     for (const p of ps) await p.evaluate(() => window.__hornGain(0.004));
     const quiet = await until(async () => { const hs = await Promise.all(ps.map(horn)); return hs.every(h => h.speaking.length === 0) && hs; }, 8000, 300);
@@ -176,6 +256,7 @@ async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { rec
     await ps[0].evaluate(() => window.__hornGain(0.004));
     for (const p of ps) await p.click('.cl-ctl .cl-red').catch(() => {});
     await ps[0].waitForTimeout(1000);
+    }
     rc = res.every(Boolean) ? 0 : 1;
   } catch (e) {
     console.log('FAIL Ausnahme: ' + (e && e.stack || e));
