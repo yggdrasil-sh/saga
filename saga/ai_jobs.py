@@ -196,7 +196,7 @@ def detail(uid, job_id):
     if at:
         out["approved"] = {"at": at, "device": (appr or {}).get("dev")}
     if r[2] in ("erledigt", "zurueckgenommen"):
-        out["report"] = report(r, changes)
+        out["report"] = report(r, changes, uid)
     out["events"] = [{"at": at, "kind": k, "text": tx} for at, k, d in evs if k not in _EV_SKIP
                      for tx in [_event_text(k, d, labels)] if tx]
     acts = []
@@ -215,12 +215,12 @@ def _done_word(target):
     return {"task": t("angelegt"), "event": t("eingetragen"), "note": t("geändert"), "row": t("geändert")}.get(kind, "")
 
 
-def report(r, changes):
+def report(r, changes, uid=None):
     """Rueckmeldung: Ergebnis zuerst (Zug report bzw. undo), je Aenderung eine Zeile (aus dem Protokoll, nicht vom Modell)."""
     if r[2] == "zurueckgenommen":
-        text = ai_plan.say("undo", {"target": r[1]})
+        text = ai_plan.say("undo", {"target": r[1]}, uid=uid, job_id=r[0])
     else:
-        text = ai_plan.say("report", {"title": r[1], "changes": [c["label"] for c in changes]})
+        text = ai_plan.say("report", {"title": r[1], "changes": [c["label"] for c in changes]}, uid=uid, job_id=r[0])
     return {"text": text, "lines": [{"change": c["id"], "text": f"{c['label']} {_done_word(c['target'])}".strip(),
                                      "undone": c["undone"], "can_undo": c["can_undo"]} for c in changes]}
 
@@ -383,7 +383,7 @@ def _approve(uid, i, pv, ph, dev):
         return 409, {"error": t("Dieser Auftrag wartet nicht mehr auf dein OK."), "code": "state", "state": s[0] if s else None}
     with _db() as c, c:
         jobs._event(c, i, "approve", jobs.now(), dev=dev, plan_v=pv)
-    return 200, {"ok": True, "state": "laeuft", "state_text": state_text("laeuft"), "say": ai_plan.say("start")}
+    return 200, {"ok": True, "state": "laeuft", "state_text": state_text("laeuft"), "say": ai_plan.say("start", uid=uid)}
 
 
 @router.post("/api/ai/jobs/{jid}/approve")
@@ -471,7 +471,7 @@ async def api_jobs_undo(jid: str, request: Request):
     if st_now == "zurueckgenommen":
         with _db() as c:
             title = (c.execute("SELECT title FROM job WHERE id=?", (i,)).fetchone() or [""])[0]
-        out["text"] = ai_plan.say("undo", {"target": title})
+        out["text"] = ai_plan.say("undo", {"target": title}, uid=uid, job_id=i)
     return JSONResponse(out, status_code=200, headers=NO_STORE)
 
 

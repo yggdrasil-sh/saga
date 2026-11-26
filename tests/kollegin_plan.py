@@ -39,6 +39,7 @@ from saga import ai, ai_jobs, ai_plan, ai_task, apitok, bus, i18n, jobs, testclo
 A, B, C = "kp-anna", "kp-bert", "kp-cora"
 CANARY_B = "GEHEIMbertKP71"
 CANARY_W = "GEHEIMwlanKP42"
+NEUTRAL = ai_plan._ai_say() is None          # ohne saga.ai_say (Rolle kh): neutrale Systemtexte woertlich pruefen
 
 
 def ok(n, c, info=""):
@@ -235,7 +236,7 @@ def part_model(pages):
     r = plan(A, "Kümmer dich um die Grillkohle")
     ok(f"fake-evil: Rueckfall nach einer Reparatur, Alternative Aufgabe ({r.get('case')}, {r.get('problems')})",
        r["type"] == "refuse" and r["case"] == "invalid" and r["zug"] == "cant" and (r.get("alternative") or {}).get("recipe") == "aufgabe"
-       and count().get("plan") - c0 == 2 and r["text"].startswith("Das bekomme ich hier nicht sicher hin"))
+       and count().get("plan") - c0 == 2 and (r["text"].startswith("Das bekomme ich hier nicht sicher hin") if NEUTRAL else bool(r["text"])))
     ok("fake-evil: kein Auftrag angelegt, Canary nirgends", pg("SELECT COUNT(*) FROM job WHERE uid=?", (A,))[0][0] == before
        and not pg("SELECT 1 FROM job WHERE uid=? AND (plan::text LIKE '%GEHEIM%' OR title LIKE '%GEHEIM%')", (A,)))
     setlevel("recipes")
@@ -267,7 +268,7 @@ def part_model(pages):
         testclock.set_clock({"reset": True})
     r = plan(A, "Bestell die Kohle in einem Onlineshop")
     ok(f"EV-11: ehrliche Absage + Vorschlag Aufgabe ({r.get('text')})", r["type"] == "refuse" and r["zug"] == "cant"
-       and r["alternative"]["recipe"] == "aufgabe" and "Aufgabe" in r["text"])
+       and r["alternative"]["recipe"] == "aufgabe" and ("Aufgabe" in r["text"] if NEUTRAL else bool(r["text"])))
     n0 = count().get("n")
     r2 = plan(A, "", recipe="aufgabe", fields=r["alternative"]["fields"])
     ok("„Als Aufgabe anlegen“: Plan ohne Modellaufruf", r2["type"] == "plan" and count().get("n") == n0 and r2["steps"][0]["tool"] == "create_task")
@@ -299,7 +300,7 @@ def part_model(pages):
     # --- Fehlerfaelle ---------------------------------------------------------------------------------------------
     setai(model="fake-500")
     r = plan(A, "Erinnere mich Freitag an die Grillkohle")
-    ok(f"Modell weg: Hinweis, kein Auftrag ({r.get('text')})", r["type"] == "refuse" and r["case"] == "down" and "nicht erreichbar" in r["text"])
+    ok(f"Modell weg: Hinweis, kein Auftrag ({r.get('text')})", r["type"] == "refuse" and r["case"] == "down" and ("nicht erreichbar" in r["text"] if NEUTRAL else bool(r["text"])))
     setai(model="fake-plan", quota=1)
     r = plan(A, "Erinnere mich Freitag an die Grillkohle " + "x " * 3000)
     ok(f"Budget Auftraege leer: Satz, kein Auftrag ({r.get('case')})", r["type"] == "refuse" and r["case"] == "budget")
@@ -350,7 +351,7 @@ def part_contract(pages):
     ok(f"ausgefuehrt: genau eine Aufgabe mit dem geaenderten Text ({st_}, {tasks})", st_ == "erledigt" and len(tasks) == 1 and "2 Säcke" in tasks[0][1])
     s, det = K.req("GET", f"/api/ai/jobs/{jid}", cA)
     ok(f"Detail: Erledigt, Rueckmeldung zuerst, je Aenderung eine Zeile ({s}, {det.get('report')})", s == 200 and det["state_text"] == "Erledigt"
-       and det["report"]["text"].startswith("Erledigt") and len(det["report"]["lines"]) == 1 and det["changes"][0]["can_undo"]
+       and (det["report"]["text"].startswith("Erledigt") if NEUTRAL else bool(det["report"]["text"])) and len(det["report"]["lines"]) == 1 and det["changes"][0]["can_undo"]
        and det["changes"][0]["class_text"] == "nur löschbar" and "undo" in det["actions"])
     texts = [e["text"] for e in det["events"]]
     ok(f"Protokoll aus job_event ({texts})", any("Gelesen:" in x for x in texts) and any("Freigegeben" in x for x in texts)
@@ -358,7 +359,7 @@ def part_contract(pages):
     ok("Freigabe mit Zeit und Geraet", (det.get("approved") or {}).get("device") == "Web" and det["approved"]["at"])
     s, d = K.req("POST", f"/api/ai/jobs/{jid}/undo", cA, {})
     ok(f"Rückgängig: Aufgabe weg, Zurückgenommen ({s}, {d})", s == 200 and d.get("state") == "zurueckgenommen"
-       and not pg("SELECT 1 FROM task WHERE id=?", (tasks[0][0],)) and d.get("text", "").startswith("Zurückgenommen"))
+       and not pg("SELECT 1 FROM task WHERE id=?", (tasks[0][0],)) and (d.get("text", "").startswith("Zurückgenommen") if NEUTRAL else bool(d.get("text"))))
     s, d = K.req("POST", f"/api/ai/jobs/{jid}/undo", cA, {})
     ok("Rückgängig zweimal -> 409", s == 409)
     # Lieber nicht

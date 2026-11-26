@@ -191,21 +191,50 @@ def _neutral(zug, f):
         return t("Das hat nicht geklappt – nichts wurde geändert.")
     if zug == "ask":
         return f.get("question") or t("Was genau meinst du?")
+    if zug == "level":
+        return t("Aufträge gehen mit diesem Modell nicht – frag mich gern etwas.")
     return ""
 
 
-def say(zug, fields=None, lang=None):
-    """Satz der Kollegin fuer einen Gespraechszug: saga.ai_say.say (Bausteine + Stilpruefer), falls vorhanden; sonst
-    (oder bei jedem Fehler dort) der neutrale Systemtext. Zuege: plan, start, report, undo, cant, fail, ask (Persona §2),
-    dazu invalid/down/budget als Unterfaelle von cant/fail (neutral)."""
+_LEVEL_SAY = {"plans": "plaene", "recipes": "rezepte", "answers": "antworten"}
+# eigene Faelle -> (Zug, Felder) fuer saga.ai_say (Rolle kh): Zugnamen aus Persona §2
+_SAY_MAP = {"start": ("start", {}), "cant": ("cant", {"alt": "add_task"}), "invalid": ("cant", {"alt": "add_task"}),
+            "level": ("cant", {}), "down": ("fail", {"reason": "modell"}), "budget": ("fail", {"reason": "budget"}),
+            "fail": ("fail", {"reason": "other"})}
+
+
+def _ai_say():
     try:
         from saga import ai_say  # noqa: PLC0415 - Rolle kh, optional
     except ImportError:
-        ai_say = None
-    if ai_say is not None and hasattr(ai_say, "say"):
+        return None
+    return ai_say if hasattr(ai_say, "say") else None
+
+
+def _persona(m, uid):
+    p = m.persona_for(uid) if uid and hasattr(m, "persona_for") else None
+    if p is not None:
+        lv = level()
+        p = dict(p, level=_LEVEL_SAY.get(lv, "rezepte"), big=lv == "plans")
+    return p
+
+
+def say(zug, fields=None, lang=None, uid=None, job_id=None):
+    """Satz der Kollegin fuer einen Gespraechszug: saga.ai_say (Bausteine + Stilpruefer, Rolle kh), falls vorhanden;
+    sonst (oder wenn dort nichts herauskommt) der neutrale Systemtext. Mit job_id: Rueckmeldung/Ruecknahme/Fehler NUR aus
+    dem Protokoll (ai_say.report_from_log). Eigene Faelle (invalid/down/budget/level) gehen als Zug cant/fail (_SAY_MAP).
+    plan und ask bleiben Systemtext bzw. Frage des Modells: die Plan-Karte zeigt die Schritte selbst."""
+    m = _ai_say()
+    if m is not None and zug not in ("plan", "ask"):
+        lg = lang or i18n.get_lang()
         try:
-            zz = {"invalid": "cant", "down": "fail", "budget": "fail"}.get(zug, zug)
-            s = ai_say.say(zz, dict(fields or {}, case=zug), lang or i18n.get_lang(), persona=None)
+            p = _persona(m, uid)
+            if job_id is not None and zug in ("report", "undo", "fail") and hasattr(m, "report_from_log"):
+                with _db() as c:
+                    _z, _f, s = m.report_from_log(c, job_id, lg, p)
+            else:
+                zz, ff = _SAY_MAP.get(zug, (zug, {}))
+                s = m.say(zz, dict(ff, **(fields or {})) if zug not in _SAY_MAP else ff, lg, p)
             if isinstance(s, str) and s.strip():
                 return s.strip()
         except Exception as ex:  # noqa: BLE001 - nie wegen eines Satzes scheitern
@@ -731,9 +760,9 @@ class Result(dict):
     """{type: plan|ask|refuse|error, ...} - fuer die SSE-Ereignisse in saga/ai_jobs.py."""
 
 
-def _refuse(zug, reason, alt_text=None, **extra):
+def _refuse(zug, reason, alt_text=None, uid=None, **extra):
     out = Result(type="refuse", zug="cant" if zug in ("cant", "invalid") else "fail", case=zug, reason=reason,
-                 text=say(zug, {"name": ai.persona_name()}))
+                 text=say("level" if reason == "level" else zug, {"name": ai.persona_name()}, uid=uid))
     if alt_text:
         out["alternative"] = {"recipe": "aufgabe", "fields": {"text": alt_text[:200]}, "label": t("Als Aufgabe anlegen")}
     out.update(extra)
@@ -761,7 +790,7 @@ def plan(uid, q, *, note=None, choice=None, recipe=None, fields=None, source="sa
     pc = settings_raw() if cfg is None else cfg
     lvl = level(pc)
     if lvl == "answers":
-        return _refuse("cant", "level")
+        return _refuse("cant", "level", uid=uid)
     rs = recipes(pc)
     q = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", q or "").strip()[:REQ_MAX]
     if recipe is not None:                       # direkt von der Person (Knopf), nie ein Rezept-Objekt (RT-21)
@@ -781,7 +810,7 @@ def plan(uid, q, *, note=None, choice=None, recipe=None, fields=None, source="sa
     cx, cands, reads = context(uid, q, note, c)
     mode = "plans" if lvl == "plans" else "recipes"
     if mode == "recipes" and not rs:
-        return _refuse("cant", "no_recipe", _alt_text(q))
+        return _refuse("cant", "no_recipe", _alt_text(q), uid=uid)
     lines = not ai.schema_ok(c)
     schema = None if lines else (plan_schema() if mode == "plans" else recipe_schema(rs))
     msgs = messages(mode, q, cx, cands, rs, choice=choice, lines=lines)
@@ -808,16 +837,16 @@ def plan(uid, q, *, note=None, choice=None, recipe=None, fields=None, source="sa
                 break
             tries += 1
             if tries > 1:
-                return _refuse("invalid", "invalid", _alt_text(q), problems=[p["code"] for p in probs])
+                return _refuse("invalid", "invalid", _alt_text(q), uid=uid, problems=[p["code"] for p in probs])
             msgs = repair_messages(msgs, answer, probs, lines)
     except ai_units.NoBudget:
-        return _refuse("budget", "budget")
+        return _refuse("budget", "budget", uid=uid)
     except ai.AIError:
-        return _refuse("down", "model")
+        return _refuse("down", "model", uid=uid)
     if kind == "ask":
         return Result(type="ask", question=res["question"], choices=res["choices"], zug="ask")
     if kind == "refuse":
-        return _refuse("cant", "model", _alt_text(q))
+        return _refuse("cant", "model", _alt_text(q), uid=uid)
     return _store(uid, res, reads, lvl, q, source)
 
 
@@ -828,8 +857,10 @@ def _store(uid, res, reads, lvl, q, source):
                                               for r in tools.get(s["tool"]).refs(s["args"])]))[:tools.PLAN_READS]
     refs = list(reads) + [r for s in steps for r in tools.get(s["tool"]).refs(s["args"])]
     labels = _labels(uid, refs)
+    first = steps[0]["args"] if steps else {}
+    sv = {"recipe": res.get("recipe"), "item": res["title"], "deadline": first.get("due") or first.get("start")}
     pj = {"v": 1, "level": lvl, "recipe": res.get("recipe"), "reads": reads, "labels": labels, "title": res["title"],
-          "request": q[:REQ_MAX], "lang": i18n.get_lang()}
+          "request": q[:REQ_MAX], "lang": i18n.get_lang(), "say": {k: v for k, v in sv.items() if v}}   # say: fuer ai_say.report_from_log
     try:
         jid = jobs.create(uid, KIND, source=source if source in jobs.SOURCES else "saga", title=res["title"], plan=pj,
                           steps=steps, due_at=jobs.now() + PENDING_DAYS * 86400)
