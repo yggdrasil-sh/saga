@@ -63,6 +63,7 @@ from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Stat
 from saga import ai_task                      # 2.6 (K-A6 2266): Runner ai.task (Geruest, Planer mit K-B)
 from saga import ai_jobs                      # 2.6 (K-B 2267): Planer + Auftraege-API (saga/ai_plan.py, saga/ai_undo.py)
 from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einwilligung, Meine Daten
+from saga import ai_notify  # noqa: F401 - 2.6 (K-C 2270): Glocke/Push zu Auftraegen, Knoepfe (saga/ai_act.py)
 from saga import widget_push                  # 2.6 (Bugs-DB 2188): stiller Widget-Push, /api/app/widgets
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
@@ -101,6 +102,7 @@ async def lifespan(_app):
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
     ai_task.register()                                       # 2.6 (K-A6): Runner ai.task (schon beim Import, hier ausdruecklich)
+    ai_notify.register()                                     # 2.6 (K-C 2270): Haken fuer job.* in saga.push
     jobs.start()                                             # 2.6 (K-A2): Auftraege der Kollegin (nicht bei SAGA_RESTORE_TEST)
     user_status.start()                                      # 2.6 (Bugs-DB 2029): abgelaufene Status zuruecksetzen (30 s)
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern

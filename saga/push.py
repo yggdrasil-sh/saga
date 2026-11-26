@@ -62,6 +62,7 @@ CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comm
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
         "chat": ("chat.message", "chat.mention"), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
+        "jobs": ("job.needs_you", "job.done", "job.failed"),   # 2.6 (2270 K-C): Auftraege der Kollegin (saga.ai_notify)
         "admin": ("backup.failed", "chat.report", "push.relay")}   # nur Admin-Konten (Backups, saga/backups.py; 2.5 Meldungen,
                                                                     # saga/chat_grp.py; 2.6 Push-Relais gestoert, saga/push_relay.py)
 # 2.5 (saga.chat_prefs.push_ok, setzt sich beim Import ein): darf eine Chat-Mitteilung noch raus? Ohne Chat-Modul: alte Regel
@@ -89,6 +90,17 @@ def _ring_late(created):
 
 
 KIND_CAT = {k: cat for cat, ks in CATS.items() for k in ks}
+# 2.6 (2270 K-C, docs/APP-API.md "Push-Nutzlast 3"): Auftraege. Text, Felder, detail und Knoepfe baut der Haken JOB_MESSAGE
+# (saga.ai_notify) beim Zustellen - push bleibt KI-neutral. JOB_UPDATE = stilles "update removed" (Auftrag abgebrochen,
+# zurueckgenommen, wartet nicht mehr) nur an E2E-Abos mit caps update. SUPPRESS: Bereich -> fn(c, uid, kind) -> True =
+# jetzt keine Mitteilung ("Gerade nicht", ai_saga.quiet_until "push"); geprueft beim Vormerken und beim Zustellen.
+JOB_KINDS = CATS["jobs"]
+JOB_UPDATE = "job.changed"
+KIND_CAT[JOB_UPDATE] = "jobs"
+JOB_MESSAGE = None                    # fn(c, uid, kind, data, sub, lang, created, silent) -> msg | None
+SUPPRESS = {}
+PERSONA = None                        # fn() -> Name der Persona (Sammelmeldung "2 Rueckmeldungen von Marin"); None = "Saga"
+PAYLOAD_JOB = 3                       # Nutzlast 3 nur fuer job.*; alle anderen Arten bleiben v 2
 # 2.6 (Bugs-DB 2029-3): Sammelmeldung nach "Nicht stoeren" (status.digest) - an sich selbst, ohne Namen, kein abschaltbarer
 # Bereich (Kategorie "status" gibt es in CATS nicht -> immer an); K-C traegt spaeter job.* in CATS ein (Kanal notify)
 DIGEST_KIND = "status.digest"
@@ -127,7 +139,8 @@ PAYLOAD_MAX = 3000
 # group_key, chat, lang) - Apps bauen den Satz in ihrer Sprache neu. Abos koennen beim Anlegen eine Sprache (lang) und
 # Faehigkeiten (caps) mitschicken; "update": nimmt Aktualisierungen bereits gezeigter Mitteilungen an (UPDATE_KIND).
 PAYLOAD_V = 2
-SUB_CAPS = ("update", "widgets")      # 2.6 (2188): "widgets" = stiller Widget-Push (saga.widget_push)
+SUB_CAPS = ("update", "widgets", "detail", "actions")   # 2.6 (2188): "widgets" = stiller Widget-Push (saga.widget_push);
+                                                        # 2270: "detail" (Inhalt) und "actions" (Knoepfe) bei job.*
 UPDATE_KIND = "notify.update"         # interner Auftrag: Glocken-Eintrag geaendert (geloeschte Chat-Nachricht) -> Geraet anpassen
 WIDGET_KIND = "widgets.update"        # 2.6 (2188): interner Auftrag: Widgets neu laden (ohne Inhalt, saga.widget_push)
 WIDGET_TTL = 300                      # Widget-Push: Push-Dienst haelt ihn hoechstens 5 min vor (APNs: apns-expiration 0)
@@ -522,6 +535,8 @@ def _held(c, uid, kind, actor, ref, data):
         return True                       # Bugs-DB 2365: zaehlt _missed_held_calls aus chat_call (auch ohne Glocke) - nicht doppelt
     n = (data or {}).get("attempts")      # Sammel-Push zum Anklopfen (calls.knock_summary): so viele Versuche
     _held_add(c, uid, _held_key(r[0]), col, n if col == "c" and isinstance(n, int) and not isinstance(n, bool) and 0 < n < 10000 else 1)
+    if kind in JOB_KINDS:
+        _held_add(c, uid, _held_key(r[0]), "j")    # 2270: Auftraege zaehlen in "o" UND eigens (digest.jobs, Teil von other)
     return True
 
 
@@ -557,12 +572,14 @@ def _held_flush(c, pend):
 
 def _held_write(c, uid, s, inc):
     """user_kv 'status_held' von uid fuer den Zeitraum s um inc {m|c|o: n} erhoehen (anderer Zeitraum: neu beginnen)."""
-    m, k, o = (int(inc.get(x) or 0) for x in ("m", "c", "o"))
+    m, k, o, j = (int(inc.get(x) or 0) for x in ("m", "c", "o", "j"))
     c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO UPDATE SET v = CASE "
               "WHEN user_kv.v::jsonb->>'s' = ? THEN (user_kv.v::jsonb || jsonb_build_object("
               "'m', COALESCE((user_kv.v::jsonb->>'m')::int, 0) + ?, 'c', COALESCE((user_kv.v::jsonb->>'c')::int, 0) + ?, "
-              "'o', COALESCE((user_kv.v::jsonb->>'o')::int, 0) + ?))::text ELSE EXCLUDED.v END",
-              (uid, HELD_K, json.dumps(dict({"s": s}, **{x: n for x, n in (("m", m), ("c", k), ("o", o)) if n})), s, m, k, o))
+              "'o', COALESCE((user_kv.v::jsonb->>'o')::int, 0) + ?, 'j', COALESCE((user_kv.v::jsonb->>'j')::int, 0) + ?))::text "
+              "ELSE EXCLUDED.v END",
+              (uid, HELD_K, json.dumps(dict({"s": s}, **{x: n for x, n in (("m", m), ("c", k), ("o", o), ("j", j)) if n})),
+               s, m, k, o, j))
 
 
 def _held_take(c, uid, s):
@@ -580,13 +597,16 @@ def _held_call(c, nid, since):
     return bool(cid) and bool(c.execute("SELECT 1 FROM chat_call WHERE id=? AND hold='dnd' AND created>=?", (cid, since)).fetchone())
 
 
-def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
+def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None, delay=0, later=False):
     """Mitteilung fuer uid vormerken (eine Zeile je Abo) -> Anzahl. Nichts bei: an sich selbst, Bereich abgeschaltet,
     nicht erreichbar (REACH: Nicht stoeren / Ruhezeit - route hold: Glocke ja, Mitteilung nein; bei Nicht stoeren fuer die
     Sammelmeldung gezaehlt), Ruhezeit ohne Nicht stoeren (quiet_dnd aus), zurueckgehaltener Anruf (chat_call.hold), kein
     Abo, Grenze erreicht. replaces: gebuendelte Benachrichtigung ersetzt eine noch nicht zugestellte - dann wird der
     vorhandene Auftrag umgehaengt (keine zweite Mitteilung).
-    Fuer den Chat: kind='chat.message', data={'chat': <kennung>} - NIE Inhalte."""
+    Fuer den Chat: kind='chat.message', data={'chat': <kennung>} - NIE Inhalte.
+    2.6 (2270): Auftraege kind=job.*, data={'job': <id>[, 'again': n]}; ein noch nicht zugestellter Auftrag desselben
+    Auftrags entfaellt (der neue Zustand ersetzt ihn). delay: erst nach so vielen Sekunden zustellen; later: "Spaeter" -
+    erreichbar sein muss die Person erst beim Zustellen (message() prueft REACH dann erneut), nicht jetzt."""
     if kind not in KIND_CAT or not uid or uid == actor:
         return 0
     if kind == "call.missed" and (data or {}).get("hold") in ("knock", "again"):
@@ -603,9 +623,14 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     p = prefs(c, uid)
     if not p["cats"].get(KIND_CAT[kind], True):
         return 0
-    if quiet_now(p["quiet"], testclock.now()) and user_status.quiet_plain(c, uid):
+    sup = SUPPRESS.get(KIND_CAT[kind])
+    if sup is not None and sup(c, uid, kind):
+        return 0                          # 2270: "Gerade nicht" (Glocke bekommt weiter alles)
+    if later:
+        pass                              # 2270 "Spaeter": Ruhezeit/Nicht stoeren erst beim Zustellen (message)
+    elif quiet_now(p["quiet"], testclock.now()) and user_status.quiet_plain(c, uid):
         return 0                          # Ruhezeit zaehlt nicht als Nicht stoeren (quiet_dnd aus): alte Regel, ohne Ausnahmen
-    if kind in RING_KINDS:
+    elif kind in RING_KINDS:
         # Klingelnder Anruf: entschieden hat calls.ring_gate (chat_call.hold) - zurueckgehalten = nie ein (VoIP-)Push
         cid = _call_id(data)
         k = c.execute("SELECT hold, callee FROM chat_call WHERE id=?", (cid,)).fetchone() if cid else None
@@ -627,24 +652,70 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     subs = _route(c, _subs(c, uid, info.get("epoch"), srv), kind)
     if not subs or c.execute("SELECT COUNT(*) FROM push_queue WHERE uid=?", (uid,)).fetchone()[0] >= QUEUE_MAX:
         return 0
-    if not _rate_ok(_rate, uid, RATE_MIN):
+    if not later and not _rate_ok(_rate, uid, RATE_MIN):
         return 0
     now = time.time()
     d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat", "call")}         # nur Kennungen, nie Inhalte
-                   | ({"digest": _digest_counts(data.get("digest"))} if kind == DIGEST_KIND and data else {}))
+                   | ({"digest": _digest_counts(data.get("digest"))} if kind == DIGEST_KIND and data else {})
+                   | ({k: int(data[k]) for k in ("job", "again") if isinstance((data or {}).get(k), int)}
+                      if kind in JOB_KINDS else {}))
+    if kind in JOB_KINDS and isinstance((data or {}).get("job"), int):
+        drop_job(c, uid, data["job"])     # 2270: neuer Stand ersetzt eine noch wartende Mitteilung desselben Auftrags
     if kind in ("chat.message", "chat.mention") and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
                                             (uid, kind, d)).fetchone():
         return 0                          # fuer diesen Chat wartet schon eine Mitteilung (wie das Buendeln der Glocke)
     for sid in subs:
         c.execute("INSERT INTO push_queue (uid, sub_id, kind, ref, actor, data, created, next_at) VALUES (?,?,?,?,?,?,?,?)",
-                  (uid, sid, kind, ref, actor, d, now, now))
+                  (uid, sid, kind, ref, actor, d, now, now + max(0, delay)))
     c.after_commit(wake)
     return len(subs)
+
+
+def drop_job(c, uid, job_id, kinds=None):
+    """2.6 (2270): noch nicht (fertig) zugestellte Mitteilungen eines Auftrags (bzw. alle job.* mit job_id None) entfernen
+    -> Anzahl. Ein laufender Zustellversuch (tries > 0) bleibt; message() prueft den Zustand beim Zustellen ohnehin."""
+    ks = tuple(kinds or JOB_KINDS)
+    q = f"DELETE FROM push_queue WHERE uid=? AND kind IN ({','.join('?' * len(ks))}) AND tries=0"
+    if job_id is None:
+        return c.execute(q, (uid, *ks)).rowcount
+    return c.execute(q + " AND (data::jsonb->>'job')=?", (uid, *ks, str(int(job_id)))).rowcount
+
+
+def enqueue_job_update(c, uid, job_id):
+    """2.6 (2270): Auftrag wartet nicht mehr bzw. ist abgebrochen/zurueckgenommen -> wartende Mitteilungen weg und ein
+    stilles "update removed" (JOB_UPDATE) an die Abos mit caps update; ob der Weg E2E ist, entscheidet JOB_MESSAGE beim
+    Zustellen (sonst nichts). Ruhezeiten, "Gerade nicht" und Ratenbegrenzung gelten nicht (still). -> Anzahl Auftraege."""
+    drop_job(c, uid, job_id)
+    srv = server()
+    if not srv["enabled"] or not prefs(c, uid)["cats"].get("jobs", True):
+        return 0
+    info = auth.user_info(uid)
+    if info is None:
+        return 0
+    sids = _route(c, _subs(c, uid, info.get("epoch"), srv), JOB_UPDATE)
+    if not sids:
+        return 0
+    subs = [r[0] for r in c.execute(f"SELECT id, kind, caps FROM push_sub WHERE id IN ({','.join('?' * len(sids))})", tuple(sids)).fetchall()
+            if r[1] in UPDATE_TYPES and _has_cap(r[2], "update")]
+    if not subs or c.execute("SELECT COUNT(*) FROM push_queue WHERE uid=?", (uid,)).fetchone()[0] >= QUEUE_MAX:
+        return 0
+    now, d, n = time.time(), json.dumps({"job": int(job_id)}), 0
+    for sid in subs:
+        if c.execute("SELECT 1 FROM push_queue WHERE sub_id=? AND kind=? AND data=? AND tries=0 LIMIT 1", (sid, JOB_UPDATE, d)).fetchone():
+            continue
+        c.execute("INSERT INTO push_queue (uid, sub_id, kind, ref, actor, data, created, next_at) VALUES (?,?,?,?,?,?,?,?)",
+                  (uid, sid, JOB_UPDATE, None, None, d, now, now))
+        n += 1
+    if n:
+        c.after_commit(wake)
+    return n
 
 
 def _on_notification(c, uid, id, kind, actor=None, replaces=None, data=None, **_):      # noqa: A002 - Name aus saga.notify
     if kind in ("chat.message", "chat.mention"):
         return                            # der Chat meldet selbst ueber "push.send" (mit Chat-Kennung, Stummschalten beachtet)
+    if kind in JOB_KINDS:
+        return                            # 2270: saga.ai_notify entscheidet selbst (60-s-Fenster, Herkunft) und ruft enqueue
     d = data if isinstance(data, dict) else {}
     # 2029: nur die Merker der Glocke weiterreichen (hold: Anklopfen ohne Push; attempts: Sammel-Push calls.knock_summary) -
     # sie landen nicht im Auftrag (enqueue speichert nur chat/call), der Auftrag bleibt wie bisher ohne Kennungen
@@ -657,10 +728,17 @@ def _on_send(c, uid, kind, actor=None, data=None, **_):
 
 
 def _digest_counts(d):
-    """{messages, calls, other} - nur ganze Zahlen 0..9999 (sonst 0)."""
+    """{messages, calls, other} - nur ganze Zahlen 0..9999 (sonst 0). 2.6 (2270): dazu "jobs" (Rueckmeldungen der
+    Kollegin, in other ENTHALTEN, hoechstens other) - nur wenn > 0."""
     d = d if isinstance(d, dict) else {}
-    return {k: max(0, min(9999, d[k])) if isinstance(d.get(k), int) and not isinstance(d.get(k), bool) else 0
-            for k in ("messages", "calls", "other")}
+    out = {k: max(0, min(9999, d[k])) if isinstance(d.get(k), int) and not isinstance(d.get(k), bool) else 0
+           for k in ("messages", "calls", "other")}
+    j = d.get("jobs")
+    if isinstance(j, int) and not isinstance(j, bool) and j > 0:
+        out["jobs"] = min(j, out["other"])
+        if not out["jobs"]:
+            out.pop("jobs")
+    return out
 
 
 def _missed_held_calls(c, uid, since, end):
@@ -689,7 +767,7 @@ def _on_dnd_end(c, uid, since, end, **_):
     end = end if isinstance(end, (int, float)) else testclock.now()
     held_calls = _missed_held_calls(c, uid, since, end) if prefs(c, uid)["cats"].get(KIND_CAT["call.missed"], True) else 0
     dg = _digest_counts({"messages": h.get("m"), "calls": (h.get("c") if isinstance(h.get("c"), int) else 0) + held_calls,
-                         "other": h.get("o")})
+                         "other": h.get("o"), "jobs": h.get("j")})
     if not any(dg.values()):
         return
     bus.emit_after(c, "direct", {"uids": [uid], "typ": "status.digest",
@@ -808,6 +886,7 @@ DIGEST_TEXT = {
     "messages": lambda n: t("{n} {n:Nachricht|Nachrichten}", n=n),
     "calls": lambda n: t("{n} {n:verpasster Anruf|verpasste Anrufe}", n=n),
     "other": lambda n: t("{n} {n:weitere Mitteilung|weitere Mitteilungen}", n=n),
+    "jobs": lambda n, name: t("{n} {n:Rückmeldung|Rückmeldungen} von {name}", n=n, name=name),     # 2270
     "join": lambda a, b: t("{a}, {b}##Aufzählung", a=a, b=b),
     "body": lambda items: t("Während „Nicht stören“: {items}", items=items),
 }
@@ -815,22 +894,51 @@ DIGEST_TEXT = {
 
 def digest_text(dg):
     """{messages, calls, other} -> "Waehrend „Nicht stoeren“: 4 Nachrichten, 1 verpasster Anruf" (Sprache der Anfrage)."""
-    parts = [DIGEST_TEXT[k](dg[k]) for k in ("messages", "calls", "other") if dg.get(k)]
+    j = dg.get("jobs") or 0
+    parts = [DIGEST_TEXT[k](dg[k]) for k in ("messages", "calls") if dg.get(k)]
+    if j:                                 # 2270: Rueckmeldungen der Kollegin eigens, der Rest von other als "weitere"
+        parts.append(DIGEST_TEXT["jobs"](j, (PERSONA() if PERSONA else None) or title()))
+    if (dg.get("other") or 0) - j > 0:
+        parts.append(DIGEST_TEXT["other"](dg["other"] - j))
     out = parts[0] if parts else ""
     for p in parts[1:]:
         out = DIGEST_TEXT["join"](out, p)
     return DIGEST_TEXT["body"](out)
 
 
-def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None, lang=None):
+def e2e_of(kind, p256dh=None, auth_s=None, topic=None, cfg=None):
+    """2.6 (2270): kommt eine Mitteilung an dieses Abo WIRKLICH Ende-zu-Ende verschluesselt an? Web Push und stream immer,
+    UnifiedPush nur mit Schluesseln, APNs nur mit Schluesseln UND (Relais oder eigener Weg mit push.apns_e2e_direct) -
+    genau wie send()/_send_apns. ntfy, VoIP: nie (VoIP bekommt ohnehin keine job.*)."""
+    if kind in ("webpush", "stream"):
+        return True
+    if kind == "unifiedpush":
+        return bool(p256dh and auth_s)
+    if kind == "apns":
+        if not (p256dh and auth_s):
+            return False
+        route = _apns_route(p256dh, auth_s, topic, cfg)
+        return route == "relay" or (route == "direct" and e2e_direct())
+    return False
+
+
+def sub_info(row):
+    """Zeile (id, uid, kind, endpoint, p256dh, auth, secret, topic, lang, caps, device_id) -> dict fuer JOB_MESSAGE."""
+    sid, _uid, kind, _ep, p256dh, auth_s, _sec, topic, lang, caps, device = row
+    return {"id": sid, "kind": kind, "caps": tuple(x for x in (caps or "").split(",") if x), "device": device, "lang": lang,
+            "e2e": e2e_of(kind, p256dh, auth_s, topic)}
+
+
+def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None, lang=None, sub=None):
     """-> {title, body, url, tag, kind, ts, v, lang, ...} oder None (Benachrichtigung weg / kein Zugriff mehr / jetzt nicht
     erreichbar). lang: Sprache des Abos (2.5, beim Anlegen von der App gemeldet) - sonst die des Kontos.
     2029-3: Nachpruefung beim Zustellen - REACH erneut (inzwischen Nicht stoeren/Ruhezeit -> None; ohne Ton -> silent),
-    Anrufe nur mit chat_call.hold IS NULL."""
+    Anrufe nur mit chat_call.hold IS NULL.
+    2.6 (2270): sub = sub_info(...) des Abos (Weg, caps, Geraet) - fuer job.* (JOB_MESSAGE); ohne sub aus sub_kind/has_keys."""
     names = with_names(prefs(c, uid), sub_kind, has_keys)
     lang = lang if lang in i18n.LANGS else account_lang(uid)
     silent = None
-    if kind not in (UPDATE_KIND, "test", WIDGET_KIND) and kind not in RING_KINDS:
+    if kind not in (UPDATE_KIND, "test", WIDGET_KIND, JOB_UPDATE) and kind not in RING_KINDS:
         rc = REACH(c, uid, actor, kind)   # auch status.digest (Bugs-DB 2365: Beschaeftigt "ohne Ton" -> silent)
         if not rc.push:
             return None
@@ -838,6 +946,16 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
     tok = i18n.set_lang(lang)
     thread = None
     try:
+        if kind in JOB_KINDS or kind == JOB_UPDATE:
+            # 2270: Auftraege - Felder, Texte (t1/t2), Knoepfe baut saga.ai_notify; "Gerade nicht" erneut pruefen
+            sup = SUPPRESS.get("jobs")
+            if JOB_MESSAGE is None or (kind != JOB_UPDATE and sup is not None and sup(c, uid, kind)):
+                return None
+            if sub is None:
+                sub = {"id": None, "kind": sub_kind, "caps": (), "device": None, "lang": lang,
+                       "e2e": sub_kind in ("webpush", "stream") or (sub_kind == "unifiedpush" and has_keys) or
+                       (sub_kind == "apns" and has_keys and e2e_direct())}
+            return JOB_MESSAGE(c, uid, kind, data or {}, sub, lang, created, silent)
         if kind == DIGEST_KIND:
             dg = _digest_counts((data or {}).get("digest"))
             if not any(dg.values()):
@@ -967,10 +1085,19 @@ def _ntfy_split(url):
     return f"{pu.scheme}://{pu.netloc}{base}", topic
 
 
-def _topic(msg):
+def _is_job(msg):
+    return msg.get("kind") in JOB_KINDS or msg.get("kind") == JOB_UPDATE
+
+
+def _topic(msg, auth_s=None):
     """Topic beim Push-Dienst (neuere ersetzt eine noch nicht abgeholte gleiche). Aktualisierungen ("u" + tag) ersetzen die
-    eigentliche Mitteilung NICHT - die kommt zuerst an, danach die Aktualisierung."""
-    return re.sub(r"[^A-Za-z0-9_-]", "", ("u" if msg.get("update") else "") + (msg.get("tag") or ""))[:32]
+    eigentliche Mitteilung NICHT - die kommt zuerst an, danach die Aktualisierung.
+    2.6 (2270): Auftraege (job.*) immer undurchsichtig wie die APNs-collapse-id (der Topic-Kopf geht im Klartext an Google/
+    Mozilla) - ohne Schluessel gar keins."""
+    raw = ("u" if msg.get("update") else "") + (msg.get("tag") or "")
+    if _is_job(msg):
+        return e2e_collapse(auth_s, raw)[:32] if auth_s else ""
+    return re.sub(r"[^A-Za-z0-9_-]", "", raw)[:32]
 
 
 def send(sub, msg):
@@ -982,24 +1109,27 @@ def send(sub, msg):
     if kind in ("apns", "apns-voip"):
         return _send_apns(endpoint, msg, voip=kind == "apns-voip", keys=(p256dh, auth_s), topic=more[0] if more else None)
     raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
-    if len(raw) > PAYLOAD_MAX:
+    job = _is_job(msg)
+    if len(raw) > (E2E_MAX if job else PAYLOAD_MAX):
         return "fail", "zu gross"
+    pad = pad_size(len(raw)) if job else None             # 2270: Auftraege auf allen E2E-Wegen aufgefuellt (Laenge verborgen)
     if kind == "stream":                                              # 2.5: eigene Verbindung der App (wie ein Push-Dienst)
         try:
-            body = encrypt(raw, p256dh, auth_s)
+            body = encrypt(raw, p256dh, auth_s, pad_to=pad)
         except ValueError as ex:
             return "gone", str(ex)[:80]
-        push_stream.deposit(sid, body, int(msg.get("ttl") or TTL), _topic(msg))
+        push_stream.deposit(sid, body, int(msg.get("ttl") or TTL), _topic(msg, auth_s))
         return "ok", ""
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
             h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-                 "Urgency": "high" if msg["kind"] in ("chat.message", "chat.mention", "call", "call.group") and not msg.get("update") else "normal",
+                 "Urgency": "high" if msg["kind"] in ("chat.message", "chat.mention", "call", "call.group", "job.needs_you")
+                 and not msg.get("update") else "normal",
                  "Authorization": vapid_header(endpoint)}
-            topic = _topic(msg)
+            topic = _topic(msg, auth_s)
             if topic:
                 h["Topic"] = topic                                   # neuere ersetzt eine noch nicht abgeholte gleiche
-            r = _client().post(endpoint, content=encrypt(raw, p256dh, auth_s), headers=h)
+            r = _client().post(endpoint, content=encrypt(raw, p256dh, auth_s, pad_to=pad), headers=h)
         elif kind == "unifiedpush":
             r = _client().post(endpoint, content=raw, headers={"Content-Type": "application/json", "TTL": str(msg.get("ttl") or TTL)})
         elif kind == "ntfy":
@@ -1085,7 +1215,7 @@ def _apns_e2e_body(p256dh, auth_s, msg, push_type, salt=None, as_key=None):
 def _apns_plain_body(msg, push_type):
     """Bisheriger Klartext-Koerper (Abos ohne Schluessel, Apps 2.5) - unveraendert."""
     ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm", "v", "lang", "actor", "n", "group_key",
-                               "update", "removed", "silent", "digest") if msg.get(k) is not None}
+                               "update", "removed", "silent", "digest", "state") if msg.get(k) is not None}
     if push_type == "voip":
         return dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
     if push_type == "background":
@@ -1196,9 +1326,10 @@ def run_once(limit=20):
         sub = msg = None
         try:
             with _db() as c:
-                row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
+                row = c.execute(f"SELECT {SUB_COLS}, lang, caps, device_id FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
                 sub = tuple(row[:8]) if row else None
-                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created, lang=row[8]) if sub else None
+                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created, lang=row[8],
+                              sub=sub_info(row) if kind in JOB_KINDS or kind == JOB_UPDATE else None) if sub else None
             verdict, detail = send(sub, msg) if msg else ("drop", "")
         except Exception as ex:  # noqa: BLE001 - ein kaputter Auftrag haelt die Warteschlange nicht auf
             print(f"push: Auftrag {jid}: {type(ex).__name__}: {ex}", flush=True)
@@ -1344,7 +1475,7 @@ def _state(c, uid, did=None):
                        "apns_bundle": a.get("bundle_id") if own else None,
                        # 2.6 (2262, docs/PUSH-RELAY.md 5.1): Ende-zu-Ende fuer Apple, Bundles mit Weg, Zustand des Relais
                        "apns_e2e": 1, "apns_topics": topics, "apns_relay": relay,
-                       "payload": PAYLOAD_V, "sub_caps": list(SUB_CAPS)},     # 2.5: Nutzlast 2, Abo-Felder lang/caps
+                       "payload": PAYLOAD_JOB, "sub_caps": list(SUB_CAPS)},   # 2.5: Abo-Felder lang/caps; 2270: Nutzlast 3
             "settings": prefs(c, uid), "categories": [k for k in CATS if k != "admin" or (auth.user_info(uid) or {}).get("is_admin")],
             "kinds": CATS,
             "devices": _devices(c, uid, did), "limit": SUB_MAX}

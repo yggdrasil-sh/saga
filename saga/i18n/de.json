@@ -5726,5 +5726,18 @@
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.",
  "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.",
- "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern."
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.",
+ "{name} · KI – braucht dich": "{name} · KI – braucht dich",
+ "{name} · KI – Rückmeldung": "{name} · KI – Rückmeldung",
+ "In Saga ansehen": "In Saga ansehen",
+ "Hat nicht geklappt: {text}": "Hat nicht geklappt: {text}",
+ "Wartet auf dich: {text}": "Wartet auf dich: {text}",
+ "Der Plan steht und wartet auf ein OK.": "Der Plan steht und wartet auf ein OK.",
+ "{n} {n:Rückmeldung|Rückmeldungen} von {name}": "{n} {n:Rückmeldung|Rückmeldungen} von {name}",
+ "Der Knopf gilt nicht mehr – bitte in Saga ansehen.": "Der Knopf gilt nicht mehr – bitte in Saga ansehen.",
+ "Das geht nur in der App.": "Das geht nur in der App.",
+ "Das geht nur in Saga selbst.": "Das geht nur in Saga selbst.",
+ "Dieser Knopf gehört zu einem anderen Gerät.": "Dieser Knopf gehört zu einem anderen Gerät.",
+ "Mitteilung": "Mitteilung",
+ "Das lässt sich gerade nicht verschieben.": "Das lässt sich gerade nicht verschieben."
 }

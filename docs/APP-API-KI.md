@@ -543,8 +543,9 @@ Nutzlast, Felder, Kategorien, Android-Kanäle und Knopf-Regel: [`APP-API.md`](AP
 
 Jeder Übergang mit Mitteilung (APP-API.md, Tabelle „Arten und Übergänge“) legt auch einen Eintrag in der Glocke an –
 unabhängig von Push, „Nicht stören“ und „Gerade nicht“ (die Glocke bekommt immer alles): `GET /api/notifications` →
-`{kind: "job.done"|"job.needs_you"|"job.failed", text: "Erledigt: Grillkohle besorgen", url: "/saga?tab=jobs&job=42",
-job: 42, …}` (`text` = `t1`, Systemtext in der Sprache der Anfrage). Ein neuer Eintrag desselben Auftrags ersetzt den
+`{kind: "job.done"|"job.needs_you"|"job.failed", text: "Erledigt: Grillkohle besorgen", title: "Marin · KI",
+url: "/saga?tab=jobs&job=42", job: 42, system: true, …}` (`text` = `t1` mit dem jetzigen Titel, Systemtext in der Sprache
+des Kontos; gibt es den Auftrag nicht mehr: `access: false`, `url: null`). Ein neuer Eintrag desselben Auftrags ersetzt den
 alten; bei `abgebrochen`/`zurueckgenommen` verschwinden die Einträge des Auftrags (`notification.changed` `removed`).
 
 ### 12.2 Aktions-Token (`atok`)
@@ -607,6 +608,8 @@ wiederholen, dann wie `409` (eine zweite Freigabe mit demselben Token ist harmlo
 ### 12.5 Server intern (für andere Bereiche)
 
 - Jeder Zustandswechsel eines Auftrags feuert in derselben Transaktion `bus.fire("job.state", c, job_id=, uid=, kind=,
-  old=, new=, reason=)` (`saga.jobs._to`); `saga.ai_notify` hört nur auf Aufträge der Kollegin.
+  old=, new=, reason=)` (`saga.jobs._to`); `saga.ai_notify` hört nur auf Aufträge der Kollegin. Das Anlegen ist kein
+  Wechsel: dafür `bus.fire("job.created", c, job_id=, uid=, kind=, source=)` (`saga.jobs.create`; Aufträge von außen,
+  Herkunft ≠ `saga`, melden sich so gleich als „braucht dich“).
 - Ruhe-Helfer `saga.ai_saga.set_quiet(uid, where, until)` / `quiet_until(uid, where)` mit `where` `push` (K-C) bzw.
   `today` (Tageszeile, K-D); `until` `None` bzw. in der Vergangenheit = aus. Zeit aus `testclock.now()`.

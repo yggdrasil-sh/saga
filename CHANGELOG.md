@@ -21,10 +21,17 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Neu
 
-- **Mitteilungen von der KI zu Aufträgen – Vertrag** (2270 K-C, ohne Migration): Schnittstelle für „braucht dich“,
-  „erledigt“ und „hat nicht geklappt“ mit Knöpfen in der Mitteilung (Push-Nutzlast 3, `jobpush1`, docs/APP-API.md und
-  docs/APP-API-KI.md Abschnitt 12), Testvektoren `tests/vectors/push_kollegin.json` für die Apps, gemeinsames Ereignis
-  `job.state` und Ruhe „Gerade nicht“ (`ai_saga.set_quiet`) für Mitteilungen und Tageszeile. (2270)
+- **Mitteilungen von der KI zu Aufträgen** (2270 K-C, Abbruchpunkt B, ohne Migration): Braucht ein Auftrag die Person,
+  ist er erledigt oder hat er nicht geklappt, meldet sich Saga in der Glocke und als Mitteilung – auf dem Sperrbildschirm
+  und bei Push-Diensten nur neutral („Marin · KI – Rückmeldung“, „In Saga ansehen“), Titel und Ergebnis nur
+  Ende-zu-Ende verschlüsselt. Knöpfe direkt in der Mitteilung: „Passt, los“ (nur eigene, rückgängige Schritte),
+  „Rückgängig“, „Später“ (in 3 Stunden, höchstens zweimal) und „Gerade nicht“ (Ruhe bis 7:00); jeder Knopf mit einem
+  Einmal-Token, nach einer Planänderung öffnet sich Saga statt still etwas auszuführen. Kein Push, wenn der Auftrag
+  gerade erst freigegeben wurde (60 s), bei „Nicht stören“ zählt die Sammelmeldung „2 Rückmeldungen von Marin“ mit, nie
+  über ntfy-Inhalte oder VoIP. Einstellungen: „Inhalt in Mitteilungen“, Bereich „jobs“ in den Mitteilungen,
+  `notify_quiet_until` in `/api/ai/prefs`. Schnittstelle: docs/APP-API.md „Push-Nutzlast 3 und Aufträge (`jobpush1`)“,
+  docs/APP-API-KI.md Abschnitt 12, Vektoren `tests/vectors/push_kollegin.json`; gemeinsame Bausteine `job.state`,
+  `job.created` und `ai_saga.set_quiet/quiet_until` (auch für die Tageszeile). (2270)
 - **Kontakte ins Adressbuch des Handys** (Bugs-DB 2027b, Doku): Anleitung (de/en/es) und `docs/APP-API.md` beschreiben
   „Zu Kontakten hinzufügen“ in den Apps – einzeln, ohne Kontakte-Berechtigung, ohne Abgleich, ohne Saga-Adresse.
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte

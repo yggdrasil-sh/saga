@@ -5726,5 +5726,18 @@
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Tus encargos están en pausa porque retiraste tu consentimiento. Puedes seguir viéndolos, cancelarlos y deshacerlos; encargos nuevos, solo cuando vuelvas a conocer a {name}.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "El admin ha cambiado la IA: tus encargos esperan hasta que vuelvas a conocer a {name}.",
  "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Podrás dar encargos nuevos en cuanto conozcas a {name}.",
- "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "El endpoint del modelo está ahora en internet en lugar de en tu red doméstica: no se envió nada. Revísalo en el área de administración y vuelve a guardar."
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "El endpoint del modelo está ahora en internet en lugar de en tu red doméstica: no se envió nada. Revísalo en el área de administración y vuelve a guardar.",
+ "{name} · KI – braucht dich": "{name} · IA – te necesita",
+ "{name} · KI – Rückmeldung": "{name} · IA – novedades",
+ "In Saga ansehen": "Ver en Saga",
+ "Hat nicht geklappt: {text}": "No ha funcionado: {text}",
+ "Wartet auf dich: {text}": "Te necesita: {text}",
+ "Der Plan steht und wartet auf ein OK.": "El plan está listo y espera un OK.",
+ "{n} {n:Rückmeldung|Rückmeldungen} von {name}": "{n} {n:novedad|novedades} de {name}",
+ "Der Knopf gilt nicht mehr – bitte in Saga ansehen.": "Este botón ya no sirve; échale un vistazo en Saga.",
+ "Das geht nur in der App.": "Eso solo funciona en la app.",
+ "Das geht nur in Saga selbst.": "Eso solo funciona en Saga.",
+ "Dieser Knopf gehört zu einem anderen Gerät.": "Este botón pertenece a otro dispositivo.",
+ "Mitteilung": "Notificación",
+ "Das lässt sich gerade nicht verschieben.": "Ahora no se puede aplazar."
 }

@@ -383,6 +383,9 @@ def create(uid, kind, *, source="saga", title="", plan=None, steps=(), due_at=No
                       [(jid, i, s["tool"], s["klass"], s["undo_class"], None if s["args"] is None else _j(s["args"]), s["cond"],
                         1 if s["client"] else 0) for i, s in enumerate(st)])
         _event(c, jid, "state", t, frm=None, to="wartet_ok", steps=len(st))
+        # 2.6 (2270 K-C): Anlegen ist kein Wechsel (kein job.state) - eigenes Ereignis (saga.ai_notify: Auftraege von
+        # aussen, Herkunft != saga, melden sich gleich als "braucht dich")
+        bus.fire("job.created", c, job_id=jid, uid=uid, kind=kind, source=source)
     return jid
 
 
@@ -840,6 +843,11 @@ def cleanup():
         ai_saga.cleanup()
     except Exception as ex:  # noqa: BLE001 - Aufraeumen des Gespraechs haelt die Auftraege nicht auf
         print(f"jobs: ai_saga.cleanup {type(ex).__name__}", flush=True)
+    try:                                         # K-C (2270): abgelaufene/benutzte Knopf-Token der Mitteilungen
+        from saga import ai_act
+        ai_act.cleanup()
+    except Exception as ex:  # noqa: BLE001
+        print(f"jobs: ai_act.cleanup {type(ex).__name__}", flush=True)
     return gone + late
 
 

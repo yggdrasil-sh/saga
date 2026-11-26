@@ -469,6 +469,11 @@ def _set_prefs(conn, uid, d):
     return _load_prefs(conn, uid)
 
 
+def notify_content(uid, conn):
+    """2270: "Inhalt in Mitteilungen" - unlocked (Standard) | never (kein detail in Mitteilungen, auf keinem Geraet)."""
+    return _load_prefs(conn, uid)["notify_content"]
+
+
 def prefs(uid, conn=None):
     if conn is None:
         with _db() as c:
@@ -485,7 +490,8 @@ def prefs_extra(uid, conn):
     c = ai.cfg()
     return dict(prefs(uid, conn), sources=ai_ctx.prefs(uid, conn), history=ai.history_on(conn, uid),
                 history_allowed=bool(c.get("history", True)), ideas_allowed=caps.can(uid, "ai_ideas", conn, c),
-                consent=consent(uid, conn, c))
+                consent=consent(uid, conn, c),
+                notify_quiet_until=quiet_until(uid, "push", conn))   # 2270 K-C: "Gerade nicht" bis (None = an)
 
 
 _prefs_view = prefs_extra
@@ -499,6 +505,9 @@ def prefs_check(b):
     if "sources" in b and not ai_ctx.valid(b["sources"]):
         return _bad(t("ungültige Angabe"))
     if "history" in b and not isinstance(b["history"], bool):
+        return _bad(t("ungültige Angabe"))
+    q = b.get("notify_quiet_until")
+    if "notify_quiet_until" in b and q is not None and (isinstance(q, bool) or not isinstance(q, (int, float)) or q != q):
         return _bad(t("ungültige Angabe"))
     return None
 
@@ -519,6 +528,8 @@ def prefs_put(uid, b, conn):
         ai_ctx.set_prefs(uid, b["sources"], conn)
     if "history" in b:
         _set_history(conn, uid, b["history"])
+    if "notify_quiet_until" in b:                     # 2270 K-C: null = "Wieder an"
+        set_quiet(uid, "push", b["notify_quiet_until"], conn)
     return None
 
 

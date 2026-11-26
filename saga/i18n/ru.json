@@ -5726,5 +5726,18 @@
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Твои поручения приостановлены, потому что ты отозвал(а) согласие. Смотреть, отменять и откатывать их по-прежнему можно – новые поручения только после нового знакомства с {name}.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Админ переключил ИИ – твои поручения ждут, пока ты снова не познакомишься с {name}.",
  "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Новые поручения можно дать, когда ты познакомишься с {name}.",
- "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "Эндпоинт модели теперь в интернете, а не в домашней сети, – ничего не отправлено. Проверь его в панели администратора и сохрани заново."
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "Эндпоинт модели теперь в интернете, а не в домашней сети, – ничего не отправлено. Проверь его в панели администратора и сохрани заново.",
+ "{name} · KI – braucht dich": "{name} · ИИ – ждёт тебя",
+ "{name} · KI – Rückmeldung": "{name} · ИИ – новости",
+ "In Saga ansehen": "Открыть в Saga",
+ "Hat nicht geklappt: {text}": "Не получилось: {text}",
+ "Wartet auf dich: {text}": "Ждёт тебя: {text}",
+ "Der Plan steht und wartet auf ein OK.": "План готов и ждёт подтверждения.",
+ "{n} {n:Rückmeldung|Rückmeldungen} von {name}": "{n} {n:новость|новости|новостей} от {name}",
+ "Der Knopf gilt nicht mehr – bitte in Saga ansehen.": "Эта кнопка больше не действует – посмотри в Saga.",
+ "Das geht nur in der App.": "Это можно сделать только в приложении.",
+ "Das geht nur in Saga selbst.": "Это можно сделать только в самой Saga.",
+ "Dieser Knopf gehört zu einem anderen Gerät.": "Эта кнопка относится к другому устройству.",
+ "Mitteilung": "Уведомление",
+ "Das lässt sich gerade nicht verschieben.": "Сейчас это нельзя отложить."
 }

@@ -385,6 +385,40 @@ def run(rel):
         routed = {r[0] for r in c.execute(f"SELECT kind FROM push_sub WHERE id IN ({','.join('?' * len(rt))})", tuple(rt)).fetchall()}
     ok(f"nie voip fuer Arten der Kollegin: VoIP-Abo -> fail ohne Zustellung, _route nimmt nur apns ({vj}, {sorted(routed)})",
        vj[0] == "fail" and not got(AP1, TV, m1) and "apns-voip" not in routed and "apns" in routed)
+    # 2.6 (2270 K-C): echte Auftraege ueber message() (Nutzlast 3, saga.ai_notify) - aps ohne category/title/body, alles
+    # Weitere (detail, actions, Kennungen) nur im Chiffrat; Auftragstitel = Kanarie (Positivkontrolle nach dem Entschluesseln)
+    from saga import ai_notify, ai_plan, jobs
+    from saga.actor import acting
+    with connect() as c, c:                     # Bereich jobs aus: der Server stellt diesen Auftrag nicht selbst zu
+        pk = (c.execute("SELECT v FROM user_kv WHERE uid='fr-a' AND k='push'").fetchone() or [None])[0]
+        c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES ('fr-a', 'push', ?)",
+                  (json.dumps(dict(json.loads(pk or "{}"), cats={"jobs": False})),))
+    jid = jobs.create("fr-a", ai_plan.KIND, title="Kanarie-Auftrag-5W", steps=[{"tool": "create_task", "args": {}}])
+    with acting(None), connect() as c, c:
+        jobs._to(c, jid, "wartet_ok", "laeuft", jobs.now() - 300)
+        jobs._to(c, jid, "laeuft", "fehlgeschlagen", jobs.now(), reason="konflikt")
+    with connect() as c:
+        row = c.execute(f"SELECT {push.SUB_COLS}, lang, caps, device_id FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{TR}",)).fetchone()
+        info = dict(push.sub_info(row), caps=("update", "detail", "actions"))
+        mj = push.message(c, "fr-a", "job.failed", data={"job": jid}, sub_kind="apns", has_keys=True, sub=info)
+    m1 = len(APNS[AP1])
+    vj = push.send(sub_a, mj) if mj else ("kein message()", "")
+    g = wait(lambda: got(AP1, TR, m1), 6)
+    bj = json.loads(g[0]["body"]) if g else {}
+    ij = app_r.decrypt(push.b64u_d(bj["saga"]["c"])) if g else {}
+    ok(f"Auftrag (job.failed) ueber das Relais: E2E, aps nur Loc-Keys ohne category, Inhalt = message() ({vj})",
+       vj[0] == "ok" and info["e2e"] and ij == mj and set(bj) == {"aps", "saga"} and "category" not in bj.get("aps", {}) and
+       set(bj.get("aps", {}).get("alert", {})) == {"title-loc-key", "loc-key"} and bj["aps"].get("mutable-content") == 1)
+    ok("... detail/Kennungen nur im Chiffrat (Positivkontrolle Titel im entschluesselten t1), collapse undurchsichtig",
+       (ij.get("detail") or {}).get("t1", "").endswith("Kanarie-Auftrag-5W") and ij.get("job") == jid and ij.get("v") == 3 and
+       g[0]["headers"].get("apns-collapse-id") == push.e2e_collapse(row[5], f"job-{jid}") and
+       "Kanarie-Auftrag-5W" not in json.dumps(bj["aps"]) and "job" not in g[0]["headers"].get("apns-collapse-id", "job"))
+    with connect() as c, c:
+        if pk is None:
+            c.execute("DELETE FROM user_kv WHERE uid='fr-a' AND k='push'")
+        else:
+            c.execute("UPDATE user_kv SET v=? WHERE uid='fr-a' AND k='push'", (pk,))
+    _ = ai_notify
     # Testmitteilung ueber die API (Server-Prozess)
     m1 = len(APNS[AP1])
     s, d = T.req("POST", f"/api/push/subscriptions/{d1['id']}/test", A)

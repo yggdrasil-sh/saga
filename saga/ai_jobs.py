@@ -17,7 +17,6 @@ import asyncio
 import contextvars
 import json
 import threading
-import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -498,32 +497,11 @@ async def api_jobs_undo(jid: str, request: Request):
             out["state"] = (await asyncio.to_thread(jobs.state_of, i) or {}).get("state")
         return JSONResponse(out, status_code=st, headers=NO_STORE)
 
-    def start():
-        with _db() as c:
-            r = c.execute("SELECT state, undo_at FROM job WHERE id=? AND uid=? AND kind=?", (i, uid, ai_plan.KIND)).fetchone()
-        if not r:
-            return 404, {"error": "not found"}
-        if r[0] != "erledigt" or r[1] is not None:
-            return 409, {"error": t("Das lässt sich gerade nicht zurücknehmen."), "code": "state", "state": r[0]}
-        bad = ai_undo.conflicts(i, uid)
-        if bad:
-            return 409, {"error": t("Das wurde seitdem geändert."), "code": "changed", "changes": bad,
-                         "version_url": next((x["version_url"] for x in bad if x["why"] == "changed" and x["version_url"]), None)}
-        if not jobs.undo(i, uid):
-            return 409, {"error": t("Das lässt sich gerade nicht zurücknehmen."), "code": "state", "state": r[0]}
-        return 202, None
-    st, out = await asyncio.to_thread(start)
-    if st != 202:
+    from saga import ai_act                                   # 2270: dieselbe Ruecknahme wie der Knopf in der Mitteilung
+    st, out = await asyncio.to_thread(ai_act.undo_whole, uid, i)
+    if st != 200:
         return JSONResponse(out, status_code=st, headers=NO_STORE)
-    t0 = time.monotonic()
-    s = None
-    while time.monotonic() - t0 < UNDO_WAIT:
-        s = await asyncio.to_thread(jobs.state_of, i)
-        if s and s["state"] != "erledigt":
-            break
-        await asyncio.sleep(0.1)
-    st_now = (s or {}).get("state")
-    out = {"ok": True, "state": st_now, "state_text": state_text(st_now)}
+    st_now = out.get("state")
     if st_now == "zurueckgenommen":
         with _db() as c:
             title = (c.execute("SELECT title FROM job WHERE id=?", (i,)).fetchone() or [""])[0]
@@ -540,6 +518,50 @@ def api_jobs_before(jid: str, cid: str, request: Request):
     if not i or not k:
         return _bad("not found", 404)
     st, out = ai_undo.before_view(i, uid, k)
+    return JSONResponse(out, status_code=st, headers=NO_STORE)
+
+
+def _act_who(request):
+    """2270: Zugaenge fuer act -> (uid, key, device, fehler). hkd_ (Geraet), hk_ (Widget, nur Ruhe-Aktionen), Sitzung mit
+    X-Saga; jeder andere Bearer-Schluessel 403 code key (RT-42)."""
+    hdr = (request.headers.get("authorization") or "").strip()
+    if hdr.startswith("Bearer hkd_") and len(hdr) <= 130:
+        from saga.core import _tok_hash
+        import auth
+        with _db() as c:
+            r = c.execute("SELECT uid, id FROM device_login WHERE hash=?", (_tok_hash(hdr[7:].strip()),)).fetchone()
+        if not r or auth.user_info(r[0]) is None:
+            return None, None, None, _bad("unauthorized", 401)
+        return r[0], "hkd", r[1], None
+    if hdr.startswith("Bearer hk_"):
+        from saga.app_api import _app_uid
+        uid = _app_uid(request)
+        return (uid, "hk", None, None) if uid else (None, None, None, _bad("unauthorized", 401))
+    if hdr:
+        return None, None, None, JSONResponse({"error": t("Aufträge gibt es nur in Saga selbst – nicht über API-Schlüssel."),
+                                               "code": "key"}, status_code=403, headers=NO_STORE)
+    uid = _api_guard(request)
+    if not uid:
+        return None, None, None, _bad("unauthorized", 401)
+    did = request.session.get("did")
+    return uid, "session", int(did) if str(did or "").isdigit() else None, None
+
+
+@router.post("/api/ai/jobs/{jid}/act")
+async def api_jobs_act(jid: str, request: Request):
+    """Knopf aus einer Mitteilung (2270 K-C, docs/APP-API-KI.md 12.3): {action, atok, pv}."""
+    uid, key, dev, err = _act_who(request)
+    if err is not None:
+        return err
+    i = _jid(jid)
+    if not i:
+        return _bad("not found", 404)
+    b = await _body(request) or {}
+    a, pv = b.get("action"), b.get("pv")
+    if not isinstance(a, str) or len(a) > 20 or (pv is not None and (isinstance(pv, bool) or not isinstance(pv, int))):
+        return _bad(t("ungültige Angabe"))
+    from saga import ai_act
+    st, out = await asyncio.to_thread(ai_act.act, uid, key, dev, i, a, b.get("atok"), pv)
     return JSONResponse(out, status_code=st, headers=NO_STORE)
 
 

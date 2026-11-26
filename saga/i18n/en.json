@@ -5726,5 +5726,18 @@
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Your jobs are paused because you withdrew your consent. You can still view, cancel and undo them – new jobs only once you meet {name} again.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Your admin changed the AI – your jobs wait until you meet {name} again.",
  "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "You can give new jobs once you have met {name}.",
- "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "The model endpoint is now on the internet instead of your home network – nothing was sent. Please check it in the admin area and save again."
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "The model endpoint is now on the internet instead of your home network – nothing was sent. Please check it in the admin area and save again.",
+ "{name} · KI – braucht dich": "{name} · AI – needs you",
+ "{name} · KI – Rückmeldung": "{name} · AI – update",
+ "In Saga ansehen": "View in Saga",
+ "Hat nicht geklappt: {text}": "Didn't work: {text}",
+ "Wartet auf dich: {text}": "Needs you: {text}",
+ "Der Plan steht und wartet auf ein OK.": "The plan is ready and waiting for an OK.",
+ "{n} {n:Rückmeldung|Rückmeldungen} von {name}": "{n} {n:update|updates} from {name}",
+ "Der Knopf gilt nicht mehr – bitte in Saga ansehen.": "This button no longer works – please take a look in Saga.",
+ "Das geht nur in der App.": "That only works in the app.",
+ "Das geht nur in Saga selbst.": "That only works in Saga itself.",
+ "Dieser Knopf gehört zu einem anderen Gerät.": "This button belongs to another device.",
+ "Mitteilung": "Notification",
+ "Das lässt sich gerade nicht verschieben.": "This can't be postponed right now."
 }

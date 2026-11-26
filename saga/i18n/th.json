@@ -5726,5 +5726,18 @@
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "งานที่มอบหมายของคุณถูกหยุดไว้ เพราะคุณถอนความยินยอม ยังดู ยกเลิก และเลิกทำได้ – งานใหม่ได้เมื่อคุณทำความรู้จัก {name} อีกครั้ง",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "ผู้ดูแลเปลี่ยน AI แล้ว – งานที่มอบหมายของคุณจะรอจนกว่าคุณจะทำความรู้จัก {name} อีกครั้ง",
  "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "คุณมอบหมายงานใหม่ได้เมื่อทำความรู้จัก {name} แล้ว",
- "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "ตอนนี้เอนด์พอยต์ของโมเดลอยู่บนอินเทอร์เน็ตแทนเครือข่ายภายในบ้าน – ไม่ได้ส่งอะไรออกไป โปรดตรวจสอบในส่วนผู้ดูแลระบบแล้วบันทึกอีกครั้ง"
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "ตอนนี้เอนด์พอยต์ของโมเดลอยู่บนอินเทอร์เน็ตแทนเครือข่ายภายในบ้าน – ไม่ได้ส่งอะไรออกไป โปรดตรวจสอบในส่วนผู้ดูแลระบบแล้วบันทึกอีกครั้ง",
+ "{name} · KI – braucht dich": "{name} · AI – ต้องการคุณ",
+ "{name} · KI – Rückmeldung": "{name} · AI – อัปเดต",
+ "In Saga ansehen": "ดูใน Saga",
+ "Hat nicht geklappt: {text}": "ไม่สำเร็จ: {text}",
+ "Wartet auf dich: {text}": "ต้องการคุณ: {text}",
+ "Der Plan steht und wartet auf ein OK.": "แผนพร้อมแล้ว รอการยืนยัน",
+ "{n} {n:Rückmeldung|Rückmeldungen} von {name}": "อัปเดตจาก {name} {n} รายการ",
+ "Der Knopf gilt nicht mehr – bitte in Saga ansehen.": "ปุ่มนี้ใช้ไม่ได้แล้ว โปรดดูใน Saga",
+ "Das geht nur in der App.": "ทำได้เฉพาะในแอป",
+ "Das geht nur in Saga selbst.": "ทำได้เฉพาะใน Saga เท่านั้น",
+ "Dieser Knopf gehört zu einem anderen Gerät.": "ปุ่มนี้เป็นของอุปกรณ์อื่น",
+ "Mitteilung": "การแจ้งเตือน",
+ "Das lässt sich gerade nicht verschieben.": "ตอนนี้เลื่อนไม่ได้"
 }

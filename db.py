@@ -677,6 +677,16 @@ CREATE TABLE IF NOT EXISTS ai_turn (
 CREATE INDEX IF NOT EXISTS ai_turn_thread ON ai_turn (thread_id, n);
 CREATE INDEX IF NOT EXISTS ai_turn_uid ON ai_turn (uid);
 CREATE INDEX IF NOT EXISTS ai_turn_exp ON ai_turn (expires) WHERE expires IS NOT NULL;
+-- 2.6 (Bugs-DB 2270 K-C, saga/ai_act.py): Einmal-Token der Knoepfe in Mitteilungen (atok) - nur sha256 des Tokens,
+-- gebunden an Konto, Auftrag, Abo (Geraet), Planstand und Aktion; again = wie oft "Spaeter" schon gedrueckt wurde.
+-- Weg mit dem Auftrag bzw. dem Abo (CASCADE), mit dem Konto (USER_TABLES); jobs.cleanup raeumt abgelaufene ab.
+CREATE TABLE IF NOT EXISTS ai_act_token (
+    hash TEXT PRIMARY KEY, uid TEXT NOT NULL, job_id BIGINT NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+    sub_id BIGINT REFERENCES push_sub(id) ON DELETE CASCADE, device BIGINT, plan_v INTEGER NOT NULL,
+    plan_hash TEXT NOT NULL DEFAULT '', action TEXT NOT NULL, wording_hash TEXT, again SMALLINT NOT NULL DEFAULT 0,
+    expires DOUBLE PRECISION NOT NULL, used_at DOUBLE PRECISION, created DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS ai_act_token_job ON ai_act_token (job_id);
+CREATE INDEX IF NOT EXISTS ai_act_token_exp ON ai_act_token (expires);
 
 -- Foederation (2.0, saga/federation.py): Saga-Instanzen teilen Seiten untereinander. Inhalte bleiben beim Eigentuemer;
 -- hier stehen nur Schluessel, Gegenstellen, Protokoll und kleine Verweise (welche Instanz hat etwas mit wem geteilt).

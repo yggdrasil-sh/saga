@@ -249,7 +249,9 @@ def main():
 def run(A, Bk):
     # =============================== Teil A: Nutzlast ================================================================
     s, d = req("GET", "/api/push", A)
-    ok("GET /api/push meldet payload 2 und sub_caps", s == 200 and d["server"].get("payload") == 2 and d["server"].get("sub_caps") == ["update", "widgets"], d.get("server"))
+    # 2.6 (2270 K-C): Nutzlast 3 (nur job.*) und caps detail/actions - Apps pruefen payload >= 2
+    ok("GET /api/push meldet payload 3 und sub_caps", s == 200 and d["server"].get("payload") == 3 and
+       d["server"].get("sub_caps") == ["update", "widgets", "detail", "actions"], d.get("server"))
     tok = "ab" * 32
     s, d = req("POST", "/api/push/subscriptions", A, {"type": "apns", "token": tok, "env": "sandbox", "name": "x", "lang": "xx"})
     ok("Abo mit unbekannter Sprache -> 400", s == 400, (s, d))
