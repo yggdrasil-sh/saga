@@ -682,15 +682,25 @@ def check(uid, cand, mode, cands, rs, direct=False):
     if probs:
         return None, None, probs
     if not title:
-        title = _auto_title(out)
+        title = _auto_title(out, recipe)
     return "plan", {"title": title, "steps": out, "recipe": recipe}, []
 
 
-def _auto_title(steps):
+def _auto_title(steps, recipe=None):
+    """Titel ohne Angabe des Modells: Text/Titel des ersten Schritts, sonst die erste Zeile des Wortlauts (eintragen),
+    sonst der Name des Rezepts - "Auftrag" nur, wenn gar nichts da ist (Bugs-DB 2504)."""
     a = steps[0]["args"] if steps else {}
     for k in ("text", "summary", "title"):
         if isinstance(a.get(k), str) and a[k].strip():
             return a[k].strip()[:TITLE_MAX]
+    md = a.get("markdown")
+    if isinstance(md, str):
+        for ln in md.splitlines():
+            ln = re.sub(r"^\s*(?:[-*+>#]+|\d+[.)]|\[[ xX]\])\s*", "", ln).replace("**", "").replace("`", "").strip()
+            if ln:
+                return ln[:TITLE_MAX] if len(ln) <= 80 else ln[:79].rstrip() + "…"
+    if recipe:
+        return _builtin_title(recipe)[:TITLE_MAX]
     return t("Auftrag")
 
 

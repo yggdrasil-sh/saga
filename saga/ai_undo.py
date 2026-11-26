@@ -267,8 +267,8 @@ def compensate(c, job, change):
         try:
             api_calendar.event_delete(types.SimpleNamespace(uid=uid), {"event": target[6:]})
         except Fail as f:
-            if f.status in (404,):
-                return
+            if f.status in (404,):                   # Termin schon weg (von Hand geloescht): schon erledigt (2504)
+                return "gone"
             raise jobs.UndoConflict(target, None, "changed" if f.status == 409 else "no_access")
 
 
@@ -326,9 +326,9 @@ def undo_one(job_id, uid, cid):
             if c.execute("SELECT undone_at FROM job_change WHERE id=? FOR UPDATE", (cid,)).fetchone()[0] is not None:
                 return 200, {"ok": True, "already": True}
             with acting(Actor("service", "svc:kollegin", on_behalf_of=uid, job_id=job_id)):
-                compensate(c, jv, {"id": cid, "step": r[1], "target": r[2]})
+                gone = compensate(c, jv, {"id": cid, "step": r[1], "target": r[2]}) == "gone"
             c.execute("UPDATE job_change SET undone_at=? WHERE id=?", (jobs.now(), cid))
-            jobs._event(c, job_id, "undo", jobs.now(), change=cid, target=r[2])
+            jobs._event(c, job_id, "undo", jobs.now(), change=cid, target=r[2], **({"gone": True} if gone else {}))
             left = c.execute("SELECT COUNT(*) FROM job_change WHERE job_id=? AND undone_at IS NULL AND id<>? AND "
                              "COALESCE(before->>'op', 'x') <> 'none'", (job_id, cid)).fetchone()[0]
             if not left:
@@ -338,6 +338,8 @@ def undo_one(job_id, uid, cid):
     except jobs.UndoConflict as ex:
         return 409, {"error": t("Das wurde seitdem geändert."), "code": "changed", "target": ex.target, "why": ex.why,
                      "version_url": ex.version_url}
+    if gone:
+        return 200, {"ok": True, "already": True, "text": t("Schon erledigt – den Termin gibt es nicht mehr.")}
     return 200, {"ok": True}
 
 

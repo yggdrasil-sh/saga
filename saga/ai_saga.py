@@ -314,9 +314,7 @@ def intro(uid, conn=None, cfg=None):
     details = [t("Nicht Ende-zu-Ende verschlüsselt: Was du {name} schreibst, liest die KI auf {host} im Klartext.", name=name,
                  host=h["host"] if h else ""),
                t("Was genau rausgeht: deine Frage, die letzten Sätze dieses Gesprächs und Ausschnitte aus Seiten, Aufgaben und Terminen, die zur Frage passen – nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Chats und Seiten von anderen Servern liest sie nicht."),  # noqa: E501
-               (t("Die Adresse liegt in eurem Heimnetz.") if h and h["net"] == "home" else
-                t("Der Dienst steht im Internet; sein Betreiber ist {provider}.", provider=h["provider"]) if h and h.get("provider") else
-                t("Der Dienst steht im Internet."))]
+               _net_line(h)]
     details.append(t("Widerrufen kannst du jederzeit unter Einstellungen › Saga › Meine Daten. Dann erledigt {name} keine Aufträge mehr, bringt keine Ideen, und das Gespräch hier ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an die KI – aber nur, wenn du sie stellst.", name=name))  # noqa: E501
     out = {"version": CONSENT_V, "host": h["host"] if h else "", "lines": lines, "details": details, "ideas_allowed": ideas_cap,
            "question": t("Soll ich dir ab und zu Ideen zeigen – nur auf „Heute“, nie als Mitteilung?") if ideas_cap else None,
@@ -326,9 +324,33 @@ def intro(uid, conn=None, cfg=None):
     return out
 
 
+def _net_line(h):
+    return (t("Die Adresse liegt in eurem Heimnetz.") if h and h["net"] == "home" else
+            t("Der Dienst steht im Internet; sein Betreiber ist {provider}.", provider=h["provider"]) if h and h.get("provider") else
+            t("Der Dienst steht im Internet."))
+
+
+def ask_details(cfg=None, web=False):
+    """ⓘ fuer "Frag deine Seiten" und die Hilfen auf einer Seite (static/ai.js) - eigene Saetze statt der Texte des
+    Gespraechs im Ort "Saga" (dort gehen die letzten Saetze des Gespraechs mit, hier nicht; Bugs-DB 2505)."""
+    from saga import ai
+    c = cfg if cfg is not None else ai.cfg()
+    h = endpoint_hint(c)
+    out = [t("Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.", host=h["host"] if h else ""),
+           t("Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit."),  # noqa: E501
+           t("Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text."),
+           _net_line(h)]
+    if web:
+        out.append(t("Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine."))
+    out.append(t("Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.", name=ai.persona_name()))
+    return out
+
+
 def status_fields(uid, conn, cfg):
-    """Zusatzfelder fuer GET /api/ai/status (nur angehaengt, aeltere Felder unveraendert)."""
-    return {"endpoint": endpoint_hint(cfg), "consent": consent(uid, conn, cfg), "intro": intro(uid, conn, cfg)}
+    """Zusatzfelder fuer GET /api/ai/status (nur angehaengt, aeltere Felder unveraendert). ask_details: ⓘ fuer "Frag
+    deine Seiten" (2505) - die Websuche-Zeile haengt saga/ai.py an (dort ist bekannt, ob sie fuer die Person an ist)."""
+    return {"endpoint": endpoint_hint(cfg), "consent": consent(uid, conn, cfg), "intro": intro(uid, conn, cfg),
+            "ask_details": ask_details(cfg)}
 
 
 # --- Einstellungen der Person (/api/ai/prefs) ---------------------------------------------------------------------
@@ -546,9 +568,13 @@ def export(uid):
             changes = [{"step": x[0], "target": x[1], "at": x[2], "before": _j(x[3]), "after": _j(x[4]), "undone_at": x[5]} for x in
                        c.execute("SELECT step_n, target, at, before, after, undone_at FROM job_change WHERE job_id=? ORDER BY id",
                                  (jid,)).fetchall()]
+            # Worauf der Auftrag wartet (job_wait: Ereignis, Frist, Ruhe) - gehoert zur Auskunft (Art. 15, Bugs-DB 2503)
+            waits = [{"step": w[0], "on": w[1], "ref": w[2], "until": w[3], "paused_at": w[4], "hit_at": w[5], "data": _j(w[6])}
+                     for w in c.execute("SELECT step_n, on_kind, ref, until, paused_at, hit_at, data FROM job_wait WHERE job_id=? "
+                                        "ORDER BY id", (jid,)).fetchall()]
             jobs_out.append({"id": jid, "kind": r[1], "source": r[2], "state": r[3], "sub": r[4], "title": r[5], "plan": _j(r[6]),
                              "plan_v": r[7], "created": r[8], "updated": r[9], "ended_at": r[10], "reason": r[11],
-                             "units": r[12], "unit": r[13], "steps": steps, "events": events, "changes": changes})
+                             "units": r[12], "unit": r[13], "steps": steps, "events": events, "changes": changes, "waits": waits})
         hist = [{"id": r[0], "created": r[1], "kind": r[2], "question": r[3], "answer": r[4], "sources": _j(r[5])} for r in
                 c.execute("SELECT id, created, kind, question, answer, sources FROM ai_history WHERE uid=? ORDER BY id", (uid,)).fetchall()]
         usage = [{"day": r[0], "n": r[1]} for r in c.execute("SELECT day, n FROM ai_usage WHERE uid=? ORDER BY day", (uid,)).fetchall()]
@@ -583,6 +609,7 @@ def export_md(d):
         out.append(f"### {j['title'] or t('Auftrag {n}', n=j['id'])} · {j['state']}")
         out.append(f"{t('Angelegt')}: {_ts(j['created'])} · {t('Ende')}: {_ts(j['ended_at'])}")
         out += [f"- {s['n']}. {s['tool']} ({s['klass']}, {s['state']})" for s in j["steps"]]
+        out += [f"- {t('Wartet auf „{on}“ bis {until}', on=w['on'], until=_ts(w['until']))}" for w in j.get("waits") or []]
         out.append("")
     if not d["jobs"]:
         out += ["–", ""]

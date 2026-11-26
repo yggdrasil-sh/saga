@@ -52,6 +52,10 @@ class Conflict(CalError):
     """ETag passt nicht (Termin inzwischen woanders geaendert)."""
 
 
+class Gone(CalError):
+    """Termin gibt es nicht mehr (404 beim Laden) - z. B. inzwischen von Hand geloescht (2.6, Bugs-DB 2504)."""
+
+
 def check_url(url):
     p = urlsplit(url)
     host = (p.hostname or "").lower()
@@ -229,7 +233,7 @@ def _load_single(href, auth, etag, series=False):
     ausdruecklich): dann (cal, [alle VEVENTs], etag, ist_serie)."""
     status, data, rh, _ = _req("GET", href, auth)
     if status == 404:
-        raise CalError(t("Termin gibt es nicht mehr – bitte neu laden"))
+        raise Gone(t("Termin gibt es nicht mehr – bitte neu laden"))
     if status != 200:
         raise CalError(t("Termin nicht lesbar ({status})", status=status))
     cur = (rh.get("etag") or "").strip()

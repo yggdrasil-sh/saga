@@ -193,6 +193,8 @@ def _cal_err(ex):
     if isinstance(ex, hkcal.SeriesError):
         hint = t("Mit scope „series“: Titel/Ort/Beschreibung der ganzen Serie ändern bzw. die ganze Serie löschen.")
         return Fail(400, str(ex) + " " + hint)
+    if isinstance(ex, hkcal.Gone):                   # 2.6 (2504): Termin weg -> 404 (Rueckgaengig: "schon erledigt")
+        return Fail(404, str(ex))
     return Fail(409 if isinstance(ex, hkcal.Conflict) else 400, str(ex))
 
 

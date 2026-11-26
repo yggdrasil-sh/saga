@@ -2038,6 +2038,8 @@ def api_ai_status(request: Request):
         saga_f = ai_saga.status_fields(uid, conn, c)
     units = ai_units.left(uid, c)                                        # 2.6 K-A5: Messwert (Einheiten), nur angehaengt
     web_cap = "ai_act" in caps_now
+    if ai_web.enabled(c) and web_cap and saga_f.get("ask_details"):     # 2505: ⓘ "Frag deine Seiten" mit Websuche-Zeile
+        saga_f["ask_details"] = ai_saga.ask_details(c, web=True)
     quota = int(c.get("quota") or 0)
     host = host_of(c)
     return JSONResponse({"enabled": True, "host": host, "model": c.get("model"), "provider": c.get("provider"),

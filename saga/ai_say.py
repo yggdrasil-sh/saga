@@ -362,9 +362,31 @@ class _Ctx:
         return out
 
 
+def _endpoint_where(lang):
+    """Host-Hinweis des Modell-Endpunkts wie Kennenlernen-Karte und Leiste (saga.ai_saga.endpoint_hint()["label"]: mit
+    Anbieter und Land, "im Heimnetz" nur bei privater Adresse, sonst "im Internet" - M4), in der Sprache des Satzes.
+    -> (host, label) oder (None, None) ohne Endpunkt."""
+    try:
+        from saga import ai_saga, i18n
+        tok = i18n.set_lang(lang)
+        try:
+            h = ai_saga.endpoint_hint()
+        finally:
+            i18n._cur.reset(tok)
+    except Exception:  # noqa: BLE001 - ohne Endpunkt/Einstellung: kein Hinweis
+        return None, None
+    return (h["host"], h["label"]) if h and h.get("label") else (None, None)
+
+
 def _where(x):
+    """{where} - Bugs-DB 2495: ohne host oder mit dem Host des Modell-Endpunkts das Server-Label (endpoint_hint), damit
+    ident.who_reads & Co. genau dasselbe sagen wie Karte und Leiste; ein anderer Host (z. B. Sprach-Endpunkt) wie bisher."""
     f = x.f
-    if not f.get("host"):
+    host = _sv(f.get("host"))
+    eh, label = _endpoint_where(x.lang)
+    if label and (not host or host.lower() == str(eh).lower()):
+        return label
+    if not host:
         raise _Missing("host")
     if f.get("provider"):
         return x.T("where.provider")
@@ -372,8 +394,10 @@ def _where(x):
 
 
 def _offer(x, key, prefix="q"):
+    """Angebot (q.* / alt.*); fehlt die Luecke ({task}, {title}), die Fassung ohne Gegenstand (.plain) - Bugs-DB 2497:
+    say("cant", {"alt": "add_task"}) liess den Vorschlag sonst ganz weg."""
     k = key if key in OFFERS else None
-    return x.opt(f"{prefix}.{k}") if k else None
+    return x.opt(f"{prefix}.{k}", f"{prefix}.{k}.plain") if k else None
 
 
 def _b_intro(x):

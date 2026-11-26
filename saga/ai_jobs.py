@@ -156,6 +156,8 @@ def _event_text(kind, d, labels):
             return t("Nicht zurückgenommen – inzwischen geändert")
         if d.get("blocked"):
             return t("Rückgängig nicht möglich")
+        if d.get("gone"):
+            return t("Schon erledigt – den Termin gibt es nicht mehr.")
         return t("Zurückgenommen")
     if kind == "model":
         return t("{name} war nicht erreichbar – neuer Versuch", name=ai.persona_name())
@@ -221,7 +223,8 @@ def report(r, changes, uid=None):
         text = ai_plan.say("undo", {"target": r[1]}, uid=uid, job_id=r[0])
     else:
         text = ai_plan.say("report", {"title": r[1], "changes": [c["label"] for c in changes]}, uid=uid, job_id=r[0])
-    return {"text": text, "lines": [{"change": c["id"], "text": f"{c['label']} {_done_word(c['target'])}".strip(),
+    # label: nur der Gegenstand (Web: neben "Rueckgaengig", ohne den Ergebnis-Satz zu wiederholen - Bugs-DB 2504)
+    return {"text": text, "lines": [{"change": c["id"], "text": f"{c['label']} {_done_word(c['target'])}".strip(), "label": c["label"],
                                      "undone": c["undone"], "can_undo": c["can_undo"]} for c in changes]}
 
 
@@ -243,10 +246,38 @@ def _fmt(typ, data):
     return f"event: {typ}\ndata: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
+def to_thread(uid, text, choice, recipe, res):
+    """Auftrag aus dem Gespraech im Ort "Saga" (Feld thread: true): die Bitte als eigener Zug, dazu ein KI-Zug je Ergebnis -
+    plan (job_id: die Plan-Karte bzw. spaeter die Rueckmeldung zeichnet das Web aus GET /api/ai/jobs/{id}), ask (Frage +
+    Auswahl) oder refuse (Absage + Alternative). Fehler (nichts passiert) bleiben draussen. -> res["turn"] = Nummer."""
+    from saga import ai_saga
+    typ = res.get("type")
+    if typ not in ("plan", "ask", "refuse"):
+        return
+    me = (choice or "").strip() if choice else (text or "").strip()
+    if not me and recipe:
+        me = ai_plan._builtin_title(recipe)
+    try:
+        ai_saga.add_turn(uid, "me", me[:ai_plan.REQ_MAX], zug="job")
+        if typ == "plan":
+            n = ai_saga.add_turn(uid, "ai", t("Plan: {title}", title=res.get("title") or ""), zug="plan", job_id=res.get("job"))
+        elif typ == "ask":
+            n = ai_saga.add_turn(uid, "ai", res.get("question") or "", zug="ask",
+                                 fields={"choices": list(res.get("choices") or []), "q": (text or "")[:ai_plan.REQ_MAX]})
+        else:
+            alt = res.get("alternative") if isinstance(res.get("alternative"), dict) else None
+            n = ai_saga.add_turn(uid, "ai", res.get("text") or "", zug="refuse",
+                                 fields={"alternative": alt, "q": (text or "")[:ai_plan.REQ_MAX]})
+        res["turn"] = n
+    except Exception as ex:  # noqa: BLE001 - der Auftrag steht; nur der Verlauf fehlt
+        print(f"ai_jobs: thread {type(ex).__name__}", flush=True)
+
+
 @router.post("/api/ai/jobs")
 async def api_jobs_create(request: Request):
-    """{text, source?, context?: {note}, choice?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt, ohne Modell -
-    z. B. "Als Aufgabe anlegen"). Antwort text/event-stream: status {phase}, dann plan | ask | refuse | error."""
+    """{text, source?, context?: {note}, choice?, thread?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt, ohne
+    Modell - z. B. "Als Aufgabe anlegen"). thread: true = aus dem Gespraech im Ort "Saga" (Zuege im Verlauf, to_thread).
+    Antwort text/event-stream: status {phase}, dann plan | ask | refuse | error (mit thread zusaetzlich turn)."""
     uid, err = _who(request)
     if err is not None:
         return err
@@ -266,6 +297,7 @@ async def api_jobs_create(request: Request):
     note = ctxb.get("note")
     choice = b.get("choice") if isinstance(b.get("choice"), str) and len(b["choice"]) <= 200 else None
     source = b.get("source") if b.get("source") in jobs.SOURCES else "saga"
+    into_thread = b.get("thread") is True                            # Ort "Saga" (web-saga, K1/K10): Zuege im Gespraech
     if not await asyncio.to_thread(ai_plan.jobs_on, uid):
         allowed = await asyncio.to_thread(_allowed, uid)
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet.") if not allowed
@@ -297,7 +329,10 @@ async def api_jobs_create(request: Request):
         try:
             res = ai_plan.plan(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
                                emit_status=lambda d: put(("status", d)), stop=halt.is_set)
-            put(("res", dict(res)))
+            res = dict(res)
+            if into_thread and not halt.is_set():
+                to_thread(uid, text, choice, recipe, res)
+            put(("res", res))
         except Exception as ex:  # noqa: BLE001 - nie Inhalte loggen
             print(f"ai_jobs: {type(ex).__name__}: {ex}", flush=True)
             put(("res", {"type": "error", "status": 500, "error": t("Das hat nicht geklappt – nichts wurde geändert.")}))
@@ -383,12 +418,10 @@ def _approve(uid, i, pv, ph, dev):
         return 409, {"error": t("Dieser Auftrag wartet nicht mehr auf dein OK."), "code": "state", "state": r[0], "state_text": state_text(r[0])}
     if r[1] != pv or r[2] != ph:
         return 409, {"error": t("Der Plan hat sich inzwischen geändert – bitte noch einmal ansehen."), "code": "stale", "plan_v": r[1]}
-    if not jobs.approve(i, uid, pv, ph):
+    if not jobs.approve(i, uid, pv, ph, dev=dev or ""):          # Ereignis "approve" vor "Laeuft" (2504)
         with _db() as c:
             s = c.execute("SELECT state, plan_v FROM job WHERE id=?", (i,)).fetchone()
         return 409, {"error": t("Dieser Auftrag wartet nicht mehr auf dein OK."), "code": "state", "state": s[0] if s else None}
-    with _db() as c, c:
-        jobs._event(c, i, "approve", jobs.now(), dev=dev, plan_v=pv)
     return 200, {"ok": True, "state": "laeuft", "state_text": state_text("laeuft"), "say": ai_plan.say("start", uid=uid)}
 
 

@@ -380,10 +380,18 @@ def create(uid, kind, *, source="saga", title="", plan=None, steps=(), due_at=No
     return jid
 
 
-def approve(job_id, uid, plan_v, plan_hash_):
-    """Freigabe genau des gezeigten Plans (plan_v + plan_hash) -> True; zweite Freigabe/veralteter Plan -> False."""
+def approve(job_id, uid, plan_v, plan_hash_, dev=None):
+    """Freigabe genau des gezeigten Plans (plan_v + plan_hash) -> True; zweite Freigabe/veralteter Plan -> False.
+    dev (Web/App, saga/ai_jobs.py): Ereignis "approve" {dev, plan_v} in derselben Transaktion VOR dem Zustandswechsel -
+    das Protokoll zeigt "Freigegeben" vor "Laeuft" (Bugs-DB 2504)."""
     t = now()
     with acting(None), _db() as c, c:
+        if dev is not None:
+            r = c.execute("SELECT state FROM job WHERE id=? AND uid=? AND plan_v=? AND plan_hash=? FOR UPDATE",
+                          (job_id, uid, plan_v, plan_hash_)).fetchone()
+            if not r or r[0] != "wartet_ok":
+                return False
+            _event(c, job_id, "approve", t, dev=dev, plan_v=plan_v)
         ok = _to(c, job_id, "wartet_ok", "laeuft", t, where=" AND uid=? AND plan_v=? AND plan_hash=?", args=(uid, plan_v, plan_hash_))
     if ok:
         _crash("after_approve")
