@@ -1,0 +1,1414 @@
+{
+ "format": "saga-today/v1",
+ "note": "Gemeinsame Testvektoren der Tageszeile „Kurz gesagt“ auf „Heute“ (Bugs-DB 2271 K-D, docs/APP-API-KI.md §13). Web (static/heute-kurz.js, tests/browser_kollegin_heute.js), iOS (Shared/TodayLineLogic.swift, Tests/Logic/TodayLineTests.swift) und Android (data/TodayLine.kt, TodayLineTest.kt) decodieren jede 'response' und prüfen die Anzeige gegen 'show'. Der Server (tests/kollegin_ideen.py) prüft Form und Felder seiner Antworten gegen dieselben Fälle. Texte sind fertige Sätze des Servers in der Sprache der Anfrage - Clients zeigen sie unverändert, bauen keine Sätze und vergleichen keine Texte, um Zustände zu erkennen. Unbekannte Felder ignorieren (spätere Server hängen an).",
+ "fields": {
+  "enabled": "false = Konto ohne Fähigkeit 'ai' -> sonst keine Felder, nichts zeigen",
+  "on": "Schalter der Person (PUT on); false -> line null, waiting bleibt",
+  "day": "Tag der Person YYYY-MM-DD in tz",
+  "tz": "IANA-Zone der Berechnung (?tz=, sonst Konto)",
+  "v": "Stand (12 Hex, undurchsichtig) = ETag; If-None-Match -> 304; Live ai.today.changed {v}",
+  "label": "Überschrift der Zeile ('Kurz gesagt')",
+  "line": "null (ruhiger Tag, Ruhe, aus) oder {text, a11y, parts}; text = parts[].text mit ' · ' verbunden",
+  "line.parts[]": "{kind: event|over|due|tomorrow, text, n?, target}; n = Anzahl dieser Art, wenn > 1 (Text endet dann auf '(+n-1)')",
+  "target": "{type: task, id} | {type: row, id} | {type: tasks, filter: overdue|today} | {type: events, date} | {type: jobs, group}; öffnet nur, hakt nie ab; unbekannter type -> Teil nicht antippbar",
+  "a11y": "Vorlesetext der ganzen Zeile (ohne Symbole); ohne aria-live, nie Fokus",
+  "sentence": "Gruß + Tag als ganzer Satz in der Persona (für K-G/Siri) - noch nicht anzeigen",
+  "waiting": "null oder {n, text, target} - eigene Zeile darunter, auch bei on false / Ruhe",
+  "counts": "{events, over, due, waiting} - Zahlen (Sperrbildschirm/Widget klein); events null = Kalender noch unbekannt",
+  "quiet": "null oder {until (ISO mit Versatz), text, undo} -> Pille statt Zeile, undo = DELETE /api/ai/today/quiet",
+  "ask": "null oder {text, yes, no} -> einmalige Frage statt der Pille; yes = PUT {on:false, asked:true}, no = PUT {asked:true}",
+  "pending": "noch fehlende Quellen (z. B. ['calendar']) - danach kommt ai.today.changed",
+  "info": "Text hinter ⓘ / 'Warum sehe ich das?'"
+ },
+ "display": [
+  "enabled false oder Status 4xx/5xx: nichts zeigen (kein Fehlerhinweis).",
+  "line gesetzt: label + parts (Knöpfe, >= 44 pt / 48 dp, Web >= 32 px), daneben ✕ (= POST /api/ai/today/quiet) und ⋯.",
+  "quiet gesetzt und ask null: Pille quiet.text + Knopf quiet.undo (gleiche Höhe wie die Zeile).",
+  "ask gesetzt: Frage ask.text mit Knöpfen ask.yes / ask.no (statt der Pille).",
+  "line, quiet und ask null: an der Stelle nichts.",
+  "waiting gesetzt: eigene Zeile waiting.text, Tipp -> Saga › Aufträge, Gruppe 'Wartet auf dich'.",
+  "Widget: Mittel/Groß line.line.text (privacySensitive), Klein und Sperrbildschirm nur counts; ohne 'line' wie bisher."
+ ],
+ "live": {
+  "event": "ai.today.changed",
+  "data": {
+   "v": "4c01b4a34ebc"
+  },
+  "debounce_ms": 400,
+  "note": "neu laden, wenn data.v != eigenes v (Aufgaben, Aufträge in/aus 'Wartet auf dich', Kalender fertig, Ruhe/Schalter auf einem anderen Gerät)"
+ },
+ "waiting_plural": {
+  "de": {
+   "du": {
+    "1": "1 Auftrag wartet auf dich ›",
+    "2": "2 Aufträge warten auf dich ›",
+    "5": "5 Aufträge warten auf dich ›"
+   },
+   "sie": {
+    "1": "1 Auftrag wartet auf Sie ›",
+    "2": "2 Aufträge warten auf Sie ›",
+    "5": "5 Aufträge warten auf Sie ›"
+   }
+  },
+  "en": {
+   "du": {
+    "1": "1 job is waiting for you ›",
+    "2": "2 jobs are waiting for you ›",
+    "5": "5 jobs are waiting for you ›"
+   }
+  },
+  "es": {
+   "du": {
+    "1": "1 encargo te espera ›",
+    "2": "2 encargos te esperan ›",
+    "5": "5 encargos te esperan ›"
+   },
+   "sie": {
+    "1": "1 encargo le espera ›",
+    "2": "2 encargos le esperan ›",
+    "5": "5 encargos le esperan ›"
+   }
+  },
+  "ru": {
+   "du": {
+    "1": "1 поручение ждёт тебя ›",
+    "2": "2 поручения ждут тебя ›",
+    "5": "5 поручений ждут тебя ›",
+    "21": "21 поручение ждёт тебя ›"
+   },
+   "sie": {
+    "1": "1 поручение ждёт вас ›",
+    "2": "2 поручения ждут вас ›",
+    "5": "5 поручений ждут вас ›",
+    "21": "21 поручение ждёт вас ›"
+   }
+  },
+  "th": {
+   "du": {
+    "1": "มี 1 งานรอคุณอยู่ ›",
+    "2": "มี 2 งานรอคุณอยู่ ›",
+    "5": "มี 5 งานรอคุณอยู่ ›"
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "normal",
+   "desc": "Normaler Tag: Termin, wichtigste überfällige Aufgabe (+2 weitere), heute fällige Zeile einer Aufgabenquelle; 1 Auftrag wartet.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "headers": {
+    "ETag": "\"4c01b4a34ebc\"",
+    "Cache-Control": "private, no-cache"
+   },
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": {
+     "text": "Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+     "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Elternabend 19:30",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "over",
+       "text": "„Pavillon abholen“ überfällig (+2)",
+       "n": 3,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      },
+      {
+       "kind": "due",
+       "text": "„Kuchen backen“ heute",
+       "target": {
+        "type": "row",
+        "id": 512
+       }
+      }
+     ]
+    },
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "4c01b4a34ebc"
+   },
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "Elternabend 19:30",
+      "„Pavillon abholen“ überfällig (+2)",
+      "„Kuchen backen“ heute"
+     ],
+     "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "nicht_geaendert",
+   "desc": "Gleicher Stand: If-None-Match mit dem ETag aus 'normal' -> 304 ohne Inhalt, Anzeige bleibt.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    },
+    "headers": {
+     "If-None-Match": "\"4c01b4a34ebc\""
+    }
+   },
+   "status": 304,
+   "headers": {
+    "ETag": "\"4c01b4a34ebc\""
+   },
+   "response": null,
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "Elternabend 19:30",
+      "„Pavillon abholen“ überfällig (+2)",
+      "„Kuchen backen“ heute"
+     ],
+     "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "normal_en",
+   "desc": "Englisch, Mittag: zwei Termine (+1), eine heute fällige Aufgabe, nichts wartet (waiting null).",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "en",
+    "auth": "session",
+    "now": "2026-07-07T12:10:00+02:00",
+    "account": {
+     "name": "Ben",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "In short",
+    "line": {
+     "text": "Dentist 14:00 (+1) · “Call Clara” today",
+     "a11y": "In short: Dentist 14:00, plus 1, “Call Clara” today",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Dentist 14:00 (+1)",
+       "n": 2,
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "due",
+       "text": "“Call Clara” today",
+       "target": {
+        "type": "task",
+        "id": 31
+       }
+      }
+     ]
+    },
+    "sentence": "Hello, Ben. Today: Dentist at 14:00, “Call Clara” is due.",
+    "waiting": null,
+    "counts": {
+     "events": 2,
+     "over": 0,
+     "due": 1,
+     "waiting": 0
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Worked out without AI – from your tasks, appointments and jobs. None of it goes to a language model.",
+    "v": "d95539d1872b"
+   },
+   "show": {
+    "kurz": {
+     "label": "In short",
+     "parts": [
+      "Dentist 14:00 (+1)",
+      "“Call Clara” today"
+     ],
+     "a11y": "In short: Dentist 14:00, plus 1, “Call Clara” today"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "normal_es",
+   "desc": "Spanisch: Termin und überfällige Aufgabe, 2 Aufträge warten (Plural).",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "es",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Clara",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "En resumen",
+    "line": {
+     "text": "Reunión de padres 19:30 · «Recoger la carpa» vencida (+2)",
+     "a11y": "En resumen: Reunión de padres 19:30, «Recoger la carpa» vencida, y 2 más",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Reunión de padres 19:30",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "over",
+       "text": "«Recoger la carpa» vencida (+2)",
+       "n": 3,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      }
+     ]
+    },
+    "sentence": "Buenos días, Clara. Hoy: reunión de padres a las 19:30, «Recoger la carpa» está vencida.",
+    "waiting": {
+     "n": 2,
+     "text": "2 encargos te esperan ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 0,
+     "waiting": 2
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Calculado sin IA: a partir de tus tareas, citas y encargos. Nada de esto va a un modelo de lenguaje.",
+    "v": "1580a7fe1bd0"
+   },
+   "show": {
+    "kurz": {
+     "label": "En resumen",
+     "parts": [
+      "Reunión de padres 19:30",
+      "«Recoger la carpa» vencida (+2)"
+     ],
+     "a11y": "En resumen: Reunión de padres 19:30, «Recoger la carpa» vencida, y 2 más"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "2 encargos te esperan ›"
+   }
+  },
+  {
+   "id": "ruhig",
+   "desc": "Ruhiger Tag: nichts Nennenswertes -> line null und waiting null; Clients zeigen an dieser Stelle nichts (kein Platzhalter).",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": null,
+    "sentence": "Guten Morgen, Anna.",
+    "waiting": null,
+    "counts": {
+     "events": 0,
+     "over": 0,
+     "due": 0,
+     "waiting": 0
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "451eaf0d21c2"
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "ruhe",
+   "desc": "Nach ✕ (oder Wischen): Ruhe bis morgen 05:00 Ortszeit auf allen Geräten. line null, an ihrer Stelle die Pille (gleiche Höhe); 'Wartet auf dich' bleibt. GET liefert danach dasselbe.",
+   "request": {
+    "method": "POST",
+    "path": "/api/ai/today/quiet?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T08:15:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": null,
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": {
+     "until": "2026-07-08T05:00:00+02:00",
+     "text": "Ruhe bis morgen",
+     "undo": "Wieder an"
+    },
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "89c0cb5de019"
+   },
+   "show": {
+    "kurz": null,
+    "pill": {
+     "text": "Ruhe bis morgen",
+     "undo": "Wieder an"
+    },
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "frage",
+   "desc": "Drittes ✕ in 14 Tagen: Ruhe wie 'ruhe' und einmal die Frage (statt der Pille). Ja -> PUT {on:false, asked:true} ('aus'), Nein -> PUT {asked:true} ('ruhe'). Danach nie wieder.",
+   "request": {
+    "method": "POST",
+    "path": "/api/ai/today/quiet?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T08:15:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": null,
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": {
+     "until": "2026-07-08T05:00:00+02:00",
+     "text": "Ruhe bis morgen",
+     "undo": "Wieder an"
+    },
+    "ask": {
+     "text": "Tageszeile ausblenden?",
+     "yes": "Ja, ausblenden",
+     "no": "Nein, passt"
+    },
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "764a8f8da23f"
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": {
+     "text": "Tageszeile ausblenden?",
+     "yes": "Ja, ausblenden",
+     "no": "Nein, passt"
+    },
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "aus",
+   "desc": "Tageszeile ausgeschaltet (Frage mit Ja beantwortet, ⋯ 'Tageszeile ausblenden' oder Einstellungen › Saga): line null, keine Pille; 'Wartet auf dich' bleibt.",
+   "request": {
+    "method": "PUT",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    },
+    "body": {
+     "on": false,
+     "asked": true
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": false,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": null,
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "45c5a7a74c84"
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "wieder_an",
+   "desc": "'Wieder an' an der Pille: DELETE /api/ai/today/quiet -> Antwort wie GET, Zeile wieder da.",
+   "request": {
+    "method": "DELETE",
+    "path": "/api/ai/today/quiet?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T08:16:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": {
+     "text": "Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+     "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Elternabend 19:30",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "over",
+       "text": "„Pavillon abholen“ überfällig (+2)",
+       "n": 3,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      },
+      {
+       "kind": "due",
+       "text": "„Kuchen backen“ heute",
+       "target": {
+        "type": "row",
+        "id": 512
+       }
+      }
+     ]
+    },
+    "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "4c01b4a34ebc"
+   },
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "Elternabend 19:30",
+      "„Pavillon abholen“ überfällig (+2)",
+      "„Kuchen backen“ heute"
+     ],
+     "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "ohne_ai",
+   "desc": "Konto ohne Fähigkeit 'ai': 200 {enabled:false} - nichts zeigen, auch kein 'Wartet auf dich'.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Clara",
+     "salutation": "du",
+     "ai": false
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": false
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "kalt",
+   "desc": "Kalender noch nicht im Speicher (z. B. nach Neustart): Antwort sofort ohne Termine, pending ['calendar'], counts.events null (= noch unbekannt). Sobald der Kalender da ist, kommt ai.today.changed - dann neu laden (-> 'normal').",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": {
+     "text": "„Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+     "a11y": "Kurz gesagt: „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute",
+     "parts": [
+      {
+       "kind": "over",
+       "text": "„Pavillon abholen“ überfällig (+2)",
+       "n": 3,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      },
+      {
+       "kind": "due",
+       "text": "„Kuchen backen“ heute",
+       "target": {
+        "type": "row",
+        "id": 512
+       }
+      }
+     ]
+    },
+    "sentence": "Guten Morgen, Anna. Heute: „Pavillon abholen“ ist überfällig.",
+    "waiting": {
+     "n": 1,
+     "text": "1 Auftrag wartet auf dich ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": null,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [
+     "calendar"
+    ],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "986d7e9d21da"
+   },
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "„Pavillon abholen“ überfällig (+2)",
+      "„Kuchen backen“ heute"
+     ],
+     "a11y": "Kurz gesagt: „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "abend",
+   "desc": "Ab 18:00, wenn heute nichts mehr kommt: erster Termin von morgen (kind tomorrow).",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T19:05:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": {
+     "text": "Morgen 8:00 Zahnarzt",
+     "a11y": "Kurz gesagt: Morgen 8:00 Zahnarzt",
+     "parts": [
+      {
+       "kind": "tomorrow",
+       "text": "Morgen 8:00 Zahnarzt",
+       "target": {
+        "type": "events",
+        "date": "2026-07-08"
+       }
+      }
+     ]
+    },
+    "sentence": "Guten Abend, Anna. Morgen: Zahnarzt um 8:00.",
+    "waiting": null,
+    "counts": {
+     "events": 0,
+     "over": 0,
+     "due": 0,
+     "waiting": 0
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "8443d98fdaa6"
+   },
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "Morgen 8:00 Zahnarzt"
+     ],
+     "a11y": "Kurz gesagt: Morgen 8:00 Zahnarzt"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "sie",
+   "desc": "Anrede Sie (Lena): Teile unverändert, 'Wartet auf Sie', info gesiezt.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Lena",
+     "salutation": "sie"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Kurz gesagt",
+    "line": {
+     "text": "Zahnarzt 10:00 · „Steuererklärung abgeben“ heute",
+     "a11y": "Kurz gesagt: Zahnarzt 10:00, „Steuererklärung abgeben“ heute",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Zahnarzt 10:00",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "due",
+       "text": "„Steuererklärung abgeben“ heute",
+       "target": {
+        "type": "task",
+        "id": 44
+       }
+      }
+     ]
+    },
+    "sentence": "Guten Morgen, Lena. Heute: Zahnarzt um 10:00, „Steuererklärung abgeben“ ist heute fällig.",
+    "waiting": {
+     "n": 2,
+     "text": "2 Aufträge warten auf Sie ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 0,
+     "due": 1,
+     "waiting": 2
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Ohne KI berechnet – aus Ihren Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell.",
+    "v": "0e5030856670"
+   },
+   "show": {
+    "kurz": {
+     "label": "Kurz gesagt",
+     "parts": [
+      "Zahnarzt 10:00",
+      "„Steuererklärung abgeben“ heute"
+     ],
+     "a11y": "Kurz gesagt: Zahnarzt 10:00, „Steuererklärung abgeben“ heute"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "2 Aufträge warten auf Sie ›"
+   }
+  },
+  {
+   "id": "th",
+   "desc": "Thai: Teile ohne Höflichkeitspartikel (ค่ะ/ครับ), nur sentence mit Partikel der Persona (Marin: sie -> ค่ะ). Zeilenhöhe >= 1,6.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "th",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "สรุปสั้น ๆ",
+    "line": {
+     "text": "ประชุมผู้ปกครอง 19:30 · “รับเต็นท์” เลยกำหนด (+2) · “อบเค้ก” วันนี้",
+     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด และอีก 2 รายการ, “อบเค้ก” วันนี้",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "ประชุมผู้ปกครอง 19:30",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "over",
+       "text": "“รับเต็นท์” เลยกำหนด (+2)",
+       "n": 3,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      },
+      {
+       "kind": "due",
+       "text": "“อบเค้ก” วันนี้",
+       "target": {
+        "type": "row",
+        "id": 512
+       }
+      }
+     ]
+    },
+    "sentence": "อรุณสวัสดิ์ค่ะ คุณAnna วันนี้มีประชุมผู้ปกครองเวลา 19:30 และ “รับเต็นท์” เลยกำหนดแล้วค่ะ",
+    "waiting": {
+     "n": 1,
+     "text": "มี 1 งานรอคุณอยู่ ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 3,
+     "due": 1,
+     "waiting": 1
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "คำนวณโดยไม่ใช้ AI จากงาน นัดหมาย และงานที่มอบหมายของคุณ ไม่มีข้อมูลใดถูกส่งไปยังโมเดลภาษา",
+    "v": "5fc6a4a34ec2"
+   },
+   "show": {
+    "kurz": {
+     "label": "สรุปสั้น ๆ",
+     "parts": [
+      "ประชุมผู้ปกครอง 19:30",
+      "“รับเต็นท์” เลยกำหนด (+2)",
+      "“อบเค้ก” วันนี้"
+     ],
+     "a11y": "สรุปสั้น ๆ: ประชุมผู้ปกครอง 19:30, “รับเต็นท์” เลยกำหนด และอีก 2 รายการ, “อบเค้ก” วันนี้"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "มี 1 งานรอคุณอยู่ ›"
+   }
+  },
+  {
+   "id": "ru",
+   "desc": "Russisch: Plural in 'waiting' (1 / 2–4 / 5+, siehe waiting_plural).",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "ru",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Ben",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "enabled": true,
+    "on": true,
+    "day": "2026-07-07",
+    "tz": "Europe/Berlin",
+    "label": "Коротко",
+    "line": {
+     "text": "Родительское собрание 19:30 · «Забрать шатёр» просрочено (+4) · «Испечь торт» сегодня",
+     "a11y": "Коротко: Родительское собрание 19:30, «Забрать шатёр» просрочено, и ещё 4, «Испечь торт» сегодня",
+     "parts": [
+      {
+       "kind": "event",
+       "text": "Родительское собрание 19:30",
+       "target": {
+        "type": "events",
+        "date": "2026-07-07"
+       }
+      },
+      {
+       "kind": "over",
+       "text": "«Забрать шатёр» просрочено (+4)",
+       "n": 5,
+       "target": {
+        "type": "task",
+        "id": 7
+       }
+      },
+      {
+       "kind": "due",
+       "text": "«Испечь торт» сегодня",
+       "target": {
+        "type": "row",
+        "id": 512
+       }
+      }
+     ]
+    },
+    "sentence": "Доброе утро, Ben. Сегодня: родительское собрание в 19:30, «Забрать шатёр» просрочено.",
+    "waiting": {
+     "n": 2,
+     "text": "2 поручения ждут тебя ›",
+     "target": {
+      "type": "jobs",
+      "group": "wartet_auf_dich"
+     }
+    },
+    "counts": {
+     "events": 1,
+     "over": 5,
+     "due": 1,
+     "waiting": 2
+    },
+    "quiet": null,
+    "ask": null,
+    "pending": [],
+    "info": "Посчитано без ИИ – по твоим задачам, встречам и поручениям. Ничего из этого не уходит в языковую модель.",
+    "v": "f02575b87ca5"
+   },
+   "show": {
+    "kurz": {
+     "label": "Коротко",
+     "parts": [
+      "Родительское собрание 19:30",
+      "«Забрать шатёр» просрочено (+4)",
+      "«Испечь торт» сегодня"
+     ],
+     "a11y": "Коротко: Родительское собрание 19:30, «Забрать шатёр» просрочено, и ещё 4, «Испечь торт» сегодня"
+    },
+    "pill": null,
+    "ask": null,
+    "waiting": "2 поручения ждут тебя ›"
+   }
+  },
+  {
+   "id": "schluessel",
+   "desc": "Bearer-Schlüssel (sga_, OAuth, hk_) an /api/ai/today* -> 403; das Widget nimmt /api/app/today?line=1.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "hk_",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 403,
+   "response": {
+    "error": "Die Tageszeile gibt es nur in Saga selbst – nicht über API-Schlüssel."
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "alter_server",
+   "desc": "Server ohne Tageszeile: 404 -> nichts zeigen, kein Fehlerhinweis.",
+   "request": {
+    "method": "GET",
+    "path": "/api/ai/today?tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "session",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 404,
+   "response": {
+    "error": "Not Found"
+   },
+   "show": {
+    "kurz": null,
+    "pill": null,
+    "ask": null,
+    "waiting": null
+   }
+  },
+  {
+   "id": "widget",
+   "desc": "Widget (hk_): GET /api/app/today?line=1&tz=… hängt 'line' an (ohne sentence/ask/info). Mittel/Groß zeigen line.line.text (privacySensitive), Klein und Sperrbildschirm nur counts.",
+   "request": {
+    "method": "GET",
+    "path": "/api/app/today?line=1&tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "hk_",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "date": "2026-07-07",
+    "events": [
+     {
+      "summary": "Elternabend",
+      "start": "2026-07-07T19:30:00+02:00",
+      "end": "2026-07-07T21:00:00+02:00",
+      "allday": false,
+      "location": "",
+      "color": "#4184e4",
+      "calendar": "Familie"
+     }
+    ],
+    "tasks": [
+     {
+      "id": 7,
+      "text": "Pavillon abholen",
+      "due": "2026-07-05",
+      "prio": 1,
+      "overdue": true
+     }
+    ],
+    "errors": [],
+    "line": {
+     "enabled": true,
+     "on": true,
+     "line": {
+      "text": "Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+      "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute",
+      "parts": [
+       {
+        "kind": "event",
+        "text": "Elternabend 19:30",
+        "target": {
+         "type": "events",
+         "date": "2026-07-07"
+        }
+       },
+       {
+        "kind": "over",
+        "text": "„Pavillon abholen“ überfällig (+2)",
+        "n": 3,
+        "target": {
+         "type": "task",
+         "id": 7
+        }
+       },
+       {
+        "kind": "due",
+        "text": "„Kuchen backen“ heute",
+        "target": {
+         "type": "row",
+         "id": 512
+        }
+       }
+      ]
+     },
+     "waiting": {
+      "n": 1,
+      "text": "1 Auftrag wartet auf dich ›",
+      "target": {
+       "type": "jobs",
+       "group": "wartet_auf_dich"
+      }
+     },
+     "counts": {
+      "events": 1,
+      "over": 3,
+      "due": 1,
+      "waiting": 1
+     },
+     "quiet": null,
+     "v": "4c01b4a34ebc"
+    }
+   },
+   "show": {
+    "small": "counts",
+    "lock": "counts",
+    "medium": "Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "widget_ruhe",
+   "desc": "Widget bei aktiver Ruhe: line.line null, line.quiet gesetzt -> Mittel/Groß ohne Zeile (keine Pille im Widget).",
+   "request": {
+    "method": "GET",
+    "path": "/api/app/today?line=1&tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "hk_",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "date": "2026-07-07",
+    "events": [
+     {
+      "summary": "Elternabend",
+      "start": "2026-07-07T19:30:00+02:00",
+      "end": "2026-07-07T21:00:00+02:00",
+      "allday": false,
+      "location": "",
+      "color": "#4184e4",
+      "calendar": "Familie"
+     }
+    ],
+    "tasks": [
+     {
+      "id": 7,
+      "text": "Pavillon abholen",
+      "due": "2026-07-05",
+      "prio": 1,
+      "overdue": true
+     }
+    ],
+    "errors": [],
+    "line": {
+     "enabled": true,
+     "on": true,
+     "line": null,
+     "waiting": {
+      "n": 1,
+      "text": "1 Auftrag wartet auf dich ›",
+      "target": {
+       "type": "jobs",
+       "group": "wartet_auf_dich"
+      }
+     },
+     "counts": {
+      "events": 1,
+      "over": 3,
+      "due": 1,
+      "waiting": 1
+     },
+     "quiet": {
+      "until": "2026-07-08T05:00:00+02:00",
+      "text": "Ruhe bis morgen",
+      "undo": "Wieder an"
+     },
+     "v": "89c0cb5de019"
+    }
+   },
+   "show": {
+    "small": "counts",
+    "lock": "counts",
+    "medium": null,
+    "waiting": "1 Auftrag wartet auf dich ›"
+   }
+  },
+  {
+   "id": "widget_ohne_ai",
+   "desc": "Widget, Konto ohne 'ai': line {enabled:false} -> wie bisher.",
+   "request": {
+    "method": "GET",
+    "path": "/api/app/today?line=1&tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "hk_",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "date": "2026-07-07",
+    "events": [
+     {
+      "summary": "Elternabend",
+      "start": "2026-07-07T19:30:00+02:00",
+      "end": "2026-07-07T21:00:00+02:00",
+      "allday": false,
+      "location": "",
+      "color": "#4184e4",
+      "calendar": "Familie"
+     }
+    ],
+    "tasks": [
+     {
+      "id": 7,
+      "text": "Pavillon abholen",
+      "due": "2026-07-05",
+      "prio": 1,
+      "overdue": true
+     }
+    ],
+    "errors": [],
+    "line": {
+     "enabled": false
+    }
+   },
+   "show": {
+    "small": "counts",
+    "medium": null,
+    "lock": "counts"
+   }
+  },
+  {
+   "id": "widget_alt",
+   "desc": "Älterer Server bzw. ohne line=1: Antwort ohne 'line' (unverändert) -> wie bisher.",
+   "request": {
+    "method": "GET",
+    "path": "/api/app/today?line=1&tz=Europe/Berlin",
+    "lang": "de",
+    "auth": "hk_",
+    "now": "2026-07-07T07:40:00+02:00",
+    "account": {
+     "name": "Anna",
+     "salutation": "du"
+    }
+   },
+   "status": 200,
+   "response": {
+    "date": "2026-07-07",
+    "events": [
+     {
+      "summary": "Elternabend",
+      "start": "2026-07-07T19:30:00+02:00",
+      "end": "2026-07-07T21:00:00+02:00",
+      "allday": false,
+      "location": "",
+      "color": "#4184e4",
+      "calendar": "Familie"
+     }
+    ],
+    "tasks": [
+     {
+      "id": 7,
+      "text": "Pavillon abholen",
+      "due": "2026-07-05",
+      "prio": 1,
+      "overdue": true
+     }
+    ],
+    "errors": []
+   },
+   "show": {
+    "small": "counts",
+    "medium": null,
+    "lock": "counts"
+   }
+  }
+ ]
+}

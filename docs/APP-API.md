@@ -1551,6 +1551,10 @@ Bisherige Felder `open`/`done` bleiben; dazu (`sources=1` ist gleichwertig):
 - `edit: false` = nur Lesen: Häkchen ausgrauen.
 - Widget/„Heute“: `GET /api/app/today?sources=1` liefert zusätzlich `items` (höchstens 20), `more` (Rest), `sources`
   (nur `db`, `title`, `icon`) und `people`.
+- Tageszeile (2.6, Bugs-DB 2271 K-D): `GET /api/app/today?line=1&tz=Europe/Berlin` hängt zusätzlich `line` =
+  `{enabled, on, line, waiting, counts, quiet, v}` an (Form wie `GET /api/ai/today`, ohne `sentence`/`ask`/`info`;
+  `docs/APP-API-KI.md` §13.3). Mittel/Groß zeigen `line.line.text`, Klein und Sperrbildschirm nur `counts`. Ohne
+  `line=1` bleibt die Antwort unverändert; ohne Fähigkeit `ai` ist `line` = `{"enabled": false}`.
 
 ### Abhaken und ändern
 

@@ -613,3 +613,88 @@ wiederholen, dann wie `409` (eine zweite Freigabe mit demselben Token ist harmlo
   Herkunft ≠ `saga`, melden sich so gleich als „braucht dich“).
 - Ruhe-Helfer `saga.ai_saga.set_quiet(uid, where, until)` / `quiet_until(uid, where)` mit `where` `push` (K-C) bzw.
   `today` (Tageszeile, K-D); `until` `None` bzw. in der Vergangenheit = aus. Zeit aus `testclock.now()`.
+
+## 13. Tageszeile „Kurz gesagt“ auf „Heute“ (2.6, Bugs-DB 2271 K-D – Abbruchpunkt C)
+
+Server `saga/ai_today.py`, Testvektoren `tests/today_vectors.json` (Format `saga-today/v1`: jede Antwort plus die
+erwartete Anzeige `show` – Web, iOS und Android decodieren dieselben Fälle). Unter der Lagezeile (Zahlen) nennt die
+Tageszeile **höchstens drei Dinge beim Namen**: nächsten Termin, wichtigste überfällige bzw. heute fällige Aufgabe
+(samt Aufgabenquellen), ab 18:00 den ersten Termin von morgen, wenn heute nichts mehr kommt. Darunter eine eigene Zeile
+„Wartet auf dich“ (Aufträge in `wartet_ok` + `wartet_dich`). **Ohne Modell und ohne Netz** berechnet, beim Abruf (kein
+Morgenlauf); keine KI-Marke an der Zeile, ⓘ erklärt das (`info`).
+
+**Zugang:** nur Konten mit Fähigkeit `ai` – **ohne Einwilligung**, Not-Aus und „Nicht stören“ (2029) wirken nicht (kein
+Modell). Sitzung bzw. Geräte-Anmeldung mit `X-Saga: 1`. Jeder Bearer-Schlüssel (`sga_`, OAuth, `hk_`) an
+`/api/ai/today*` → **403**; das Widget nimmt `/api/app/today?line=1`. Kein MCP-Werkzeug. Ältere Server: 404 → nichts zeigen.
+
+### 13.1 `GET /api/ai/today?tz=Europe/Berlin`
+
+`tz` = IANA-Zone des Geräts (sonst Zone des Kontos). `ETag` = `"<v>"`; mit `If-None-Match` → **304** ohne Inhalt.
+Ohne Fähigkeit `ai` → 200 `{"enabled": false}` (sonst keine Felder).
+
+```json
+{"enabled": true, "on": true, "day": "2026-07-07", "tz": "Europe/Berlin", "v": "3f9c1a0b2d4e",
+ "label": "Kurz gesagt",
+ "line": {"text": "Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute",
+          "a11y": "Kurz gesagt: Elternabend 19:30, „Pavillon abholen“ überfällig, plus 2, „Kuchen backen“ heute",
+          "parts": [{"kind": "event", "text": "Elternabend 19:30", "target": {"type": "events", "date": "2026-07-07"}},
+                    {"kind": "over", "text": "„Pavillon abholen“ überfällig (+2)", "n": 3, "target": {"type": "task", "id": 7}},
+                    {"kind": "due", "text": "„Kuchen backen“ heute", "target": {"type": "row", "id": 512}}]},
+ "sentence": "Guten Morgen, Anna. Heute: Elternabend um 19:30, „Pavillon abholen“ ist überfällig.",
+ "waiting": {"n": 1, "text": "1 Auftrag wartet auf dich ›", "target": {"type": "jobs", "group": "wartet_auf_dich"}},
+ "counts": {"events": 1, "over": 3, "due": 1, "waiting": 1},
+ "quiet": null, "ask": null, "pending": [],
+ "info": "Ohne KI berechnet – aus deinen Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell."}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `on` | Schalter der Person. `false` → `line: null`, keine Pille; `waiting` bleibt. |
+| `day`, `tz` | Tag und Zone, in denen gerechnet wurde. |
+| `v` | Stand (undurchsichtig, = ETag). |
+| `label` | Überschrift („Kurz gesagt“ / „In short“). |
+| `line` | `null` an ruhigen Tagen, bei Ruhe und wenn aus – dann **an der Stelle nichts** (kein Platzhalter). Sonst `{text, a11y, parts}`; `text` = alle `parts[].text`, mit „ · “ verbunden; ≤ 3 Teile, ≤ 160 Grapheme, Titel ≤ 40 Grapheme mit „…“. |
+| `parts[]` | `kind` `event` \| `over` \| `due` \| `tomorrow`; `n` = Anzahl dieser Art, nur wenn > 1 (der Text endet dann auf „(+n−1)“). |
+| `target` | `{type: "task", id}` · `{type: "row", id}` (Zeile einer Aufgabenquelle = Seite) · `{type: "tasks", filter: "overdue"\|"today"}` · `{type: "events", date}` · `{type: "jobs", group: "wartet_auf_dich"}`. Tippen **öffnet nur** (hakt nie ab, RT-40 sinngemäß); unbekannter `type` → Teil nicht antippbar. |
+| `a11y` | Vorlesetext der ganzen Zeile. Ohne `aria-live`, nie Fokus. |
+| `sentence` | Gruß + Tag als Satz in der Persona (Form, Thai-Partikel nur hier). Für K-G (Siri) – **noch nicht anzeigen**. |
+| `waiting` | `null` oder `{n, text, target}` – eigene Zeile, auch bei `on: false` und bei Ruhe. Anrede du/Sie der Person. |
+| `counts` | `{events, over, due, waiting}` (Widget klein, Sperrbildschirm). `events: null` = Kalender noch unbekannt. |
+| `quiet` | `null` oder `{until, text, undo}` (ISO mit Versatz): Pille „Ruhe bis morgen · Wieder an“ statt der Zeile, gleiche Höhe. |
+| `ask` | `null` oder `{text, yes, no}`: einmalige Frage „Tageszeile ausblenden?“ statt der Pille. |
+| `pending` | Quellen, die noch fehlen (`["calendar"]`): die Antwort kommt sofort ohne sie, danach `ai.today.changed`. |
+| `info` | Text hinter ⓘ bzw. „Warum sehe ich das?“. |
+
+Alle Texte kommen fertig vom Server in der Sprache der Anfrage (de/en/es/ru/th, RU-Plural 1 / 2–4 / 5+). **Apps zeigen
+sie unverändert und bauen keine Sätze**; Zustände nur an Feldern erkennen, nie an Texten. Knopfbeschriftungen
+(✕ „Gerade nicht“, ⋯ „Tageszeile ausblenden“, „Warum sehe ich das?“) liegen in den Apps bzw. `i18n`. Unbekannte Felder
+ignorieren (`ideas` ist für „Ideen“ reserviert).
+
+### 13.2 Ruhe, Schalter, Frage
+
+| Aufruf | Wirkung (Antwort jeweils wie `GET`) |
+|---|---|
+| `POST /api/ai/today/quiet?tz=…` | ✕ an der Zeile (Wischen = ✕): Ruhe **bis morgen 05:00 Ortszeit**, auf allen Geräten der Person. Beim dritten ✕ in 14 Tagen kommt einmal `ask`. |
+| `DELETE /api/ai/today/quiet?tz=…` | „Wieder an“ an der Pille. |
+| `PUT /api/ai/today {on?, asked?}` | `on: false` = ausblenden (⋯, Frage „Ja“, Einstellungen › Saga), `on: true` = wieder einblenden (hebt auch die Ruhe auf). `asked: true` = Frage beantwortet, kommt nie wieder. Frage „Ja“ → `{on: false, asked: true}`, „Nein“ → `{asked: true}`. Andere Felder oder Werte → 400 (vor jedem Schreiben). |
+
+Ohne Fähigkeit `ai` → 403. Gespeichert in `user_kv` `ai_today` (`{off?, x: [≤ 3 Zeitpunkte], asked?}`; Ruhe über den
+gemeinsamen Ruhe-Helfer, Ort `today`). Steht im Export „Meine Daten“, Kontolöschung räumt ab. Nur die Tageszeile ruht –
+Mitteilungen und „Gerade nicht“ der Mitteilungen (§12) sind davon getrennt.
+
+### 13.3 Widget: `GET /api/app/today?line=1&tz=…` (`hk_`)
+
+Hängt an die bisherige Antwort (`date`, `events`, `tasks`, `errors`, mit `sources=1` auch `items` …) **`line`** an:
+`{enabled, on, line, waiting, counts, quiet, v}` – ohne `sentence`, `ask`, `info`. Ohne `line=1` unverändert. Mittel/Groß
+zeigen `line.line.text` (iOS `privacySensitive()`), Klein und Sperrbildschirm **nur Zahlen** (`counts`); bei Ruhe
+(`line.line: null`) keine Pille im Widget. Ohne Fähigkeit `ai`: `line: {"enabled": false}`.
+
+### 13.4 Live
+
+`ai.today.changed {v}` an die Person – bei `task.*`, Aufträgen in/aus „Wartet auf dich“ (bus `job.state`), wenn der
+Kalender fertig geladen ist und bei Ruhe/Schalter (auch von einem anderen Gerät). Clients entprellen 400 ms und laden
+neu, wenn `v` vom eigenen abweicht. Dazu stiller Widget-Push (`widget_push.mark(today=True)`) bei Aufgaben, Auftrags-Wechseln
+und Ruhe/Schalter.
+
+**Stand S1 (Vertrag):** Antwortform vollständig; der Server liefert vorerst nur eigene Aufgaben (ohne Termine und
+Aufgabenquellen) und vorläufige Texte. Bausteine, Kalender, Live und `aitoday1` folgen (S2/S3).
