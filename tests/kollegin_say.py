@@ -571,7 +571,7 @@ def api(adm):
     s, d = req("GET", "/api/ai/status", A)
     keys = list(d) if isinstance(d, dict) else []
     ok(f"status: style angehaengt (nach units), wirksam fuer die Person ({d.get('style') if isinstance(d, dict) else d})",
-       s == 200 and keys[-1] == "style" and keys.index("units") < keys.index("style")
+       s == 200 and "style" in keys and keys.index("units") < keys.index("style")      # danach z. B. jobs/level (K-B 2267)
        and d["style"] == {"label": "Saga KI", "form": "sie", "lively": "sachlich", "salutation": "sie"})
     s, d = req("GET", "/api/ai/prefs", Bk)
     ok("prefs je Person: B bleibt beim Standard", s == 200 and d["effective"] == {"salutation": "du", "lively": "warm"})
