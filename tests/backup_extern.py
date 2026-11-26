@@ -341,6 +341,14 @@ try:
     r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, good_name], cwd=APP, env=fenv,
                        capture_output=True, text=True, timeout=900)
     ok(f"run.py restore --schluessel ({r.returncode}) {(r.stdout + r.stderr).strip()[-300:]}", r.returncode == 0)
+    fbk = os.path.join(fresh_state, "backups")
+    ftmp = os.path.join(fbk, "extern-tmp")
+
+    def plain_left():                                   # 2464: kein entschluesselter Dump bleibt liegen
+        return [x for x in os.listdir(fbk) if x.endswith(".dump")] + \
+               ([x for x in os.listdir(ftmp) if x.startswith("wiederherstellung-")] if os.path.isdir(ftmp) else [])
+    ok(f"restore --schluessel: kein Klartext-Dump bleibt liegen (2464) {plain_left()}", not plain_left()
+       and oct(os.stat(ftmp).st_mode & 0o777) == "0o700")
     ok("Daten wieder da (Seite mit Markierung, Konten)", q("SELECT count(*) FROM note WHERE body = %s", (MARK,), url=FRESH_URL)[0][0] == 1
        and q("SELECT count(*) FROM users WHERE username IN ('bkx-adm', 'bkx-user')", url=FRESH_URL)[0][0] == 2)
     same = all(open(os.path.join(STATE, p), "rb").read() == open(os.path.join(fresh_state, p), "rb").read()
@@ -390,7 +398,21 @@ try:
        r.returncode == 0 and not outside and os.path.isfile(os.path.join(fresh_state, "files", "ok-boese.txt")))
     ok("Name aus manifest.json wird nicht als Pfad benutzt", not any(os.path.exists(os.path.join(d_, "boese-pfad-extern.dump"))
                                                                     for d_ in ("/", TMPROOT, fresh_state, os.path.dirname(TMPROOT)))
-       and os.path.isfile(os.path.join(fresh_state, "backups", "saga-20260101-000000-extern.dump")))
+       and r.returncode == 0 and not plain_left())
+
+    # --- 2464: Abbruch beim Einspielen (kein Saga-Backup, 2461) laesst ebenfalls keinen Klartext liegen ---
+    fremd = os.path.join(TMPROOT, "fremd", "saga-20260102-000000")
+    os.makedirs(fremd)
+    subprocess.run(["age", "-e", "-r", pub1, "-o", os.path.join(fremd, "db.dump.age")], input=b"kein pg_dump-Archiv\n" * 64, check=True)
+    with open(os.path.join(fremd, "manifest.json"), "w") as f:
+        json.dump({"name": "saga-20260102-000000", "files": {"db.dump.age": {
+            "size": os.path.getsize(os.path.join(fremd, "db.dump.age")),
+            "sha256": backups.sha256_file(os.path.join(fremd, "db.dump.age"))}}}, f)
+    r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, fremd], cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""),
+                       capture_output=True, text=True, timeout=300)
+    ok(f"restore --schluessel bricht ab (kein Saga-Backup) ohne Klartext-Rest (2464) ({r.returncode} {plain_left()})",
+       r.returncode != 0 and "Traceback" not in r.stderr and not plain_left()
+       and q("SELECT count(*) FROM note WHERE body = %s", (MARK,), url=FRESH_URL)[0][0] == 1)
 
     # --- Login Flow: Login-Link nur http(s) ---
     ctl(loginlink="javascript:alert(1)")
@@ -739,13 +761,26 @@ try:
     backups.save_config(fcfg)
     # Arbeitsordner: Reste mit Klartext werden aufgeraeumt; eine laufende Pruefung (eigener Ordner) bleibt
     tdir = backups.tmp_dir()
-    for n_ in ("lauf-saga-20260101-000000", "pruefung-frisch", "pruefung-alt", "pruefung"):
+    for n_ in ("lauf-saga-20260101-000000", "pruefung-frisch", "pruefung-alt", "pruefung", "wiederherstellung-frisch",
+               "wiederherstellung-alt"):
         os.makedirs(os.path.join(tdir, n_), exist_ok=True)
         with open(os.path.join(tdir, n_, "db.dump"), "w") as f:
             f.write("PGDMP klartext")
-    os.utime(os.path.join(tdir, "pruefung-alt"), (time.time() - 2 * 86400, time.time() - 2 * 86400))
+    for n_ in ("pruefung-alt", "wiederherstellung-alt"):
+        os.utime(os.path.join(tdir, n_), (time.time() - 2 * 86400, time.time() - 2 * 86400))
+    bdir = db.BACKUP_DIR                                # 2464: Klartext-Dumps von restore --schluessel bis 2.5
+    for n_ in ("saga-20260101-000000-extern.dump", "saga-extern-extern.dump", "saga-20260101-000000.dump", "notiz-extern.dump"):
+        with open(os.path.join(bdir, n_), "w") as f:
+            f.write("PGDMP klartext")
     nclean = backups.cleanup_tmp()
-    ok(f"Start raeumt Klartext-Reste auf ({nclean}), laufende Pruefung bleibt", sorted(os.listdir(tdir)) == ["pruefung-frisch"])
+    left_b = sorted(x for x in os.listdir(bdir) if x.endswith(".dump"))
+    ok(f"Start raeumt Klartext-Reste auf ({nclean}), laufende Pruefung/Wiederherstellung bleibt, eigene Backups bleiben {left_b}",
+       sorted(os.listdir(tdir)) == ["pruefung-frisch", "wiederherstellung-frisch"] and nclean == 6
+       and "saga-20260101-000000.dump" in left_b and "notiz-extern.dump" in left_b
+       and not any(x.endswith("-extern.dump") and x != "notiz-extern.dump" for x in left_b))
+    shutil.rmtree(os.path.join(tdir, "wiederherstellung-frisch"))
+    for n_ in ("saga-20260101-000000.dump", "notiz-extern.dump"):
+        os.unlink(os.path.join(bdir, n_))
     time.sleep(1.1)
     good, fout = backups.run("test")
     fname = fout["name"] if good else ""

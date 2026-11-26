@@ -1870,7 +1870,9 @@ already set up in the admin area (same database), the `SAGA_BACKUP_*` settings a
 also give a local folder with the downloaded run (put it under `/data/…`). Saga compares the checksums from
 `manifest.json` before decrypting. The database is restored through the same `db.restore` as `run.py restore` (all or
 nothing); the secrets are also written to `/data/backups/<run>-geheimnisse.env` (readable only by Saga), and Saga warns
-if they differ from `.env`.
+if they differ from `.env`. The decrypted database only exists while it is being restored, in a separate work folder
+under `/data/backups/extern-tmp/` (readable only by Saga), and is deleted afterwards – also when the restore is aborted.
+Versions up to 2.5 left it behind as `/data/backups/<run>-extern.dump`; Saga deletes such leftovers on the next start.
 
 **Restoring without Saga** (only `age` and the PostgreSQL tools; `age` is available for Linux, macOS and Windows):
 

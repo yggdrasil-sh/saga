@@ -1945,7 +1945,10 @@ destino ya está configurado en el área de administración (misma base de datos
 `SAGA_BACKUP_*`. En lugar de un nombre también vale una carpeta local con la ejecución descargada (guárdala en
 `/data/…`). Saga compara las sumas de `manifest.json` antes de descifrar. La base de datos se restaura con el mismo
 `db.restore` que `run.py restore` (todo o nada); los secretos se guardan además en
-`/data/backups/<ejecución>-geheimnisse.env` (legible solo para Saga), y Saga avisa si difieren del `.env`.
+`/data/backups/<ejecución>-geheimnisse.env` (legible solo para Saga), y Saga avisa si difieren del `.env`. La base de
+datos descifrada solo existe mientras se restaura, en una carpeta de trabajo propia bajo `/data/backups/extern-tmp/`
+(legible solo para Saga), y se borra después, también si la restauración se interrumpe. Las versiones hasta 2.5 la
+dejaban como `/data/backups/<ejecución>-extern.dump`; Saga borra esos restos en el siguiente arranque.
 
 **Restaurar sin Saga** (solo `age` y las herramientas de PostgreSQL; `age` existe para Linux, macOS y Windows):
 

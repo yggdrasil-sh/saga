@@ -23,8 +23,9 @@
 - Zeitplan: Hintergrund-Thread, genau ein Laeufer je Instanz (pg_try_advisory_lock), nice/ionice; Aufbewahrung GFS
   (taeglich/woechentlich/monatlich). Vor dem Hochladen Platz im Ziel pruefen (WebDAV: quota-available-bytes, Ordner:
   freier Platz; S3 meldet keinen).
-- Arbeitsordner: <BACKUP_DIR>/extern-tmp/lauf-* (Lauf) und pruefung-* (backup-pruefen) getrennt; Reste mit Klartext
-  (db.dump) raeumt der Start auf.
+- Arbeitsordner: <BACKUP_DIR>/extern-tmp/lauf-* (Lauf), pruefung-* (backup-pruefen) und wiederherstellung-* (restore
+  --schluessel) getrennt, je 0700; Reste mit Klartext (db.dump) raeumt der Start auf, ebenso entschluesselte
+  <lauf>-extern.dump, die Versionen bis 2.5 in <BACKUP_DIR> liegen liessen (Bugs-DB 2464).
 - Fehler und "seit 48 h kein Erfolg": Benachrichtigung an alle Admins (Glocke + Push, Art backup.failed), optional Webhook.
 - SAGA_RESTORE_TEST=1 (Testwiederherstellung auf einem zweiten Server): kein Zeitplan, keine ausgehenden Verbindungen -
   ausser LESEN vom eingetragenen Ziel auf der Kommandozeile (backup-holen, restore --schluessel, backup-pruefen; cli_dav).
@@ -65,6 +66,7 @@ TICK = max(1.0, float(E.get("BACKUP_TICK", "60")))                  # Zeitplan: 
 STALE_H = 48                                       # so lange ohne Erfolg -> Benachrichtigung
 HISTORY_KEEP = 200                                 # Zeilen in backup_run
 RUN_RE = re.compile(r"^saga-(\d{8})-(\d{6})$")
+OLD_PLAIN_RE = re.compile(r"^(saga-\d{8}-\d{6}|saga-extern)-extern\.dump$")   # Klartext-Dump von restore --schluessel bis 2.5
 PARTS = ("db.dump.age", "dateien.tar.age", "geheimnisse.env.age", "manifest.json.age")
 DATA_DIRS = ("files", "chat", "svc-icons", "covers")   # unter STATE_DIR; files/thumbs entsteht neu; covers: Titelbild-Galerie (2.5)
 UA = f"Saga/{VERSION} (Backup)"
@@ -93,19 +95,28 @@ def tmp_dir():
 
 def cleanup_tmp(max_age_pruefung=12 * 3600, now=None):
     """Reste abgebrochener Laeufe/Pruefungen loeschen (enthalten Klartext, z. B. db.dump). Lauf-Ordner nur, wenn gerade
-    kein Lauf dieser Datenbank laeuft; Pruefungs-Ordner (run.py backup-pruefen, eigener Prozess) erst, wenn sie alt
-    sind. -> Anzahl geloeschter Ordner."""
+    kein Lauf dieser Datenbank laeuft; Pruefungs- und Wiederherstellungs-Ordner (run.py backup-pruefen bzw. restore
+    --schluessel, eigener Prozess) erst, wenn sie alt sind. Dazu entschluesselte <lauf>-extern.dump in BACKUP_DIR,
+    die restore --schluessel bis 2.5 liegen liess (2464). -> Anzahl geloeschter Ordner/Dateien."""
+    now = now or time.time()
+    n = 0
+    try:
+        for name in os.listdir(db.BACKUP_DIR):
+            p = os.path.join(db.BACKUP_DIR, name)
+            if OLD_PLAIN_RE.match(name) and os.path.isfile(p) and not os.path.islink(p):
+                os.unlink(p)
+                n += 1
+    except OSError:
+        pass
     base = tmp_dir()
     try:
         names = os.listdir(base)
     except OSError:
-        return 0
-    now = now or time.time()
+        names = []
     try:
         busy = running()
     except Exception:  # noqa: BLE001 - Datenbank beim Start kurz weg: Lauf-Ordner diesmal stehen lassen
         busy = True
-    n = 0
     for name in names:
         p = os.path.join(base, name)
         try:
@@ -113,12 +124,12 @@ def cleanup_tmp(max_age_pruefung=12 * 3600, now=None):
         except OSError:
             continue
         old_layout = RUN_RE.match(name) or name == "pruefung"            # Ordner vor der Aufteilung (2.3-Vorabstand)
-        if (name.startswith("lauf-") and not busy) or (name.startswith("pruefung-") and age > max_age_pruefung) \
-                or (old_layout and not busy):
+        own_proc = name.startswith(("pruefung-", "wiederherstellung-"))
+        if (name.startswith("lauf-") and not busy) or (own_proc and age > max_age_pruefung) or (old_layout and not busy):
             shutil.rmtree(p, ignore_errors=True)
             n += 1
     if n:
-        print(f"backup: {n} Arbeitsordner frueherer Laeufe aufgeraeumt", flush=True)
+        print(f"backup: {n} Klartext-Reste frueherer Laeufe aufgeraeumt", flush=True)
     return n
 
 
@@ -1875,18 +1886,27 @@ def restore_cmd(keyfile, ref, out=print):
     man = verify_dir(d)
     # Name nur in bekannter Form (das Manifest liegt unverschluesselt im Ziel - kein Pfad aus fremden Daten)
     name = next((n for n in (str(man.get("name") or ""), os.path.basename(os.path.abspath(d))) if RUN_RE.match(n)), "saga-extern")
+    import secrets as _sec
     os.makedirs(db.BACKUP_DIR, exist_ok=True)
-    dump = os.path.join(db.BACKUP_DIR, f"{name}-extern.dump")
-    out("Entschluessele Datenbank ...")
+    os.makedirs(tmp_dir(), mode=0o700, exist_ok=True)
+    # Klartext-Dump nur in einem eigenen 0700-Ordner, danach weg - auch bei Abbruch (2464; vorher blieb
+    # <lauf>-extern.dump in BACKUP_DIR liegen). Reste nach kill -9 raeumt cleanup_tmp beim Start auf.
+    work = os.path.join(tmp_dir(), "wiederherstellung-" + _sec.token_hex(6))
+    os.makedirs(work, mode=0o700)
     try:
-        decrypt(os.path.join(d, "db.dump.age"), dump, keyfile)
-    except RuntimeError as ex:
-        raise SystemExit(str(ex))
-    out("Spiele Datenbank zurueck ...")
-    try:
-        db.restore(dump)
-    except RuntimeError as ex:              # z. B. kein Saga-Backup (2461): Meldung statt Traceback, nichts geaendert
-        raise SystemExit(str(ex))
+        dump = os.path.join(work, "db.dump")
+        out("Entschluessele Datenbank ...")
+        try:
+            decrypt(os.path.join(d, "db.dump.age"), dump, keyfile)
+        except RuntimeError as ex:
+            raise SystemExit(str(ex))
+        out("Spiele Datenbank zurueck ...")
+        try:
+            db.restore(dump)
+        except RuntimeError as ex:          # z. B. kein Saga-Backup (2461): Meldung statt Traceback, nichts geaendert
+            raise SystemExit(str(ex))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     out(f"Datenbank zurueckgespielt (Schema-Stand {db.schema_version()}).")
     if os.path.isfile(os.path.join(d, "dateien.tar.age")):
         out(f"Dateien: {restore_files(os.path.join(d, 'dateien.tar.age'), keyfile)} nach {STATE_DIR} zurueckgeholt.")
