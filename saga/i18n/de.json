@@ -5709,5 +5709,6 @@
  "Oder gib mir einen Auftrag:": "Oder gib mir einen Auftrag:",
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.",
- "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Neue Aufträge gibst du, sobald du {name} kennengelernt hast."
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.",
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern."
 }

@@ -5,7 +5,8 @@ Grundsaetze
   Ollama nativ /api/chat), dazu Modell, API-Schluessel (verschluesselt wie LDAP/OIDC), erlaubte Gruppen, Zeitlimit,
   Kontingent je Person und Tag. Saga spricht nur AUSGEHEND mit diesem Endpunkt - kein zusaetzlicher Port, keine Dienste.
 - SSRF: verbunden wird nur mit dem Host der Admin-Adresse. Oeffentliche IPs sind erlaubt; interne (LAN-Ollama) nur die
-  IPs, die beim Speichern im Admin-Bereich aufgeloest und festgehalten wurden ("pinned"). Keine Weiterleitungen.
+  IPs, die beim Speichern im Admin-Bereich aufgeloest und festgehalten wurden ("pinned"). Waren das nur private IPs
+  ("im Heimnetz"), gilt auch bei https: nur diese - kein Wechsel ins Internet per DNS (Bugs-DB 2494). Keine Weiterleitungen.
   Die Pruefung laeuft beim Verbindungsaufbau (saga/netguard.py: einmal aufloesen, pruefen, genau diese IP verbinden).
 - Kontext: nur Inhalte, die die Person sehen darf - eigene Seiten (ohne Papierkorb/Archiv) und fuer sie freigegebene
   (sharing.Access, Verweise auf Seiten ohne Zugriff maskiert wie ueberall). Chats werden nie gelesen. Aufgaben und
@@ -155,18 +156,40 @@ def _ipn(ip):
 
 
 def ip_checker(c):
-    """ip_ok(ip, host, port) fuer netguard: nur der Host der Admin-Adresse; interne IPs nur, wenn festgehalten."""
+    """ip_ok(ip, host, port) fuer netguard: nur der Host der Admin-Adresse; interne IPs nur, wenn festgehalten.
+    Bugs-DB 2494: Waren beim Speichern alle festgehaltenen IPs privat (Hinweis "im Heimnetz"), gilt das auch fuer https -
+    nur diese IPs. Loest der Name spaeter oeffentlich auf, keine Verbindung (nichts geht raus); ai_saga.mark_left_home
+    stellt den Hinweis auf "im Internet" und verlangt die Einwilligung neu (wie beim Host-Wechsel)."""
+    from saga import ai_saga
     pu = urlparse(c.get("url") or "")
     host, plain = (pu.hostname or "").lower(), pu.scheme == "http"
     pinned = {_ipn(x) for x in c.get("pinned") or []}
+    home = ai_saga.home_ips(pinned)
 
     def ok(ip, h, _port):
         if not host or str(h or "").lower().strip("[]") != host.strip("[]"):
             return False
-        if plain:                                          # http nur intern (wie beim Speichern): nur festgehaltene IPs,
+        if home and not ai_saga.home_ips([_ipn(ip) or ip]):
+            ai_saga.mark_left_home(c, _ipn(ip) or ip)
+            return False
+        if plain or home:                                  # http nur intern (wie beim Speichern): nur festgehaltene IPs,
             return _ipn(ip) in pinned and not is_public(ip)    # sonst ginge der API-Schluessel unverschluesselt ins Internet
         return is_public(ip) or _ipn(ip) in pinned
     return ok
+
+
+def blocked_error(c):
+    """Verbindung von netguard verweigert -> verstaendliche Meldung (2494: eigener Text, wenn der Name jetzt oeffentlich
+    aufloest, obwohl er beim Speichern im Heimnetz lag)."""
+    from saga import ai_saga
+    try:
+        cur = auth.settings(fresh=True).get("ai") or {}
+    except Exception:  # noqa: BLE001
+        cur = {}
+    if cur.get("url") == c.get("url") and ai_saga.left_home(cur):
+        return AIError(t("Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. "
+                         "Bitte im Admin-Bereich prüfen und neu speichern."))
+    return AIError(t("Verbindung zum Modell-Endpunkt nicht erlaubt (Adresse geändert? Im Admin-Bereich neu speichern)."))
 
 
 def configured(c=None):
@@ -1733,7 +1756,7 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                       else t("Zeitlimit erreicht – die Antwort ist unvollständig."))
     except httpx.HTTPError as ex:
         if isinstance(ex.__cause__, Blocked):
-            raise AIError(t("Verbindung zum Modell-Endpunkt nicht erlaubt (Adresse geändert? Im Admin-Bereich neu speichern)."))
+            raise blocked_error(c)
         raise AIError(t("Modell-Endpunkt nicht erreichbar."))
     finally:
         cl.close()
@@ -1849,7 +1872,7 @@ def list_models(c):
         raise
     except (ValueError, httpx.HTTPError) as ex:
         if isinstance(ex, httpx.HTTPError) and isinstance(ex.__cause__, Blocked):
-            raise AIError(t("Verbindung zum Modell-Endpunkt nicht erlaubt (Adresse geändert? Im Admin-Bereich neu speichern)."))
+            raise blocked_error(c)
         raise AIError(t("Modell-Endpunkt nicht erreichbar."))
     finally:
         cl.close()

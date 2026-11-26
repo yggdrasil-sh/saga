@@ -707,11 +707,23 @@ def run():
     ok("SSRF: nur der Admin-Host, interne IPs nur festgehaltene", chk("192.168.1.5", "ollama.lan", 11434) and not chk("192.168.1.6", "ollama.lan", 11434)
        and not chk("192.168.1.5", "andere.lan", 11434) and not chk("127.0.0.1", "ollama.lan", 11434)
        and not chk("8.8.8.8", "evil.example", 443))
-    chk_s = sai.ip_checker({"url": "https://api.example.org/v1", "pinned": ["192.168.1.5"]})
+    chk_s = sai.ip_checker({"url": "https://api.example.org/v1", "pinned": ["10.20.30.40", "8.8.4.4"]})
     ok("SSRF: http-Adresse nur zu festgehaltenen internen IPs (DNS auf oeffentliche IP -> kein Klartext-Schluessel ins Netz); "
-       "https auch oeffentlich", not chk("8.8.8.8", "ollama.lan", 11434) and not chk("::ffff:8.8.8.8", "ollama.lan", 11434)
-       and chk_s("8.8.8.8", "api.example.org", 443) and chk_s("192.168.1.5", "api.example.org", 443)
+       "https (festgehalten auch oeffentlich = 'im Internet') auch oeffentlich",
+       not chk("8.8.8.8", "ollama.lan", 11434) and not chk("::ffff:8.8.8.8", "ollama.lan", 11434)
+       and chk_s("8.8.8.8", "api.example.org", 443) and chk_s("10.20.30.40", "api.example.org", 443)
        and not chk_s("10.0.0.1", "api.example.org", 443) and not chk_s("::ffff:10.0.0.1", "api.example.org", 443))
+    # 2494: https, aber beim Speichern nur private IPs ("im Heimnetz") -> nur diese; DNS-Wechsel ins Internet nicht erlaubt
+    chk_h = sai.ip_checker({"url": "https://ki.example.test/v1", "pinned": ["10.20.30.40", "fd00::5"]})
+    ok("SSRF 2494: https im Heimnetz -> nur festgehaltene private IPs, keine oeffentliche (auch nicht v4-mapped)",
+       chk_h("10.20.30.40", "ki.example.test", 443) and chk_h("fd00::5", "ki.example.test", 443)
+       and chk_h("::ffff:10.20.30.40", "ki.example.test", 443) and not chk_h("8.8.8.8", "ki.example.test", 443)
+       and not chk_h("::ffff:8.8.8.8", "ki.example.test", 443) and not chk_h("2001:4860:4860::8888", "ki.example.test", 443)
+       and not chk_h("10.20.30.41", "ki.example.test", 443) and not chk_h("100.64.0.1", "ki.example.test", 443))
+    chk_p = sai.ip_checker({"url": "https://api.example.org/v1", "pinned": ["8.8.4.4"]})
+    ok("SSRF 2494: https im Internet bleibt wie bisher (andere oeffentliche IP erlaubt, private nur festgehalten)",
+       chk_p("8.8.8.8", "api.example.org", 443) and chk_p("8.8.4.4", "api.example.org", 443)
+       and not chk_p("10.20.30.40", "api.example.org", 443))
     cl = netguard.guarded_client(sai.ip_checker({"url": FAKE, "pinned": []}), timeout=5)
     try:
         cl.get(FAKE + "/_count"); blocked = False

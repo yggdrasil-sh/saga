@@ -5709,5 +5709,6 @@
  "Oder gib mir einen Auftrag:": "O dame un encargo:",
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Tus encargos están en pausa porque retiraste tu consentimiento. Puedes seguir viéndolos, cancelarlos y deshacerlos; encargos nuevos, solo cuando vuelvas a conocer a {name}.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "El admin ha cambiado la IA: tus encargos esperan hasta que vuelvas a conocer a {name}.",
- "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Podrás dar encargos nuevos en cuanto conozcas a {name}."
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Podrás dar encargos nuevos en cuanto conozcas a {name}.",
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "El endpoint del modelo está ahora en internet en lugar de en tu red doméstica: no se envió nada. Revísalo en el área de administración y vuelve a guardar."
 }

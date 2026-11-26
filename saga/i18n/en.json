@@ -5709,5 +5709,6 @@
  "Oder gib mir einen Auftrag:": "Or give me a job:",
  "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Your jobs are paused because you withdrew your consent. You can still view, cancel and undo them – new jobs only once you meet {name} again.",
  "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Your admin changed the AI – your jobs wait until you meet {name} again.",
- "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "You can give new jobs once you have met {name}."
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "You can give new jobs once you have met {name}.",
+ "Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.": "The model endpoint is now on the internet instead of your home network – nothing was sent. Please check it in the admin area and save again."
 }

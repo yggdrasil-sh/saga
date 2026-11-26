@@ -403,7 +403,9 @@ Konzept K10/K11/K19, M1/M3/M4/M7/M11; Server `saga/ai_saga.py`. Alle Endpunkte m
 | `DELETE /api/ai/consent` | Widerruf: Ideen aus, laufende Aufträge → `wartet_dich` mit Grund `einwilligung` (RT-36). → `{consent, paused}` |
 
 `consent.state`: `none` · `later` · `granted` (`at`, `version`, `ideas`, `host`) · `withdrawn` (`at`) · `stale` =
-erteilt, aber für einen anderen Host (Admin hat den Endpunkt gewechselt) – gilt nicht, Karte erneut zeigen.
+erteilt, aber für einen anderen Host (Admin hat den Endpunkt gewechselt) – gilt nicht, Karte erneut zeigen. Ebenso
+(Bugs-DB 2494), wenn die Einwilligung für `endpoint.net` `home` galt und der Endpunkt jetzt `internet` ist (neu gespeichert,
+oder der Name löst beim Verbinden öffentlich auf – dann verweigert der Server die Verbindung, bis der Admin neu speichert).
 Ohne Fähigkeit `ai` → 403. Gespeichert als Protokoll (`ai_consent`), Nachweis bis zur Kontolöschung.
 
 **Was die Einwilligung sperrt** (Entscheidung 26.11.: der Widerruf stoppt nur die Kollegin): Planen, Ändern und

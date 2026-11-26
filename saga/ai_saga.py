@@ -8,14 +8,18 @@ Einwilligung (K19, Apple 5.1.2(i), Art. 7 DSGVO) - je Person in ai_consent (Prot
   withdraw Einstellungen > Saga > Meine Daten: Widerruf -> jobs.pause_all(uid, "einwilligung") (RT-36), Ideen aus
   Zustand (consent): none | later | granted | withdrawn | stale. stale = erteilt, aber fuer einen ANDEREN Host: hat der
   Admin den Endpunkt gewechselt, gilt die alte Einwilligung nicht mehr (die Daten gingen sonst an jemand anderen) - die
-  Karte erscheint wieder, laufende Auftraege halten beim naechsten Schritt an (jobs._precheck -> consent_ok).
+  Karte erscheint wieder, laufende Auftraege halten beim naechsten Schritt an (jobs._precheck -> consent_ok). Ebenso
+  (Bugs-DB 2494), wenn die Einwilligung fuer "im Heimnetz" galt und der Endpunkt jetzt "im Internet" liegt (Admin hat
+  neu gespeichert, oder der Name loest beim Verbinden oeffentlich auf - mark_left_home).
   consent_ok(uid) = granted und Host wie jetzt. Wirkt auf: Auftraege (jobs.consent_ok, vor jedem Schritt), Ideen
   (ideas_ok), das Gespraech im Ort "Saga" (POST /api/ai/thread). "Frag deine Seiten", die Seiten-Hilfen und die KI im
   Chat bleiben wie bisher (Faehigkeit "ai", Hinweis bei jeder Nutzung) - siehe docs/APP-API-KI.md Abschnitt 9.
 
 Anbieter-/Host-Hinweis (M4, RT-39) bildet NUR der Server (endpoint_hint), aus der Adresse des Modell-Endpunkts:
   host = ai.host_of (Host[:Port]), net = "home" nur, wenn alle festgehaltenen IPs (bzw. die IP in der Adresse) privat
-  sind (_private: RFC 1918, Loopback, Link-Local, ULA - nicht CGNAT/6to4), sonst "internet" (auch ohne festgehaltene IPs). Bekannte Anbieter (KNOWN, nur bei
+  sind (_private: RFC 1918, Loopback, Link-Local, ULA - nicht CGNAT/6to4), sonst "internet" (auch ohne festgehaltene IPs).
+  Loest der Name spaeter beim Verbinden oeffentlich auf, verweigert ai.ip_checker die Verbindung und mark_left_home
+  stellt den Hinweis auf "internet" (bis zum Neu-Speichern im Admin-Bereich; Bugs-DB 2494). Bekannte Anbieter (KNOWN, nur bei
   "internet") mit Name und Land. Der Admin kann EINEN Zusatzsatz anfuegen (setting ai.endpoint_note): eine Zeile,
   hoechstens NOTE_MAX Zeichen, nur der erste Satz; bei net "internet" faellt er weg, sobald er "lokal"/"im Heimnetz"
   o. Ae. behauptet (_claims_local, ueber eine gefaltete Form ohne Leer-/Sonderzeichen in de/en/es/ru/th).
@@ -168,9 +172,63 @@ def provider_of(hostname):
     return None, None
 
 
+def home_ips(ips):
+    """Alle IPs privat (und mindestens eine) -> "im Heimnetz"."""
+    ips = [str(x) for x in ips or () if x]
+    return bool(ips) and all(_private(ip) and not is_public(ip) for ip in ips)
+
+
+def _pins(c):
+    name = (urlparse(c.get("url") or "").hostname or "").lower()
+    lit = _ip_lit(name) if name else None
+    return [lit] if lit else [str(x) for x in c.get("pinned") or [] if x]
+
+
+def left_home(c):
+    """Bugs-DB 2494: Hat der Name des Endpunkts (beim Speichern nur private IPs) beim Verbinden oeffentlich aufgeloest?
+    -> die Markierung {ip, at} aus mark_left_home, sonst None. Gilt nur fuer genau diese Adresse und diese festgehaltenen
+    IPs - Neu-Speichern im Admin-Bereich (neu aufgeloest, neu festgehalten) entfernt sie."""
+    m = c.get("left_home") if isinstance(c, dict) else None
+    if not isinstance(m, dict) or m.get("url") != c.get("url") or sorted(m.get("pinned") or []) != sorted(_pins(c)):
+        return None
+    return m
+
+
+def mark_left_home(c, ip):
+    """Der Name loest jetzt (auch) oeffentlich auf, festgehalten waren nur private IPs (ai.ip_checker verweigert die
+    Verbindung). Markierung in der gespeicherten KI-Einstellung -> endpoint_hint sagt "im Internet", consent() "stale"
+    (Kennenlernen-Karte erneut wie beim Host-Wechsel). Nur wenn c die gespeicherte Einstellung ist (Adresse und
+    festgehaltene IPs gleich) - ein Verbindungstest mit ungespeicherten Werten aendert nichts."""
+    import auth
+    if left_home(c):
+        return
+    try:
+        with _db() as cc, cc:
+            r = cc.execute("SELECT v FROM setting WHERE k='ai'").fetchone()
+            st = json.loads(r[0]) if r and r[0] else None
+            if not isinstance(st, dict) or st.get("url") != c.get("url") or sorted(_pins(st)) != sorted(_pins(c)) \
+                    or left_home(st):
+                return
+            st["left_home"] = {"url": st.get("url"), "pinned": _pins(st), "ip": str(ip), "at": time.time()}
+            cc.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
+        auth._settings_cache["v"] = None
+        print(f"ai: Modell-Endpunkt loest oeffentlich auf ({urlparse(c.get('url') or '').hostname}), festgehalten waren "
+              "nur private IPs - Verbindung verweigert, Hinweis 'im Internet', Einwilligung neu", flush=True)
+    except Exception as ex:  # noqa: BLE001 - Verbindung bleibt trotzdem verweigert
+        print(f"ai: Markierung left_home: {type(ex).__name__}", flush=True)
+
+
+def endpoint_net(c):
+    """"home" | "internet" | None (kein Endpunkt) - wie endpoint_hint, ohne Texte."""
+    if not (urlparse(c.get("url") or "").hostname or ""):
+        return None
+    return "home" if home_ips(_pins(c)) and not left_home(c) else "internet"
+
+
 def endpoint_hint(c=None):
     """Anbieter-/Host-Hinweis fuer Karte und Leiste -> {host, net, provider?, country?, country_name?, note?, label}
-    oder None (kein Endpunkt). label = fertiger Text in der Sprache der Anfrage."""
+    oder None (kein Endpunkt). label = fertiger Text in der Sprache der Anfrage. net "home" nur, wenn alle festgehaltenen
+    IPs privat sind UND der Name seitdem nicht oeffentlich aufgeloest hat (left_home, Bugs-DB 2494)."""
     from saga import ai
     c = c if c is not None else ai.cfg()
     pu = urlparse(c.get("url") or "")
@@ -178,9 +236,7 @@ def endpoint_hint(c=None):
     if not name:
         return None
     host = ai.host_of(c)
-    lit = _ip_lit(name)
-    ips = [lit] if lit else [str(x) for x in c.get("pinned") or [] if x]
-    home = bool(ips) and all(_private(ip) and not is_public(ip) for ip in ips)
+    home = endpoint_net(c) == "home"
     out = {"host": host, "net": "home" if home else "internet"}
     if not home:
         prov, cc = provider_of(name)
@@ -225,7 +281,7 @@ def consent(uid, conn=None, cfg=None):
     if conn is None:
         with _db() as c:
             return consent(uid, c, cfg)
-    r = conn.execute("SELECT at, action, version, ideas, host FROM ai_consent WHERE uid=? AND action IN ('grant', 'withdraw') "
+    r = conn.execute("SELECT at, action, version, ideas, host, net FROM ai_consent WHERE uid=? AND action IN ('grant', 'withdraw') "
                      "ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
     if r is None:
         later = conn.execute("SELECT at FROM ai_consent WHERE uid=? AND action='later' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
@@ -235,6 +291,10 @@ def consent(uid, conn=None, cfg=None):
     out = {"state": "granted", "at": r[0], "version": r[2], "ideas": r[3] if r[3] in IDEAS else "off", "host": r[4]}
     if r[4] != _hostname(cfg):
         out["state"] = "stale"
+    elif r[5] == "home":                         # Bugs-DB 2494: erteilt fuer "im Heimnetz", jetzt im Internet -> neu fragen
+        from saga import ai
+        if endpoint_net(cfg if cfg is not None else ai.cfg()) == "internet":
+            out["state"] = "stale"
     return out
 
 

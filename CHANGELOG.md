@@ -534,6 +534,17 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   (`saga/ai_frame.py`). KI-Antworten im Chat gehen ohne Links, Bilder und HTML an die anderen („[Link entfernt]“;
   die angehängten Webquellen bleiben), der Verlauf speichert keine Bilder. Suchbegriffe der Websuche dürfen keine
   Wörter aus dem Chatverlauf anderer enthalten (Red-Team-Fälle RT-02/03/04). Neue Testreihe `tests/datenrahmen.py`.
+- **KI-Lücken: auch Titel und Namen im Datenrahmen** (Bugs-DB 2490 B3): Wenn das Modell eine Lücke in einem festen Satz
+  füllt, stehen jetzt auch die Felder (z. B. ein fremder Seitentitel) zwischen den Markern – vorher als JSON davor.
+- **Links in KI-Texten: eine gemeinsame Prüfung** (Bugs-DB 2490 B7, 2504): Was nach außen geht (Chat-Antwort an
+  andere, Entwurf, Lücken) und was ein Auftrag einträgt, wird jetzt auch auf Vollbreite-Adressen („ｈｔｔｐｓ：／／…“),
+  nackte Domains mit Pfad („beispiel.example/x“) und Seitenverweise `[[…]]` geprüft. Wo bisher Links ersetzt wurden,
+  wird ersetzt (Seitenverweis → nur der Text), wo abgelehnt wurde, wird abgelehnt. Dateinamen („bericht.pdf“), Zahlen und
+  Sätze mit Punkt bleiben stehen; Thai, Russisch und Spanisch bleiben unverändert.
+- **KI im Heimnetz bleibt im Heimnetz** (Bugs-DB 2494, RT-39): Lagen beim Speichern alle IPs des Modell-Endpunkts im
+  Heimnetz, verbindet Saga auch bei https nur mit diesen. Löst der Name später öffentlich auf, geht nichts raus: klare
+  Meldung, der Hinweis zeigt „im Internet“, und wer für „im Heimnetz“ eingewilligt hat, wird wie bei einem Host-Wechsel
+  neu gefragt. Freigeben kann das nur der Admin durch Neu-Speichern im Admin-Bereich.
 
 ### Doku
 

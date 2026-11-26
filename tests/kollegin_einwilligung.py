@@ -500,6 +500,9 @@ def run():
     setai(url=FAKE + "/v1", pinned=["127.0.0.1"])
     ok("zurueck zum alten Endpunkt -> wieder granted", ai_saga.consent(A)["state"] == "granted")
 
+    dns_case(ai_saga)
+    setai(url=FAKE + "/v1", pinned=["127.0.0.1"], left_home=None)
+
     # --- Meine Daten: Export ---------------------------------------------------------------------------------------------
     with connect() as c, c:
         c.execute("INSERT INTO ai_history (uid, created, kind, question, answer, sources) VALUES (?,?,?,?,?,?)",
@@ -548,6 +551,111 @@ def run():
        not q("SELECT 1 FROM ai_consent WHERE uid=?", (B,)) and not q("SELECT 1 FROM ai_thread WHERE uid=?", (B,))
        and not q("SELECT 1 FROM ai_turn WHERE uid=?", (B,)) and q("SELECT 1 FROM ai_consent WHERE uid=?", (A,)))
     ok("Faehigkeit: caps.can(kw-kind, ai) mit Familie", caps.can(KID, "ai"))
+
+
+# --- 2494: Heimnetz-Endpunkt loest spaeter oeffentlich auf (in-process, DNS-Attrappe ueber socket.getaddrinfo) ----------
+EP_HOST = "modell.example.test"
+
+
+def dns_case(ai_saga):
+    import socket as so
+    from saga import ai as sai, i18n, jobs
+    D = "kw-dns"
+    auth.create_user(D, PW, D)
+    auth.set_user_groups(auth.get_user(D)["id"], ["kw-familie"])
+    real = so.getaddrinfo
+
+    def dns(*ips):
+        def gai(h, p, *a, **k):
+            if str(h).lower().rstrip(".") == EP_HOST:
+                return [(so.AF_INET6 if ":" in ip else so.AF_INET, so.SOCK_STREAM, 6, "", (ip, p or 443)) for ip in ips]
+            return real(h, p, *a, **k)
+        return gai
+
+    def model(*ips):
+        """Anfrage an das Modell mit dieser DNS-Antwort -> Fehlermeldung ('' = keine Ausnahme)."""
+        so.getaddrinfo = dns(*ips)
+        tok = i18n.set_lang("de")
+        try:
+            sai.stream_model(auth.settings(fresh=True)["ai"], [{"role": "user", "content": "x"}], lambda _t: None)
+            return ""
+        except sai.AIError as ex:
+            return str(ex)
+        finally:
+            so.getaddrinfo = real
+            i18n._cur.reset(tok)
+
+    def grant():
+        st, d = req("POST", "/api/ai/consent", D, {"answer": "no_ideas", "version": ai_saga.CONSENT_V, "host": HN()})
+        return (d.get("consent") or {}).get("state") if isinstance(d, dict) else st
+
+    def net_of_last():
+        r = q("SELECT net FROM ai_consent WHERE uid=? AND action='grant' ORDER BY id DESC LIMIT 1", (D,))
+        return r[0][0] if r else None
+
+    # 1) privat festgehalten, DNS jetzt oeffentlich
+    setai(url=f"https://{EP_HOST}/v1", pinned=["10.20.30.40"], left_home=None)
+    ok("2494: Einwilligung fuer den Heimnetz-Endpunkt (net home)", grant() == "granted" and net_of_last() == "home")
+    err = model("8.8.8.8")
+    cur = auth.settings(fresh=True)["ai"]
+    tok = i18n.set_lang("de")
+    try:
+        h = ai_saga.endpoint_hint(cur)
+    finally:
+        i18n._cur.reset(tok)
+    ok(f"2494: DNS privat -> oeffentlich: Anfrage abgelehnt mit klarer Meldung ({err})",
+       "im Internet statt im Heimnetz" in err and "nichts gesendet" in err, err)
+    ok("2494: Markierung gespeichert, Hinweis jetzt 'im Internet'",
+       (ai_saga.left_home(cur) or {}).get("ip") == "8.8.8.8" and h["net"] == "internet"
+       and h["label"] == f"{EP_HOST} (im Internet)", (cur.get("left_home"), h))
+    ok("2494: Einwilligung gilt nicht mehr (stale wie beim Host-Wechsel), Auftraege halten an",
+       ai_saga.consent(D)["state"] == "stale" and not jobs.consent_ok(D), ai_saga.consent(D))
+    time.sleep(WAIT)
+    st, s = req("GET", "/api/ai/status", D)
+    ok("2494: Status vom Server: endpoint.net internet, consent stale, Karte nennt 'im Internet'",
+       (s.get("endpoint") or {}).get("net") == "internet" and (s.get("consent") or {}).get("state") == "stale"
+       and "im Internet" in " ".join((s.get("intro") or {}).get("lines") or []), s if st == 200 else st)
+    ok("2494: neue Einwilligung (jetzt fuer 'internet')", grant() == "granted" and net_of_last() == "internet")
+    err = model("8.8.8.8")
+    ok(f"2494: trotz neuer Einwilligung keine Verbindung ins Internet, bis der Admin neu speichert ({err})",
+       "im Internet statt im Heimnetz" in err, err)
+    # 2) Admin speichert neu (neu aufgeloest: oeffentliche IP festgehalten, Markierung weg) -> https oeffentlich erlaubt
+    setai(pinned=["8.8.8.8"], left_home=None)
+    cur = auth.settings(fresh=True)["ai"]
+    chk = sai.ip_checker(cur)
+    ok("2494: neu gespeichert mit oeffentlicher IP: Hinweis internet, Einwilligung (internet) gilt, Verbindung erlaubt",
+       ai_saga.endpoint_net(cur) == "internet" and ai_saga.consent(D)["state"] == "granted"
+       and chk("8.8.8.8", EP_HOST, 443), ai_saga.consent(D))
+    # 3) oeffentlich bleibt oeffentlich: andere oeffentliche IP erlaubt, keine Markierung, Einwilligung bleibt
+    ok("2494: oeffentlich -> anders oeffentlich: erlaubt, keine Markierung, Einwilligung bleibt",
+       chk("8.8.4.4", EP_HOST, 443) and not chk("10.20.30.40", EP_HOST, 443)
+       and not ai_saga.left_home(auth.settings(fresh=True)["ai"]) and ai_saga.consent(D)["state"] == "granted")
+    # 4) gemischt: privat festgehalten, DNS liefert privat + oeffentlich
+    setai(pinned=["10.20.30.40"], left_home=None)
+    ok("2494: zurueck im Heimnetz -> Einwilligung (home) neu", grant() == "granted" and net_of_last() == "home")
+    chk = sai.ip_checker(auth.settings(fresh=True)["ai"])
+    ok("2494: Heimnetz: festgehaltene IP erlaubt, andere private nicht (ohne Markierung)",
+       chk("10.20.30.40", EP_HOST, 443) and not chk("10.20.30.41", EP_HOST, 443)
+       and not ai_saga.left_home(auth.settings(fresh=True)["ai"]) and ai_saga.consent(D)["state"] == "granted")
+    err = model("10.20.30.40", "8.8.8.8")
+    cur = auth.settings(fresh=True)["ai"]
+    ok(f"2494: gemischte DNS-Antwort (privat + oeffentlich) -> abgelehnt, Hinweis internet, Einwilligung neu ({err})",
+       "im Internet statt im Heimnetz" in err and ai_saga.endpoint_net(cur) == "internet" and ai_saga.consent(D)["state"] == "stale", err)
+    # 5) Festgehalten gemischt (privat + oeffentlich) = schon "internet": wie bisher (oeffentlich + festgehalten erlaubt)
+    setai(pinned=["10.20.30.40", "8.8.4.4"], left_home=None)
+    chk = sai.ip_checker(auth.settings(fresh=True)["ai"])
+    ok("2494: festgehalten gemischt -> wie bisher (oeffentlich und festgehaltene private erlaubt, andere private nicht)",
+       chk("8.8.8.8", EP_HOST, 443) and chk("10.20.30.40", EP_HOST, 443) and not chk("10.20.30.41", EP_HOST, 443)
+       and not ai_saga.left_home(auth.settings(fresh=True)["ai"]))
+    # 6) Verbindungstest mit ungespeicherten Werten markiert nichts
+    setai(pinned=["10.20.30.40"], left_home=None)
+    so.getaddrinfo = dns("8.8.8.8")
+    try:
+        sai.ip_checker({"url": f"https://{EP_HOST}/v2", "pinned": ["10.20.30.40"]})("8.8.8.8", EP_HOST, 443)
+    finally:
+        so.getaddrinfo = real
+    ok("2494: Pruefung mit fremden (ungespeicherten) Werten setzt keine Markierung",
+       not auth.settings(fresh=True)["ai"].get("left_home"))
 
 
 # --- Hilfen fuer tests/browser_kollegin_kennenlernen.js ---------------------------------------------------------------
