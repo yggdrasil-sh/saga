@@ -330,10 +330,10 @@ class Stream:
         except Exception:  # noqa: BLE001
             pass
 
-    def wait(self, typ, since, timeout=10.0):
+    def wait(self, typ, since, timeout=10.0, not_v=None):
         end = time.time() + timeout
         while time.time() < end:
-            hit = [d for t_, d in self.ev[since:] if t_ == typ]
+            hit = [d for t_, d in self.ev[since:] if t_ == typ and (not_v is None or (d or {}).get("v") != not_v)]
             if hit:
                 return hit[-1]
             time.sleep(0.1)
@@ -474,6 +474,7 @@ def server():
         ok("Testuhr erreichbar (SAGA_TEST_HOOKS/SAGA_TEST_TOKEN)", st == 200, st)
         Dav.events = [("kd1", "Elternabend", "20260707T173000Z", "20260707T190000Z"),
                       ("kd2", "Zahnarzt", "20260708T060000Z", "20260708T063000Z")]
+        Dav.delay, Dav.reports = 5.0, 0                  # ab jetzt antwortet der Kalender erst nach 5 s
         cal = f"http://127.0.0.1:{DAV_PORT}/"
         s1, r1, _ = req("POST", "/api/settings/calendars/test", A, {"base_url": cal, "username": A, "password": "app-pw-" + A})
         cals = r1.get("calendars", []) if isinstance(r1, dict) else []
@@ -493,8 +494,7 @@ def server():
                 "'Grillkohle besorgen', ?, ?) RETURNING id", (A, at("2026-07-07T07:00:00+02:00"), at("2026-07-07T07:00:00+02:00")))[0][0]
         sa = Stream(A)
         streams.append(sa)
-        time.sleep(0.5)
-        Dav.delay, Dav.reports = 5.0, 0
+        time.sleep(0.3)
         mark = len(sa.ev)
         t0 = time.time()
         st, d, _ = get()
@@ -503,7 +503,7 @@ def server():
            st == 200 and ms < 300 and d.get("pending") == ["calendar"] and d["counts"]["events"] is None, (ms, d))
         good, diff = same_as(d, case("kalt")["response"], ids=False)
         ok("kalt: Wort fuer Wort wie Vektor 'kalt'", good, diff)
-        ev = sa.wait("ai.today.changed", mark, 12)
+        ev = sa.wait("ai.today.changed", mark, 15, not_v=d.get("v"))     # nicht das Ereignis der neuen Zeile (noch kalt)
         ok(f"Kalender fertig -> ai.today.changed {{v}} ({ev})", isinstance(ev, dict) and re.fullmatch(r"[0-9a-f]{12}", str(ev.get("v"))), ev)
         st, d, h = get()
         good, diff = same_as(d, case("normal")["response"], ids=False)
@@ -513,7 +513,7 @@ def server():
            len(tg) == 3 and tg[0] == {"type": "events", "date": "2026-07-07"} and tg[1]["type"] == "task" and tg[2] == {"type": "row", "id": row}, tg)
         st, d0, _ = get(tz=None)
         ok("Live: v im Ereignis = GET in Konto-Sprache und -Zone", ev and d0.get("v") == ev.get("v"), (ev, d0.get("v")))
-        ok(f"Kalender einmal abgefragt, im Hintergrund ({Dav.reports})", Dav.reports == 1, Dav.reports)
+        ok(f"Kalender einmal abgefragt, im Hintergrund - auch bei mehreren kalten Abrufen ({Dav.reports})", Dav.reports == 1, Dav.reports)
         Dav.delay = 0.0
 
         # --- C. Abend, Tageswechsel, Zone --------------------------------------------------------------------------------
