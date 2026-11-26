@@ -58,6 +58,9 @@ def seed(stage):
             c.execute("INSERT INTO task_source (uid, db_id, scope, added) VALUES (?, ?, 'all', ?)", (UID, db_id, now + s))
         c.execute("INSERT INTO job (uid, kind, source, state, title, created, updated) VALUES (?, 'ai.task', 'saga', 'wartet_ok', 'Perf', ?, ?)",
                   (UID, now, now))
+    with connect() as c, c:                                   # Planer-Statistik nach dem Befuellen frisch (wie im Betrieb):
+        for t_ in ("note", "task", "task_source", "job"):     # sonst schwankt Stufe M je nach Autovacuum um 50-110 ms
+            c.execute(f"ANALYZE {t_}")
 
 
 def measure_compute(n):
