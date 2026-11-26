@@ -414,6 +414,8 @@ def run():
     # --- K-A6: Runner ai.task in der Hintergrund-Spur -------------------------------------------------------------------
     from saga import actor, ai_task, bus, jobs, testclock
     setai(quota=0)
+    from saga import ai_saga                                   # 2.6 K-I (2269): ohne Einwilligung haelt jeder Schritt an
+    ai_saga.grant("kb-e")
     testclock.set_clock({"set": time.time() + 30 * 86400})     # Server-Worker der Testumgebung sieht den Auftrag nie faellig
     try:
         def mkjob(text):

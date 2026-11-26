@@ -93,6 +93,20 @@ def reset_block():
     BLOCK["first"] = True
 
 
+_USERS = set()
+
+
+def consent(*names):
+    """2.6 K-I (2269): Einwilligung fuer die Kollegin (sonst haelt jeder Schritt mit 'einwilligung' an) - fuer den
+    jetzt eingestellten Endpunkt; ohne eingestellte KI nichts (ai_on holt es nach)."""
+    from saga import ai, ai_saga
+    if not ai.configured():
+        return
+    for u in names:
+        if not ai_saga.consent_ok(u):
+            ai_saga.grant(u, "off")
+
+
 def users(*names):
     for u in names:
         if not auth.get_user(u):
@@ -100,6 +114,8 @@ def users(*names):
         with connect() as c, c:
             c.execute("UPDATE users SET disabled=0 WHERE username=?", (u,))
         auth.set_user_groups(auth.get_user(u)["id"], [])
+        _USERS.add(u)
+    consent(*names)
 
 
 def ai_on(model="fake", **kw):
@@ -110,6 +126,7 @@ def ai_on(model="fake", **kw):
     cfg.update(kw)
     auth.save_setting("ai", cfg)
     auth.settings(fresh=True)
+    consent(*sorted(_USERS))                       # K-I: Einwilligung fuer den (neuen) Endpunkt
     return prev
 
 

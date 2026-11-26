@@ -544,6 +544,9 @@ def main():
             auth.create_user(u, "Kw-Pass-12345", u)
         auth.save_setting("ai", dict(prev, enabled=True, provider="openai", url="http://127.0.0.1:18290/v1", model="fake", groups=[], caps={}))
         auth.settings(fresh=True)
+        from saga import ai_saga                  # 2.6 K-I (2269): ohne Einwilligung haelt jeder Schritt an
+        for u in (A, B):
+            ai_saga.grant(u)
         part_registry()
         part_tok()
         a_root, _ = part_rt27()
