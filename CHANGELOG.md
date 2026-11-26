@@ -410,8 +410,9 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Antwort `426` des Knotens (`text`), Admin › Anrufe (Prüfung, Warnung, Tunnel-Hinweise) und das Handbuch (A05, A06)
   nannten nur den Schalter von Nginx Proxy Manager. Jetzt heißt es allgemein „WebSocket-Unterstützung am Proxy-Host
   einschalten“, mit den Schaltern als Beispiel (Nginx Proxy Manager: „Websockets Support“, Node64: „WebSockets“; im
-  Knoten-Text auch nginx: `Upgrade`/`Connection`), in allen fünf Sprachen. Das Handbuch verweist für Caddy, Traefik
-  und nginx auf Abschnitt 3 der Anleitung.
+  Knoten-Text auch nginx: `proxy_http_version 1.1`, `Upgrade`/`Connection`), in allen fünf Sprachen. Das Handbuch
+  verweist für Caddy, Traefik und nginx auf Abschnitt 3 der Anleitung. Die Warnung „Wohl nicht …“ zeigt den Zeitpunkt
+  wieder als Datum (vorher stand dort das HTML-Markup `<time …>` als Text).
 
 ### Sicherheit
 
