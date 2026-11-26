@@ -27,6 +27,8 @@ const WORDS = {
     const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
     const d = await r.json().catch(() => ({})); return { s: r.status, d: d };
   }, [m, url, b]);
+  { const st = await api('GET', '/api/ai/status');            // K-I (2269): Kollegin erst nach der Einwilligung (Kennenlernen)
+    if (st.d && st.d.intro && (!st.d.consent || st.d.consent.state !== 'granted')) await api('POST', '/api/ai/consent', { answer: 'no_ideas', version: st.d.intro.version, host: st.d.intro.host }); }
   const sse = (b) => p.evaluate(async (b) => {               // POST /api/ai/jobs -> letztes Ereignis {typ, data}
     const r = await fetch('/api/ai/jobs', { method: 'POST', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
     const t = await r.text(); let last = null;

@@ -450,7 +450,7 @@ def part_api(pages):
     ok("ohne Sitzung -> 401", s == 401)
     s, d = K.req("GET", "/api/ai/status", cA)
     ok(f"status: jobs + level angehaengt ({d.get('jobs')}, {d.get('level')})", s == 200 and d.get("jobs") is True and d.get("level") == "plans"
-       and list(d)[-2:] == ["jobs", "level"])
+       and list(d).index("jobs") > list(d).index("units") and list(d)[list(d).index("jobs") + 1] == "level")   # K-I (2269) haengt dahinter an
     # RT-42: sga_ ueberall 403
     from saga.core import _tok_hash
     raw = apitok.PREFIX + secrets.token_urlsafe(32)
@@ -551,6 +551,23 @@ def part_classes_en():
         i18n.set_lang("de")
 
 
+def part_consent():
+    """K-I (2269, K19/RT-36): ohne Einwilligung kein Planen, kein Aendern, kein Freigeben - nichts geht ans Modell."""
+    from saga import ai_saga
+    cC = K.ck(C)
+    ai_saga.withdraw(C)
+    n0 = (K.fake("GET", "/_count") or {}).get("n")
+    st, ev, _ = K.sse("/api/ai/jobs", cC, {"text": "Kümmer dich um die Grillkohle bis Freitag"})
+    s2, d2 = K.req("POST", "/api/ai/jobs/1/approve", cC, {"plan_v": 1, "plan_hash": "0" * 64})
+    s3, d3 = K.req("PUT", "/api/ai/jobs/1/plan", cC, {"plan_v": 1, "edits": []})
+    ok(f"ohne Einwilligung: Planen/Freigeben/Aendern 403 consent=needed, kein Modellaufruf ({st}, {s2}, {s3})",
+       st == 403 and isinstance(ev, dict) and ev.get("consent") == "needed" and s2 == 403 and d2.get("consent") == "needed"
+       and s3 == 403 and (K.fake("GET", "/_count") or {}).get("n") == n0)
+    ai_saga.grant(C)
+    st, ev, _ = K.sse("/api/ai/jobs", cC, {"text": "Kümmer dich um die Grillkohle bis Freitag"})
+    ok(f"nach erneuter Einwilligung: Planen geht wieder ({st})", st == 200)
+
+
 def main():
     ai_task.register()
     prev = auth.settings(fresh=True)
@@ -572,6 +589,10 @@ def main():
         auth.save_setting(ai_plan.SETTING, {"level": "plans"})
         for u in (A, B, C):
             auth.create_user(u, K.PW, u)
+        from saga import ai_saga                  # K-I (2269): Planen/Freigeben erst nach der Einwilligung
+        auth.settings(fresh=True)
+        for u in (A, B, C):
+            ai_saga.grant(u)
         if not auth.get_user("kp-adm"):
             auth.create_user("kp-adm", K.PW, "Admin KP", is_admin=True)
         time.sleep(K.WAIT)
@@ -591,6 +612,7 @@ def main():
         part_api(pages)
         part_admin()
         part_classes_en()
+        part_consent()
     finally:
         proc.terminate()
         auth.save_setting("ai", pv["ai"])

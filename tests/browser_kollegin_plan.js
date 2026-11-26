@@ -26,6 +26,8 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   }, [m, url, b]);
   await api('PUT', '/api/account/lang', { lang: 'de' });
   await api('POST', '/api/first-steps', { answer: 'no' });
+  { const st = await api('GET', '/api/ai/status');            // K-I (2269): Kollegin erst nach der Einwilligung (Kennenlernen)
+    if (st.d && st.d.intro && (!st.d.consent || st.d.consent.state !== 'granted')) await api('POST', '/api/ai/consent', { answer: 'no_ideas', version: st.d.intro.version, host: st.d.intro.host }); }
   async function openJobs() {
     await p.goto(BASE + '/dashboard'); await until(() => p.evaluate(() => !!(window.HKAI && HKAI.state && HKAI.state())));
     await p.evaluate(() => HKAI.open('jobs'));
