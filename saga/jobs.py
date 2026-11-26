@@ -286,7 +286,7 @@ def changed_after(job_id, c=None):
         _live(cc, job_id)
 
 
-def replan(job_id, uid, plan_v, plan, steps):
+def replan(job_id, uid, plan_v, plan, steps, title=None):
     """K-B "Aendern": neuer Plan (plan + Schritte) fuer einen Auftrag in wartet_ok mit genau diesem plan_v -> neuer
     plan_v oder None (veraltet/fremd). plan_hash neu; eine Freigabe mit dem alten plan_v/plan_hash greift nicht mehr."""
     if not isinstance(plan, dict):
@@ -305,7 +305,8 @@ def replan(job_id, uid, plan_v, plan, steps):
                       "(?, ?, ?, ?, ?, CAST(? AS JSONB), ?, ?)",
                       [(job_id, i, x["tool"], x["klass"], x["undo_class"], None if x["args"] is None else _j(x["args"]), x["cond"],
                         1 if x["client"] else 0) for i, x in enumerate(st)])
-        c.execute("UPDATE job SET plan=CAST(? AS JSONB), plan_v=?, plan_hash=?, updated=? WHERE id=?", (_j(plan), nv, ph, t, job_id))
+        c.execute("UPDATE job SET plan=CAST(? AS JSONB), plan_v=?, plan_hash=?, updated=?, title=COALESCE(?, title) WHERE id=?",
+                  (_j(plan), nv, ph, t, clean_line(str(title))[:200] if title else None, job_id))
         _event(c, job_id, "plan", t, frm=plan_v, to=nv, steps=len(st))
     return nv
 

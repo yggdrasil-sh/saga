@@ -55,7 +55,7 @@
 .kj-changes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.4rem}
 .kj-change{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;justify-content:space-between}
 .kj-change-t{flex:1;min-width:12rem}
-.kj-undo{min-height:44px;min-width:44px;font-weight:600}
+.kj-card .kj-undo{min-height:44px;min-width:44px;font-weight:600}
 .kj-changed{display:flex;flex-direction:column;gap:.3rem;font-size:14px;color:var(--muted)}
 .kj-oldtext{border:1px solid var(--border);border-radius:var(--r-sm,6px);padding:.4rem .55rem;background:var(--card);color:var(--fg)}
 .kj-oldtext pre{margin:.3rem 0 0;white-space:pre-wrap;font:inherit;font-size:14px}
