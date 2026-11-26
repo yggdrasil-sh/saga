@@ -20,7 +20,7 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
-- **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im KI-Bereich gibt es den Reiter „Aufträge“. Eine Bitte
+- **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte
   („Erinnere mich Freitag an die Grillkohle“, „Trag auf Sommerfest ein, dass Ben die Kohle bringt“) wird zu einem
   Plan: feste Schritte mit Klasse (rückgängig / nur löschbar / endgültig), „Ich lese dafür: …“ und den Knöpfen
   „Passt, los · Ändern · Lieber nicht“. Erst nach dem OK trägt Saga ein (Aufgabe, Seite, Termin) und meldet sich mit
