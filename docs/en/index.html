@@ -135,17 +135,17 @@ if(m?m==="an":!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)"
     <h2>Talk without anyone listening in.</h2>
     <p class="sub">Chats and calls are end-to-end encrypted: your server stores the messages but cannot read them – and neither can the admin.</p></div>
     <div class="feature rv"><div class="txt">
-<h3>Calls via Gjallarhorn<span class="tag">Experimental</span></h3>
+<h3>Calls via Gjallarhorn<span class="tag">Default from 2.6</span></h3>
 <p>Saga brings its own media node. It runs behind any reverse proxy with WebSocket support, through your normal Saga
           address – no second name and no extra port.</p>
 <ul>
-<li><b>One-to-one and groups</b> with video, audio and screen sharing – at launch with up to 4 participants or devices</li>
+<li><b>One-to-one and groups</b> with video, audio and screen sharing – through the built-in node up to 16 devices with video or 50 audio only, with a paired node with UDP up to 25 with video</li>
 <li><b>Turn a one-to-one call into a group</b> without dropping the conversation</li>
 <li><b>Bring people in</b>, even from outside the chat; whoever doesn’t answer is listed under “Not in the call” with “Ring again”</li>
 <li><b>Switch or add devices:</b> move the call from your phone to your laptop, or add the laptop just to share your screen</li>
 <li><b>End-to-end encrypted</b> – through the node, too</li>
 </ul>
-<p class="fine">Gjallarhorn is experimental in 2.5. Safari and browsers on iPhone/iPad still call directly or via TURN;
+<p class="fine">From 2.6 Gjallarhorn is on by default – calls between two people go through the node as well, and devices don’t see each other’s IP addresses. Safari and browsers on iPhone/iPad still call directly or via TURN;
           the apps and the Mac app use the tunnel through the Saga address.</p>
 </div><figure class="shot duo"><div class="gb"><img alt="Group call with four participants as tiles, labels “end-to-end encrypted” and “experimental”, participant list open" height="1250" loading="lazy" src="../bilder/anruf-gruppe.webp" width="2000"></div><div class="ph"><img alt="Phone in a group call with four people" height="1688" loading="lazy" src="../bilder/handy-anruf.webp" width="780"></div></figure></div>
     <div class="feature rev rv"><div class="txt">

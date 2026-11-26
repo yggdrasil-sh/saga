@@ -1660,8 +1660,9 @@ nach außen genügt **443/TCP**, ein weiterer offener Port ist nicht nötig:
    vom Knoten eine STUN-Anfrage an diese Adresse und Port und wartet auf die Antwort über den Proxy; bei „fehlt“
    wiederholt er sich nach 1, 5 und 15 min, dann alle 30 min.
 6. **Gemeinsame Adresse:** Hinter einer Durchreiche sieht der Knoten alle Geräte mit der Adresse des Proxys. Je
-   Quell-Adresse nimmt er höchstens `HORN_MAX_PER_IP` Verbindungen an (Standard 12, über TLS zwei je Gerät) – für mehr
-   als 6 Geräte `HORN_MAX_PER_IP=48` setzen, oder `HORN_PROXY_PROTOCOL=1`, wenn der Proxy für diesen Dienst den
+   Quell-Adresse nimmt er höchstens `HORN_MAX_PER_IP` Verbindungen an (Standard ab 2.6: 40, bis 2.5: 12; über TLS zwei
+   je Gerät, also 20 Geräte) – für mehr Geräte höher setzen (z. B. `HORN_MAX_PER_IP=100` für 50 Geräte), oder
+   `HORN_PROXY_PROTOCOL=1`, wenn der Proxy für diesen Dienst den
    PROXY-Kopf (v1/v2) schickt. Auf dem Rechner mit dem Proxy außerdem `net.ipv4.tcp_notsent_lowat = 16384` setzen
    (`gjallarhorn/NODE.md`, „Hinter einer TLS-Durchreiche“).
 7. **Prüfen:** Admin → Anrufe → Knoten, Zeile **„Eingebaut“**: „Startet nicht“ mit Grund (z. B. kein Name/Zertifikat,

@@ -1507,7 +1507,8 @@ Umgebung: `HORN_SAGA`, `HORN_PAIR`, `HORN_NAME`, `HORN_LINK_MBIT` (Upload für d
   | `HORN_MAX_LEGS` | `200` (`48`) | Beine am Knoten über alle Anrufe; „voll“ in der Lastmeldung ab 90 % (180). Auf TCP/Tunnel zwei Beine je Gerät (Ton + Bild, auch im Tonanruf): 50 Geräte über TCP = 100 Beine |
   | `HORN_MAX_PER_IP` | `40` (`12`) | Beine je Client-Adresse = 20 Geräte über TCP/Tunnel hinter einer Adresse (NAT, Proxy ohne `TRUSTED_PROXIES`); WebSockets des Tunnels je Adresse 4 ×, gesamt 2 × `HORN_MAX_LEGS` + 16 |
 
-  Vorläufige Werte (Bugs-DB 2416, 2263-3), endgültig nach der Messreihe 2263-9 (RAM, CPU). Speicher: Jedes Bein legt
+  Werte aus Bugs-DB 2416 (2263-3), durch die Messreihe 2263-9 bestätigt (`tools/perf/horn-2263.json`,
+  `speicher_je_bein`: 200 Beine rund 0,24–0,54 GB, weit unter 2 GB). Speicher: Jedes Bein legt
   seine Warteschlange fest an (4 Klassen × 4096 Einträge, 256 KiB); im Weiterleiter gemessen rund 290 KiB je Bein,
   200 Beine rund 57 MiB (`TestKnoten200Beine`), dazu die PeerConnection bzw. der Tunnel je Bein. Der Takt der
   Steuerung bleibt bei 2 × 50 Geräten bei rund 2 ms.

@@ -16,6 +16,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Backup, Migrationen bis Schema 40,
+Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
+
 ### Neu
 - **Gjallarhorn ab Werk an – Anrufe laufen über den eingebauten Knoten** (2263-4, Entscheidung 24.11., Frage 3, nach der
   Messreihe 2263-9): Große Gruppenanrufe (bis 16 mit Video / 50 nur Ton über den eingebauten Knoten, 25 / 50 über einen

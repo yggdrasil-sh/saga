@@ -2427,7 +2427,7 @@ Anzeige bleibt beim Namen des Gegenübers (1:1-Ansicht), bis der Anruf endet. Se
 
 ## Anrufe über Gjallarhorn-Knoten (2.5, Pakete P3 und P5)
 
-Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
+Nur mit Feature-Flag `calls.horn` (ab 2.6 Standard an, Merker `horn_on_y`; 2.5: Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
 `claude/saga-gjallarhorn-konzept-v2.md` §2; Frame-E2E: `docs/HORN-E2E.md`; Knoten: `gjallarhorn/NODE.md`.
 2.6 (Bugs-DB 2263; Knoten und Server setzen es mit 2263-3/-4 um, je Stelle mit „ab 2.6“ markiert): Top-3-Ton als
 fester Vertrag (unten, „Top-3-Ton“), reservierte Signal-Typen `dtmf`/`svc-join`, Grenzen nur aus dem Server und beim
@@ -2804,7 +2804,7 @@ Verbindung.
 Admin-Einstellung `calls.horn_all` (Anrufe → Gjallarhorn). **Grundsatz Y (2.5): Standard an** – alle Anrufe laufen über
 den Knoten, auch 1:1; direkt nur als Rückfall. Ein gespeichertes `horn_all: false` von vor Y gilt als nicht gesetzt (an);
 erst ein Speichern im Admin bzw. `python run.py einstellen calls.horn_all=0|1` setzt den Wert bewusst (Merker
-`horn_all_y`). Wirkt nur bei eingeschaltetem Gjallarhorn (`calls.horn`, ab Werk aus, experimentell). Dann meldet
+`horn_all_y`). Wirkt nur bei eingeschaltetem Gjallarhorn (`calls.horn`, ab 2.6 ab Werk an; 2.5: aus, experimentell). Dann meldet
 `GET /api/calls/config` `horn_dm: true`. Die Geräte sehen sich dann gegenseitig keine IP-Adressen. Clients brauchen
 dafür nichts Neues: sie folgen `horn_dm` wie bisher.
 

@@ -1426,8 +1426,9 @@ enough from outside, no additional open port is needed:
    The UDP self-test sends a STUN request from the node to that address and port and waits for the answer via the
    proxy; on "missing" it repeats after 1, 5 and 15 min, then every 30 min.
 6. **Shared address:** behind a passthrough the node sees all devices with the proxy's address. It accepts at most
-   `HORN_MAX_PER_IP` connections per source address (default 12, two per device over TLS) – for more than 6 devices set
-   `HORN_MAX_PER_IP=48`, or `HORN_PROXY_PROTOCOL=1` if the proxy sends the PROXY header (v1/v2) for this service. On the
+   `HORN_MAX_PER_IP` connections per source address (default from 2.6: 40, up to 2.5: 12; two per device over TLS, so 20
+   devices) – for more devices set it higher (e.g. `HORN_MAX_PER_IP=100` for 50 devices), or `HORN_PROXY_PROTOCOL=1` if
+   the proxy sends the PROXY header (v1/v2) for this service. On the
    proxy host also set `net.ipv4.tcp_notsent_lowat = 16384` (`gjallarhorn/NODE.md`).
 7. **Check:** Admin → Calls → Nodes, row **"Built-in"**: "Not starting" with the reason, "Certificate missing" with the
    method (DNS-01/TLS-ALPN-01) and error, otherwise "Ready". Saving or "Try again now" restarts a waiting node at once.

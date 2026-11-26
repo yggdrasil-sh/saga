@@ -1484,8 +1484,9 @@ certificado; desde fuera basta **443/TCP**, no hace falta abrir otro puerto:
    pasar 443/UDP: el nodo anuncia su puerto UDP **local** (`HORN_UDP_LISTEN`, si no `HORN_PORT`) y `HORN_PUBLIC_IP` = la
    dirección del proxy. La autoprueba UDP se repite tras 1, 5 y 15 min y luego cada 30 min.
 6. **Dirección compartida:** detrás del paso, el nodo ve todos los dispositivos con la dirección del proxy y acepta como
-   máximo `HORN_MAX_PER_IP` conexiones por dirección (12; dos por dispositivo por TLS): para más de 6 dispositivos
-   `HORN_MAX_PER_IP=48`, o `HORN_PROXY_PROTOCOL=1` si el proxy envía la cabecera PROXY.
+   máximo `HORN_MAX_PER_IP` conexiones por dirección (desde 2.6: 40, hasta 2.5: 12; dos por dispositivo por TLS, es decir
+   20 dispositivos): para más dispositivos, súbelo (p. ej. `HORN_MAX_PER_IP=100` para 50 dispositivos), o
+   `HORN_PROXY_PROTOCOL=1` si el proxy envía la cabecera PROXY.
 7. **Comprobar:** Admin → Llamadas → Nodos, fila **«Integrado»**: «No arranca» con el motivo, «Falta el certificado» con
    el método, si no «Listo». Guardar o «Reintentar ahora» reinicia en el acto un nodo en espera.
 
