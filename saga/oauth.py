@@ -220,9 +220,11 @@ def ip_key(ip):
         a = ipaddress.ip_address(str(ip).split("%", 1)[0])
     except ValueError:
         return str(ip)[:64]
-    if a.version == 6 and a.ipv4_mapped is None:
+    if a.version == 6:
+        if a.ipv4_mapped is not None:
+            return str(a.ipv4_mapped)
         return str(ipaddress.ip_network(f"{a}/64", strict=False))
-    return str(a.ipv4_mapped or a)
+    return str(a)
 
 
 def _prune(hits, window, now, keep=("*",), limit=5000):
