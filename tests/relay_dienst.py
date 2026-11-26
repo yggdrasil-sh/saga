@@ -485,6 +485,7 @@ try:
         ("collapse_id mit Leerzeichen", dict(collapse_id="chat 12"), "collapse_id"),
         ("expiration > 30 Tage", dict(expiration=int(time.time()) + 31 * 86400), "expiration"),
         ("expiration Text", dict(expiration="morgen"), "expiration"),
+        ("expiration negativ", dict(expiration=-1), "expiration"),
         ("token kein Hex", dict(token="z" * 64), "token"),
         ("token zu kurz", dict(token="ab" * 10), "token"),
         ("env falsch", dict(env="dev"), "env"),
@@ -499,6 +500,10 @@ try:
     ok("voip mit groesstem Chiffrat (4000 Zeichen) -> 200", st == 200 and len(last_seen(t_v)["body"]) > 4000)
     st, d, _ = e.push(env="sandbox")
     ok("env sandbox erlaubt", st == 200)
+    t_b = tok()
+    st, d, _ = e.push(token=t_b, push_type="background", priority=5, rate="bg", aps={"content-available": 1}, expiration=0)
+    ok("stiller Push (background) mit expiration 0 -> 200, apns-expiration 0 durchgereicht (Bugs-DB 2511)",
+       st == 200 and (last_seen(t_b) or {}).get("headers", {}).get("apns-expiration") == "0")
     t_w = tok()
     st, d, _ = e.push(token=t_w, push_type="widgets", topic=B1 + ".push-type.widgets", rate="bg", priority=5, aps={"content-available": 1})
     ok("widgets mit Freigabe (B1) -> 200, Topic durchgereicht", st == 200 and last_seen(t_w)["headers"].get("apns-topic") == B1 + ".push-type.widgets")
