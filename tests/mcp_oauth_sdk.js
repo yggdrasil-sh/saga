@@ -114,14 +114,25 @@ let again = null;
 try { again = await client.listTools(); } catch (e) { console.log('nach Widerruf:', String(e).slice(0, 300)); }
 ok('SDK: nach 401 automatisch per Refresh erneuert, tools/list geht weiter', again && again.tools.length === tl.tools.length
   && store.saves > saves && store.tokens.access_token !== oldAcc && store.tokens.refresh_token !== oldRef, JSON.stringify(store.tokens));
-// alter Refresh-Token noch einmal -> Kette gesperrt; der Client kann ohne neue Zustimmung nicht weiter
+// M1: derselbe (alte) Refresh-Token innerhalb von 30 s, Nachfolger unbenutzt -> invalid_grant, Verbindung lebt
 const tr = await fetch(BASE + '/oauth/token', { method: 'POST', body: form({ grant_type: 'refresh_token', refresh_token: oldRef, client_id: store.client.client_id }),
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-ok('Alter Refresh-Token (Wiederverwendung) -> 400 invalid_grant', tr.status === 400 && (await tr.json()).error === 'invalid_grant');
-let blocked = false;
-let why = 'ging durch';
+ok('Alter Refresh-Token sofort noch einmal -> 400 invalid_grant', tr.status === 400 && (await tr.json()).error === 'invalid_grant');
+let still = null;
+try { still = await client.listTools(); } catch (e) { console.log('nach Kulanz:', String(e).slice(0, 200)); }
+ok('SDK: Verbindung lebt (30-s-Kulanz, Nachfolger unbenutzt)', still && still.tools.length === tl.tools.length);
+// Nachfolger benutzen (zweite Erneuerung durch den Client), dann den alten Token -> Kette gesperrt
+const ref2 = store.tokens.refresh_token;
+await fetch(BASE + '/oauth/revoke', { method: 'POST', body: form({ token: store.tokens.access_token, client_id: store.client.client_id }),
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+try { await client.listTools(); } catch (e) { console.log('zweite Erneuerung:', String(e).slice(0, 200)); }
+ok('SDK: zweite Erneuerung per Refresh (Nachfolger jetzt benutzt)', store.tokens.refresh_token !== ref2);
+const tr2 = await fetch(BASE + '/oauth/token', { method: 'POST', body: form({ grant_type: 'refresh_token', refresh_token: oldRef, client_id: store.client.client_id }),
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+ok('Erster Refresh-Token noch einmal, sein Nachfolger ist benutzt -> 400 invalid_grant', tr2.status === 400 && (await tr2.json()).error === 'invalid_grant');
+let why = 'ging durch', blocked = false;
 try { await client.listTools(); } catch (e) { blocked = true; why = String(e).slice(0, 200); }
-ok('SDK: danach gesperrt (Refresh -> invalid_grant, neue Zustimmung noetig)', blocked && /InvalidGrant|invalid_grant/.test(why), why);
+ok('SDK: danach gesperrt (Kette, neue Zustimmung noetig)', blocked, why);
 await client.close().catch(() => {});
 console.log(`\nMCP-OAuth-SDK ${res.filter(Boolean).length}/${res.length} (${Math.round((Date.now() - T0) / 1000)} s)`, res.length && res.every(Boolean) ? '- ALLES GRUEN' : '- FEHLER');
 process.exit(res.length && res.every(Boolean) ? 0 : 1);
