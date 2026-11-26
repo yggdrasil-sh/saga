@@ -1076,6 +1076,8 @@ def emit_roster(c, call, legs=None, fed=True):
     """Teilnehmerliste an alle Konten dieses Servers, die zum Anruf gehoeren (call.roster), und - fuehrt dieser Server den
     Anruf - an die anderen Server (Auftrag 'roster')."""
     legs = _legs(c, call["id"]) if legs is None else legs
+    if is_horn(call) and call["state"] != "ended":
+        horn.sync_rooms(c, call["id"])                       # 2.6 (Bugs-DB 2455): Reserve am Knoten fuer laufende Uebernahmen
     base = {"call_id": call["id"], "chat_id": call["chat_id"], "kind": call["kind"], "media": call["media"], "state": call["state"],
             "limit": climit(c, call), "topo": call.get("topo") or "p2p", **_dmf(call),
             # Bughunt W09: Beginn des Gespraechs + Server-Uhr - die Dauer laeuft bei allen ab answered (auch beim Anrufer,
@@ -2074,6 +2076,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     lim = climit(c, call)
     ho = role == "handover" and any(x["device"] == rep and x["who"] == who for x in others)
     if len(others) + (0 if ho else 1) > lim:          # L4/E6: das ersetzte Geraet zaehlt bei einer Uebernahme nicht mit
+        # (am Knoten haelt horn.room_max dafuer einen Platz frei, solange beide da sind - Bugs-DB 2455)
         return chat._no_store({"error": t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.", n=lim), "join_block": "full",
                                "limit": lim, "legs": roster(c, call, who, legs)}, 409)
     node, to_mesh = None, False

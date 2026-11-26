@@ -170,3 +170,45 @@ func TestRaumGrenzeNachtraeglich(t *testing.T) {
 		t.Fatalf("4. lokales Geraet bei max_peers 3: %v", err)
 	}
 }
+
+// 2.6 (Saga Bugs-DB 2455): "Hierher uebernehmen" bei vollem Anruf - das alte Geraet bleibt am Knoten, bis das neue steht.
+// Saga oeffnet den Raum waehrend der Uebernahme mit Grenze + 1 (horn.room_max) und danach wieder mit der Grenze: das
+// neue Geraet kommt herein, ein weiteres (drittes) Geraet bleibt draussen - waehrend und nach der Uebernahme.
+func TestUebergabeVollerRaum(t *testing.T) {
+	n := NewNode(Config{Name: "k", Tick: time.Hour, MaxLegs: 200})
+	defer n.Close()
+	r, err := n.CreateRoom("raumho", &Limits{MaxPeers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	join := func(id string) error {
+		_, err := r.AddLeg(Grant{Room: "raumho", Peer: id, Leg: id + "-a", Role: RoleAudio, Pub: PubAudio}, PathUDP, Want{Audio: 3})
+		return err
+	}
+	for _, id := range []string{"alt", "gegen"} {
+		if err := join(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := join("neu"); !errors.Is(err, ErrFull) {
+		t.Fatalf("ohne Reserve (max_peers 2): neues Geraet %v - so sah der Fehler aus", err)
+	}
+	n.CreateRoom("raumho", &Limits{MaxPeers: 3}) // Uebernahme beginnt
+	if err := join("neu"); err != nil {
+		t.Fatalf("Uebernahme bei vollem Anruf (max_peers 3): %v", err)
+	}
+	if err := join("dritt"); !errors.Is(err, ErrFull) {
+		t.Fatalf("weiteres Geraet waehrend der Uebernahme: %v", err)
+	}
+	r.RemovePeer("alt")                          // das alte Geraet legt auf (bzw. kick)
+	n.CreateRoom("raumho", &Limits{MaxPeers: 2}) // Uebernahme vorbei
+	if err := join("dritt"); !errors.Is(err, ErrFull) {
+		t.Fatalf("weiteres Geraet nach der Uebernahme: %v", err)
+	}
+	r.mu.Lock()
+	got := len(r.peers)
+	r.mu.Unlock()
+	if got != 2 {
+		t.Fatalf("Geraete im Raum %d statt 2", got)
+	}
+}

@@ -686,7 +686,7 @@ def node_named(c, name):
 
 def set_leg_node(c, cid, dev, node_id):
     """Endpunkt kommt auf einen Knoten. 2.6 (Bugs-DB 2447): ist es das erste Bein des Anrufs auf diesem eigenen Knoten
-    (Start, Umzug, Kaskade/Ueberlauf), oeffnet Saga dort den Raum mit max_peers = Grenze des Anrufs (call_max) - vorher
+    (Start, Umzug, Kaskade/Ueberlauf), oeffnet Saga dort den Raum mit max_peers = Grenze des Anrufs (room_max) - vorher
     nur am Startknoten; ein Folgeknoten legte den Raum beim ersten Bein selbst mit seinem Standard (50) an. Knoten ab 2.6
     uebernehmen max_peers auch fuer einen schon offenen Raum (Bein schneller als die Nachricht)."""
     fix_limit(c, cid, dev, node_id)
@@ -694,7 +694,7 @@ def set_leg_node(c, cid, dev, node_id):
         "SELECT 1 FROM chat_call_leg WHERE call_id=? AND node=? AND state='active' LIMIT 1", (cid, node_id)).fetchone()
     c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (node_id, cid, dev))
     if first:
-        room_open(c, cid, node_id, call_max(c, cid))
+        room_open(c, cid, node_id, room_max(c, cid))
 
 
 def call_max(c, cid):
@@ -707,6 +707,40 @@ def call_max(c, cid):
         return held_limit(r[0], r[1])
     v, a = limits(c, cid)
     return v if r[1] == "video" else a
+
+
+def room_max(c, cid):
+    """2.6 (Bugs-DB 2455): max_peers fuer den Raum eines Anrufs an einem eigenen Knoten. Grundsatz: die Grenze des Anrufs
+    (call_max). Laeuft gerade eine Uebernahme ("Hierher uebernehmen", Rolle handover, das ersetzte Geraet ist noch im
+    Anruf) und ist der Anruf dadurch ueber der Grenze, einen Platz mehr - das alte Geraet bleibt am Knoten, bis das neue
+    steht (calls.join_local L4/E6: das ersetzte Geraet zaehlt nicht mit), sonst bekam das neue dort ErrFull. Mehr als einen
+    Platz braucht es nie: Saga laesst hoechstens Grenze + 1 Endpunkte zu (Beitritt: andere + 1 <= Grenze, Uebernahme:
+    andere <= Grenze), die sichtbare Grenze bleibt dieselbe; ohne Uebernahme gilt am Knoten wieder genau die Grenze.
+    Fuehrt calls.emit_roster bei jeder Aenderung der Teilnehmerliste nach (sync_rooms). None ohne Anruf."""
+    lim = call_max(c, cid)
+    if not lim:
+        return lim
+    n = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=? AND state='active'", (cid,)).fetchone()[0]
+    if n <= lim:
+        return lim
+    ho = c.execute("SELECT 1 FROM chat_call_leg h WHERE h.call_id=? AND h.state='active' AND h.role='handover' AND EXISTS "
+                   "(SELECT 1 FROM chat_call_leg o WHERE o.call_id=h.call_id AND o.device=h.replaces AND o.state='active') LIMIT 1",
+                   (cid,)).fetchone()
+    return lim + 1 if ho else lim
+
+
+def sync_rooms(c, cid):
+    """2.6 (Bugs-DB 2455): max_peers (room_max) an alle eigenen Knoten mit Endpunkten des Anrufs - nach jeder Aenderung
+    der Teilnehmerliste (Uebernahme beginnt: Grenze + 1, das alte Geraet geht bzw. die Uebernahme endet: wieder die
+    Grenze). "open" ist am Knoten idempotent und setzt die Grenze auch fuer einen offenen Raum (ab 2.6); laufende Geraete
+    bleiben, die Grenze gilt fuer neue."""
+    mp = room_max(c, cid)
+    if not mp:
+        return
+    ids = [r[0] for r in c.execute("SELECT DISTINCT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL "
+                                   "AND node NOT LIKE 'f:%'", (cid,)).fetchall()]
+    for nid in ids:
+        room_open(c, cid, nid, mp)
 
 
 def fix_limit(c, cid, dev, node_id):
@@ -817,6 +851,21 @@ def _active_rooms(node_id):
         rows = c.execute("SELECT DISTINCT l.call_id FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.node=? "
                          "AND l.state='active' AND k.state<>'ended'", (node_id,)).fetchall()
     return [call_ref(r[0], node_id) for r in rows]
+
+
+def _room_limits(node_id):
+    """2.6 (Bugs-DB 2455): "open" mit max_peers (room_max) fuer jeden laufenden Anruf mit Endpunkten an diesem Knoten -
+    nach dem (Neu-)Verbinden: ein neu gestarteter Knoten legte die Raeume sonst beim ersten Bein mit seinem Standard (50)
+    wieder an."""
+    with _db() as c:
+        rows = c.execute("SELECT DISTINCT l.call_id FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.node=? "
+                         "AND l.state='active' AND k.state<>'ended' AND k.topo='horn'", (node_id,)).fetchall()
+        out = []
+        for (cid,) in rows:
+            mp = room_max(c, cid)
+            if mp:
+                out.append({"t": "open", "call_ref": call_ref(cid, node_id), "max_peers": mp})
+    return out
 
 
 # --- Steuerkanal horn-ctl/1 -----------------------------------------------------------------------------------------
@@ -1116,6 +1165,8 @@ async def _welcome(ws, k, nid, hh, builtin):
         drain = await asyncio.to_thread(_node_drain, nid)
         welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain)
     await ws.send_json(welcome)
+    for m in await asyncio.to_thread(_room_limits, nid):   # 2.6 (Bugs-DB 2455): Grenzen der laufenden Raeume nachtragen
+        k.q.put_nowait(m)                              # (der Schreiber startet nach dem welcome, Folgenummern ab 1)
     if not builtin:
         await asyncio.to_thread(broadcast_peers)
     if HOOKS.get("connected"):
