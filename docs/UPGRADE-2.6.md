@@ -107,4 +107,6 @@ Alles, was nach dem Backup geändert wurde, ist danach weg – also nur kurz nac
 auch für die mit 2.6 neuen Tabellen (Adressbuch, eigener Status, Aufträge, KI-Verbrauch): 2.6 entfernt sie beim
 Zurückspielen; ein späteres erneutes Update legt sie leer an und füllt das Adressbuch wieder aus den Chats. Darum mit
 **2.6** zurückspielen: 2.5 kennt diese Tabellen nicht und ließe sie mit den 2.6-Daten stehen. Startet 2.5 mit
-„Schema-Stand 40 … kennt nur 35“, läuft sie noch auf der umgebauten Datenbank: Backup zurückspielen wie oben.
+„Schema-Stand 40 … kennt nur 35“, läuft sie noch auf der umgebauten Datenbank: `SAGA_VERSION` in der `.env`
+vorübergehend wieder auf 2.6 (bzw. `2`) stellen, Backup wie oben zurückspielen, dann wieder 2.5. Wer schon mit 2.5
+zurückgespielt hat, spielt dasselbe Backup noch einmal mit 2.6 zurück – danach sind die 2.6-Tabellen weg.

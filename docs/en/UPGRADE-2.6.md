@@ -89,4 +89,7 @@ docker compose pull && docker compose up -d
 Everything changed after the backup is gone – so only shortly after a failed update. This includes the tables new in
 2.6 (address book, own status, jobs, AI usage): 2.6 removes them when restoring; a later update to 2.6 again creates
 them empty and fills the address book from the chats again. That is why you restore with **2.6**: 2.5 does not know
-these tables and would leave them in place with their 2.6 data.
+these tables and would leave them in place with their 2.6 data. If 2.5 starts with "Schema-Stand 40 … kennt nur 35",
+it is still running on the converted database: set `SAGA_VERSION` in `.env` back to 2.6 (or `2`) for the moment,
+restore the backup as above, then switch to 2.5 again. If you already restored with 2.5, restore the same backup once
+more with 2.6 – the 2.6 tables are gone afterwards.
