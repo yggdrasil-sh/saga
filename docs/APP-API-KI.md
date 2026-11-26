@@ -384,6 +384,8 @@ Konzept K10/K11/K19, M1/M3/M4/M7/M11; Server `saga/ai_saga.py`. Alle Endpunkte m
   „im Heimnetz“/„lokal“. `intro.lines[1]` nennt immer „Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben
   und Terminen gehen an {label}.“; `details` gehören hinter ⓘ (M3), `bar` ist die feste Leiste B6 im Ort „Saga“.
 - `question` nur mit Fähigkeit `ai_ideas` (sonst `null`, Knopf „Ja, einverstanden“ statt „Ja, mit/ohne Ideen“).
+- `intro.lines` kommen aus dem Baustein `intro` (Abschnitt 9, Anrede du/Sie der Person) mit `label` als Ort; nur wenn
+  der Baustein fehlt, die festen Sätze. Die Felder stehen in `/api/ai/status` hinter `style`.
 
 ### 11.2 Einwilligung (K19, Apple 5.1.2(i), Art. 7 DSGVO)
 
@@ -420,14 +422,15 @@ Nutzung): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI 
 `#sg-cards` und `HKSaga.mount(node)` (hängt eine Karte an den Verlauf), Ereignisse auf `document`: `saga:status`
 `{status}`, `saga:turn` `{turn, q}` nach jeder Antwort, `saga:consent` `{consent}`.
 
-### 11.5 Einstellungen der Person – `GET/PUT /api/ai/prefs`
+### 11.5 Einstellungen der Person – Ergänzung zu `GET/PUT /api/ai/prefs` (Abschnitt 9)
 
-`{ideas: "off"|"today", sources: {pages, tasks, calendar, chat}, history, history_allowed, notify_content:
-"unlocked"|"never", salutation: "du"|"sie", dictation: "server"|"device", ideas_allowed, consent}`. `PUT` ändert nur
-genannte Felder; falsche Werte 400. `ideas: "today"` ohne Einwilligung 409, ohne Fähigkeit `ai_ideas` 403. Ohne
-Einwilligung liefert `GET` immer `ideas: "off"`. `history: false` löscht den gespeicherten Verlauf und lässt das Gespräch
-nach 24 h ablaufen (ebenso `PUT /api/ai/settings {history: false}`). `notify_content`, `salutation`, `dictation` werden
-gespeichert und von späteren Paketen gelesen.
+Derselbe Endpunkt wie in Abschnitt 9 (Anrede, Lebhaftigkeit); K-I hängt an: `ideas: "off"|"today"`, `sources: {pages,
+tasks, calendar, chat}`, `history`, `history_allowed`, `notify_content: "unlocked"|"never"`, `dictation:
+"server"|"device"`, `ideas_allowed`, `consent`. `PUT` ändert nur genannte Felder, falsche Werte 400 (vor jedem
+Schreiben). `ideas: "today"` ohne Einwilligung 409, ohne Fähigkeit `ai_ideas` 403. Ohne Einwilligung liefert `GET`
+immer `ideas: "off"`. `history: false` löscht den gespeicherten Verlauf und lässt das Gespräch nach 24 h ablaufen
+(ebenso `PUT /api/ai/settings {history: false}`). Alles liegt im gemeinsamen Eintrag `user_kv` `ai_prefs`; fremde
+Schlüssel bleiben stehen. `notify_content` und `dictation` werden gespeichert und von späteren Paketen gelesen.
 
 ### 11.6 Meine Daten (M7, Art. 15/17/20, RT-35)
 
