@@ -2138,11 +2138,12 @@ tables by hand (2.3 recreates them on its next start):
 
 Before restoring, `run.py restore` (also `restore --schluessel` and `backup-pruefen`) checks that the file is a Saga
 backup (tables `schema_version`, `users`, `setting`, `note`); any other file – such as a backup of a different
-database – is rejected without changing anything. **Very old backup (e.g. from 2.4):** since 2.6, restoring first
-removes **all** tables the running version knows; whatever the backup doesn't contain is empty afterwards – for a 2.4
-backup this includes the Gjallarhorn nodes (`horn_*`, including the block list of removed node keys) and the history of
-the encrypted backups. So after restoring an old backup, check the nodes under Admin → Calls and remove previously
-removed (blocked) nodes again if needed – that blocks their key again.
+database – is rejected without changing anything. **Older backup:** since 2.6, restoring first removes **all** tables
+the running version knows; whatever the backup doesn't contain is empty afterwards, everything else is as of the
+backup. For Gjallarhorn (`horn_*`) this means: after a backup from before 2.5 (e.g. 2.4), no paired nodes are listed
+and the block list of removed node keys is empty – don't pair previously removed nodes again. A node that was removed
+only after the backup is listed again and its key is no longer blocked. So after restoring, check the nodes under
+Admin → Calls and remove such nodes again – that blocks their key again.
 
 **Apps:** The apps check the server version on start. If an app is too old for the server, it asks you to
 update it. The app's settings show both the app and the server version.

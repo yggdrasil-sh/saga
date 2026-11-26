@@ -2230,12 +2230,13 @@ a mano (la 2.3 las vuelve a crear en el siguiente arranque):
 
 Antes de restaurar, `run.py restore` (también `restore --schluessel` y `backup-pruefen`) comprueba que el archivo sea
 una copia de Saga (tablas `schema_version`, `users`, `setting`, `note`); cualquier otro archivo – p. ej. la copia de
-otra base de datos – se rechaza sin cambiar nada. **Copia muy antigua (p. ej. de la 2.4):** desde la 2.6, al restaurar
-se eliminan antes **todas** las tablas que conoce la versión en marcha; lo que la copia no contiene queda vacío – en una
-copia de la 2.4, entre otras cosas, los nodos de Gjallarhorn (`horn_*`, también la lista de claves bloqueadas de nodos
-eliminados) y el historial de las copias cifradas. Por eso, tras restaurar una copia antigua, revisa los nodos en
-Admin → Llamadas y vuelve a eliminar si hace falta los nodos que habías eliminado (bloqueados): así su clave vuelve a
-quedar bloqueada.
+otra base de datos – se rechaza sin cambiar nada. **Copia más antigua:** desde la 2.6, al restaurar se eliminan antes
+**todas** las tablas que conoce la versión en marcha; lo que la copia no contiene queda vacío y todo lo demás queda como
+estaba en la copia. En Gjallarhorn (`horn_*`) eso significa: tras una copia de antes de la 2.5 (p. ej. de la 2.4) no
+queda ningún nodo emparejado y la lista de claves bloqueadas de nodos eliminados está vacía – no vuelvas a emparejar
+nodos que habías eliminado. Un nodo eliminado después de la copia vuelve a aparecer y su clave ya no está bloqueada. Por
+eso, tras restaurar, revisa los nodos en Admin → Llamadas y vuelve a eliminar esos nodos: así su clave vuelve a quedar
+bloqueada.
 
 **Apps:** al arrancar, las apps comprueban la versión del servidor. Si una app es demasiado antigua para el
 servidor, te pide que la actualices. En los ajustes de la app aparecen la versión de la app y la del servidor.

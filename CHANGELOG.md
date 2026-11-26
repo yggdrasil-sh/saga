@@ -258,7 +258,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   `schema_version`, `users`, `setting`, `note`). Das gültige Backup einer anderen Datenbank leerte sonst seit 2454 alle
   Saga-Tabellen – der nächste Start fand eine leere Instanz. Jetzt Abbruch mit Meldung (ohne Traceback), nichts
   geändert. Erkennung der Saga-Tabellen auch bei klein geschriebenem `create table`. Doku (Abschnitt 11): nach dem
-  Zurückspielen eines sehr alten Backups (z. B. 2.4) gesperrte Gjallarhorn-Knoten prüfen und erneut sperren.
+  Zurückspielen eines älteren Backups die Gjallarhorn-Knoten prüfen – nach dem Backup entfernte Knoten sind wieder
+  eingetragen und ungesperrt, bei einem Backup von vor 2.5 ist die Sperrliste leer.
 - **Gjallarhorn: eigene Kachel zeigt „spricht“ wieder richtig** (Bugs-DB 2458, Web inkl. Mac-Hülle/Linux, Gruppen ab drei
   Personen über den Knoten): Der eigene Pegel wurde nur während eines Knotenwechsels gemessen – ohne Wechsel zeigte die
   eigene Kachel nie „spricht“, nach einem Wechsel, bei dem man sprach, dauerhaft. Jetzt jeden Takt gemessen (älter als

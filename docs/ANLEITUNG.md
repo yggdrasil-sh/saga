@@ -2444,11 +2444,13 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 
 Vor dem Einspielen prüft `run.py restore` (auch `restore --schluessel` und `backup-pruefen`), ob die Datei ein
 Saga-Backup ist (Tabellen `schema_version`, `users`, `setting`, `note`); eine andere Datei – etwa das Backup einer
-anderen Datenbank – lehnt es ab, ohne etwas zu ändern. **Sehr altes Backup (z. B. von 2.4):** Seit 2.6 entfernt das
-Zurückspielen vorher **alle** Tabellen, die die laufende Version kennt; was das Backup nicht enthält, ist danach leer –
-bei einem 2.4-Backup u. a. die Gjallarhorn-Knoten (`horn_*`, auch die Sperrliste entfernter Knoten-Schlüssel) und der
-Verlauf der verschlüsselten Backups. Nach dem Zurückspielen eines alten Backups daher unter Admin → Anrufe die Knoten
-prüfen und früher entfernte (gesperrte) Knoten bei Bedarf erneut entfernen – das sperrt ihren Schlüssel wieder.
+anderen Datenbank – lehnt es ab, ohne etwas zu ändern. **Älteres Backup:** Seit 2.6 entfernt das Zurückspielen vorher
+**alle** Tabellen, die die laufende Version kennt; was das Backup nicht enthält, ist danach leer, alles andere steht auf
+dem Stand des Backups. Bei Gjallarhorn (`horn_*`) heißt das: Nach einem Backup von vor 2.5 (z. B. 2.4) sind keine
+gekoppelten Knoten mehr eingetragen und die Sperrliste entfernter Knoten-Schlüssel ist leer – früher entfernte Knoten
+nicht wieder koppeln. Ein Knoten, der erst nach dem Backup entfernt wurde, ist wieder eingetragen und sein Schlüssel
+nicht mehr gesperrt. Nach dem Zurückspielen daher unter Admin → Anrufe die Knoten prüfen und solche Knoten erneut
+entfernen – das sperrt ihren Schlüssel wieder.
 
 **Apps:** Die Apps prüfen beim Start die Version des Servers. Ist eine App zu alt für den Server, zeigt sie
 „Bitte App aktualisieren“. In den Einstellungen der App stehen App- und Server-Version.
