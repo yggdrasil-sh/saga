@@ -8,7 +8,8 @@
 // - Ruhiger Tag (Vektor): kein Element; Layout-Shift < 0,05 (nur Chromium); Live ai.today.changed entprellt (400 ms) und aus
 //   einem zweiten Tab (sobald der Server es sendet - sonst OFFEN); 390 px, 200 % Zoom, hell/dunkel (Kontrast), Thai >= 1,6.
 // Richtet sich selbst ein: tests/kollegin_heute_setup.py (--setup/--teardown). Env: SAGA_BASE, PY (python), BR=firefox,
-// SHOTS=/ordner (Bilder), NUR_BILDER=vorher (nur "vorher": heute-kurz.js blockiert), KEEP=1 (Konten stehen lassen).
+// SHOTS=/ordner (Bilder), NUR_BILDER=vorher (nur "vorher": heute-kurz.js blockiert) bzw. breite (nur 2546, BILD_PREFIX=vorher/nachher),
+// KEEP=1 (Konten stehen lassen). 2546: "Heute" breit mittig (Mitte ±2 px bei 1280/1920/2560 mit/ohne Seitenleiste).
 const PWL = require(process.env.PLAYWRIGHT || 'playwright');
 const FF = process.env.BR === 'firefox', engine = FF ? PWL.firefox : PWL.chromium;
 const { execFileSync } = require('child_process');
@@ -93,12 +94,42 @@ async function vorher(br, cfg) {
   }
 }
 
+// 2546: "Heute" mittig im freien Platz (zwischen Seitenleiste bzw. linkem Rand und Aufgabenleiste bzw. rechtem Rand),
+// Mitte ±2 px bei 1280/1920/2560 mit und ohne Seitenleiste; mobil unveraendert (kein Rand).
+async function breite(br, cfg, pre) {
+  const mitte = (p) => p.evaluate(() => {
+    const m = document.getElementById('heute').getBoundingClientRect(), hid = document.body.classList.contains('side-hidden');
+    const side = hid ? 0 : document.querySelector('.pages-side').getBoundingClientRect().right;
+    const rail = document.getElementById('rail'), rr = rail && getComputedStyle(rail).display !== 'none' ? rail.getBoundingClientRect().left : document.documentElement.clientWidth;
+    return { mc: Math.round((m.left + m.right) / 2), fc: Math.round((side + rr) / 2), w: Math.round(m.width), left: Math.round(m.left), side: Math.round(side), rr: Math.round(rr), hid };
+  });
+  for (const w of [1280, 1920, 2560]) {
+    const { ctx, p } = await login(br, cfg.an, cfg.pw, { viewport: { width: w, height: 1000 }, theme: 'light' });
+    await heute(p);
+    for (const mit of [true, false]) {
+      const hid = await p.evaluate(() => document.body.classList.contains('side-hidden'));
+      if (hid === mit) { await p.click('#pg-side-btn'); await p.waitForTimeout(450); }
+      const m = await mitte(p);
+      ok(`2546: ${w} px ${mit ? 'mit' : 'ohne'} Seitenleiste - Mitte ±2 px, nicht breiter als 1080, rechts der Leiste`,
+        Math.abs(m.mc - m.fc) <= 2 && m.w <= 1080 && m.left >= m.side - 1 && m.hid === !mit, m);
+      if (E.NUR_BILDER && (w > 1280 || mit)) await shot(p, `${pre}-heute-breit-${w}-${mit ? 'mit' : 'ohne'}-leiste`);
+    }
+    if (await p.evaluate(() => document.body.classList.contains('side-hidden'))) { await p.click('#pg-side-btn'); await p.waitForTimeout(300); }
+    await ctx.close();
+  }
+  const M = await login(br, cfg.an, cfg.pw, { viewport: { width: 390, height: 844 } }); await heute(M.p);
+  const mm = await M.p.evaluate(() => { const m = document.getElementById('heute').getBoundingClientRect(); return { l: Math.round(m.left), w: Math.round(m.width), W: document.documentElement.clientWidth }; });
+  ok('2546: mobil 390 px unveraendert (volle Breite, kein Rand)', mm.l === 0 && mm.w === mm.W, mm);
+  await M.ctx.close();
+}
+
 (async () => {
   const cfg = py('--setup');
   await sleep(5600);                                  // Einstellungen im Server 5 s zwischengespeichert
   const br = await engine.launch();
   try {
     if (E.NUR_BILDER === 'vorher') { await vorher(br, cfg); return; }
+    if (E.NUR_BILDER === 'breite') { await breite(br, cfg, E.BILD_PREFIX || 'nachher'); return; }
 
     // ================= 1. Vertrag: Vektoren (vorgetaeuscht) =================
     {
@@ -296,6 +327,9 @@ async function vorher(br, cfg) {
       }
       await M.ctx.close();
     }
+
+    // ================= 3b. 2546: breit mittig =================
+    await breite(br, cfg, 'nachher');
 
     // ================= 4. Thai: Zeilenhoehe >= 1,6 =================
     {
