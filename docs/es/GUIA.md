@@ -244,12 +244,12 @@ cuenta de ipv64**. Saga queda detrás como detrás de cualquier otro proxy: Node
 hablando solo HTTP en el puerto 8080; web, apps, canal en directo y llamadas (túnel, arriba) usan **un dominio y solo el
 puerto 443**.
 
-1. **Crear un host de proxy** (PROXY64 → Proxy-Hosts): dominio `saga.example.com`, destino `http://<host-de-saga>:8080`
+1. **Crear un host de proxy** (PROXY64 → Proxy-Hosts): dominio `saga.example.org`, destino `http://<host-de-saga>:8080`
    (o el nombre del contenedor de Saga si ambos están en la misma red de Docker), **WebSockets activado** (por defecto en
    hosts nuevos), el certificado que quieras (Let's Encrypt, propio, autofirmado para pruebas). Sin WebSockets las
    páginas cargan, pero las llamadas no: el nodo responde entonces `426` y Admin → Llamadas muestra «el proxy no deja
    pasar WebSocket» (el aviso nombra el interruptor de Nginx Proxy Manager; aquí se llama «WebSockets»).
-2. **`.env`:** `BASE_URL=https://saga.example.com` y `TRUSTED_PROXIES` = la dirección desde la que Node64 llega a Saga
+2. **`.env`:** `BASE_URL=https://saga.example.org` y `TRUSTED_PROXIES` = la dirección desde la que Node64 llega a Saga
    (contenedor en la misma red de Docker: su dirección o toda la red, p. ej. `172.18.0.0/16`; Node64 en la red del host:
    `TRUSTED_PROXIES=*` como arriba), además `HOST_BIND=127.0.0.1`; si no, se llega al puerto 8080 sin pasar por Node64
    (sin TLS y, por IPv6, con la dirección de la pasarela de Docker, en la que Saga confía). Node64 envía la dirección

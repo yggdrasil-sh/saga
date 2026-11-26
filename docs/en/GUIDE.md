@@ -239,12 +239,12 @@ brings health checks (reachability checks), country filters and blocklists. Run 
 account**. Saga sits behind it like behind any other proxy: Node64 terminates TLS (HTTPS), Saga keeps speaking plain
 HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use **one domain and port 443 only**.
 
-1. **Create a proxy host** (PROXY64 → Proxy hosts): domain `saga.example.com`, target `http://<saga-host>:8080`
+1. **Create a proxy host** (PROXY64 → Proxy hosts): domain `saga.example.org`, target `http://<saga-host>:8080`
    (or the name of the Saga container if both share a Docker network), **WebSockets on** (the default for new hosts),
    any certificate (Let's Encrypt, your own, self-signed for tests). Without WebSockets pages still load, but calls do
    not: the node then answers `426`, and Admin → Calls shows “the proxy does not pass WebSocket through” (the hint names
    the Nginx Proxy Manager switch; here it is “WebSockets”).
-2. **`.env`:** `BASE_URL=https://saga.example.com` and `TRUSTED_PROXIES` = the address Node64 uses to reach Saga
+2. **`.env`:** `BASE_URL=https://saga.example.org` and `TRUSTED_PROXIES` = the address Node64 uses to reach Saga
    (container in the same Docker network: its address or the whole Docker network, e.g. `172.18.0.0/16`; Node64 on the
    host network: `TRUSTED_PROXIES=*` as above), plus `HOST_BIND=127.0.0.1` – otherwise port 8080 can be reached around
    Node64 (without TLS, and over IPv6 with the Docker gateway's address, which Saga then trusts). Node64 sends the real
