@@ -198,6 +198,9 @@ def rules():
     fb2 = A._event_facts(evs, datetime.fromtimestamp(at("2026-07-08T00:01:00+02:00"), BER))
     ok("Zonen: 00:01 - Termin, der gestern begann, zaehlt nicht als heute",
        not [f for f in fb2 if f.kind == "event" and not f.fields.get("allday")], [(f.kind, f.fields) for f in fb2])
+    d = b([F("due", "C# lernen", prio=1, due="2026-07-07", time=""), F("over", "Plan_B", prio=1, due="2026-07-01", time="")])
+    ok("2547: Titel mit # und _ unveraendert in Zeile und Satz", [p["text"] for p in d["line"]["parts"]] == ["„Plan_B“ überfällig", "„C# lernen“ heute"]
+       and "„C# lernen“" in d["sentence"], d["line"])
     d = b([])
     ok("Ruhiger Tag: line null, waiting null, Satz 'Heute steht nichts an.'", d["line"] is None and d["waiting"] is None
        and d["sentence"] == "Guten Morgen, Anna. Heute steht nichts an.", d)

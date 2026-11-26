@@ -312,13 +312,29 @@ def cut(s, budget, lang="en"):
     return _cut(str(s or ""), budget, lang)
 
 
-def _sv(v, n=80):
-    """S-Wert: eine Zeile ohne Steuerzeichen und Markierungen, gekuerzt (Titel, Namen, Fristen)."""
+_SV_MD = __import__("contextvars").ContextVar("ai_say_md", default=False)
+_MD_SPECIAL = re.compile(r"([\\`*_#\[\]<>])")
+
+
+class markdown:
+    """Bugs-DB 2547: S-Werte fuer einen Markdown-Kanal maskieren statt streichen - `with ai_say.markdown(): say(...)`.
+    Ohne (Textkanaele card/push/voice, Tageszeile "day"; die Clients setzen per textContent) bleiben Titel wie sie sind."""
+    def __enter__(self):
+        self._tok = _SV_MD.set(True)
+
+    def __exit__(self, *a):
+        _SV_MD.reset(self._tok)
+
+
+def _sv(v, n=80, md=None):
+    """S-Wert: eine Zeile ohne Steuerzeichen, gekuerzt (Titel, Namen, Fristen). Zeichen wie # _ * ` [ ] < > bleiben im
+    Text stehen ("C# lernen", "Plan_B" - 2547); nur im Markdown-Kanal (md bzw. ai_say.markdown()) mit \\ maskiert."""
     s = re.sub(r"[\x00-\x1f\x7f  ]+", " ", str(v if v is not None else ""))
-    s = re.sub(r"[<>`*_#\[\]]", "", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     if graphemes(s) > n:
         s = _cut(s, n, "en")
+    if _SV_MD.get() if md is None else md:
+        s = _MD_SPECIAL.sub(r"\\\1", s)
     return s
 
 

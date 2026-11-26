@@ -718,6 +718,18 @@ def day_cases():
        and S.say("day", {"part": "tomorrow", "title": "A", "time": "08:00", "more": 2}, "de", P) == "Morgen 08:00 A"
        and S.say("day", {"part": "gibtsnicht", "title": "A"}, "de", P) == "")
     ok("day: Mitteilung nie (push None)", S.say("day", {"part": "waiting", "n": 1, "channel": "push"}, "de", P) == "")
+    # 2547: Titel in Textkanaelen unveraendert (Clients setzen per textContent), im Markdown-Kanal maskiert statt gestrichen
+    raw = [S.say("day", {"part": "due", "title": x}, "de", P) for x in ("C# lernen", "Plan_B", "<b>x</b>")]
+    ok(f"2547: Textkanal laesst „C# lernen“, „Plan_B“, „<b>x</b>“ stehen ({raw})",
+       raw == ["„C# lernen“ heute", "„Plan_B“ heute", "„<b>x</b>“ heute"], raw)
+    rc = S.say("report", {"result": "ask_bring.yes", "person": "Ben", "item": "C# Buch", "changes": [{"kind": "row", "title": "Plan_B"}]}, "de", P)
+    ok(f"2547: auch Zug report (Karte) ohne Streichen ({rc})", "C# Buch" in rc and "Plan_B" in rc, rc)
+    with S.markdown():
+        md = [S.say("day", {"part": "due", "title": x}, "de", P) for x in ("C# lernen", "Plan_B", "<b>x</b>", "[1] **fett**")]
+    ok(f"2547: Markdown-Kanal maskiert mit \\ statt zu streichen ({md})", md == ["„C\\# lernen“ heute", "„Plan\\_B“ heute",
+       "„\\<b\\>x\\</b\\>“ heute", "„\\[1\\] \\*\\*fett\\*\\*“ heute"], md)
+    ok("2547: nach dem Markdown-Block wieder Textkanal", S.say("day", {"part": "due", "title": "C#"}, "de", P) == "„C#“ heute")
+    ok("2547: Steuerzeichen und Zeilenumbrueche weiter weg", S.say("day", {"part": "due", "title": "A\nB\x00C"}, "de", P) == "„A B C“ heute")
     lg = S.say("day", {"part": "due", "title": "Wort " * 60}, "de", P)
     ok(f"day: S-Werte gekuerzt (<= 80), Budget 160 ({S.graphemes(lg)})", 20 < S.graphemes(lg) <= 100 and "Wort" in lg, lg)
 

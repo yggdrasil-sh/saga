@@ -349,6 +349,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Bildschirmleser). Apps: zweites Ereignis `sources` vor `done` (docs/APP-API-KI.md 11.3).
 - **Kollegin: lange Titel ohne Leerzeichen** (Thai, Chinesisch, Japanisch) erschienen in Rückmeldungen nur als „…“ –
   jetzt an Zeichen-Grenzen gekürzt (nie mitten in einem Schriftzeichen). (2543)
+- **Kollegin: Titel behalten ihre Zeichen** – die Bausteine strichen #, _, *, Backtick, [ ] und < > aus Titeln und Namen
+  („C lernen“ statt „C# lernen“, „PlanB“ statt „Plan_B“). In Textkanälen (Karte, Tageszeile; die Clients setzen Text, kein
+  HTML) bleiben sie jetzt stehen, für einen Markdown-Kanal maskiert `ai_say.markdown()` sie mit `\` statt sie zu streichen
+  (2547).
 - **Russisch: „Auftrag“ heißt überall „Поручение“** – zwei Sätze der Kollegin sagten noch „Задание“ (Sitzung
   abgelaufen, fehlende Rechte); jetzt wie in den Systemtexten und APP-API-KI §11.7 (2544).
 - **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
