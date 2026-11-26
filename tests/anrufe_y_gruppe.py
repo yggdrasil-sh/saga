@@ -83,6 +83,19 @@ def start(a, chat, cs=CAPS, media="video"):
 LAST = [None]
 
 
+def caps(p, cs, dev=None):
+    """Faehigkeiten melden, bis die Instanz sie annimmt -> HTTP-Status. Bugs-DB 2453: Lief vorher eine Reihe, die Anrufe
+    abschaltet (anrufe_horn_y, enabled=False), antwortet die Instanz bis zu 5 s lang (Einstellungs-Zwischenspeicher) mit
+    403 "Anrufe abgeschaltet" - die Meldung ging verloren und alle Mitglieder galten als alt (Mesh statt Knoten)."""
+    s = None
+    for _ in range(30):
+        s, _d = req("PUT", "/api/calls/caps", p.k, {"device": (dev or p.dev)["id"], "caps": cs})
+        if s == 200:
+            break
+        time.sleep(0.5)
+    return s
+
+
 def age(dev, days):
     with connect() as c, c:
         c.execute("UPDATE chat_device SET last_seen=? WHERE id=?", (time.time() - days * 86400, dev["id"]))
@@ -118,9 +131,8 @@ def main():
 def run():
     P = [A_.Person(u) for u, _ in USERS]
     Fz = P.pop()                                       # Fritz: nur ein 2.4-Geraet (multi ohne horn)
-    for p in P:
-        req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS})
-    req("PUT", "/api/calls/caps", Fz.k, {"device": Fz.dev["id"], "caps": CAPS24})
+    st = [caps(p, CAPS) for p in P] + [caps(Fz, CAPS24)]
+    ok(f"Faehigkeiten gemeldet ({st})", all(x == 200 for x in st), st)
     A = P[0]
     g, M = {}, {}
     for n in (2, 3, 4, 5):
@@ -171,7 +183,7 @@ def run():
     ok(f"5er mit Fritz (ueber der Mesh-Grenze): Knoten, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf')})",
        r == H and inv(LAST[0], "ca-ygf") == "old" and not (LAST[0] or {}).get("horn_mesh"), LAST[0])
     f2 = Fz.add_device()
-    req("PUT", "/api/calls/caps", Fz.k, {"device": f2["id"], "caps": CAPS})
+    caps(Fz, CAPS, f2)
     age(Fz.dev, 40)
     r = start(M[g3a], g3a)
     ok(f"Fritz mit aktivem horn-Geraet, altes seit 40 Tagen still: 3er ueber den Knoten ({r})", r == H, LAST[0])
@@ -180,7 +192,7 @@ def run():
     ok(f"altes Geraet wieder aktiv (2 Tage) neben dem neuen: Fritz kann es (ein Geraet reicht) -> Knoten ({r})", r == H, LAST[0])
     age(Fz.dev, 40)
     age(f2, 50)
-    req("PUT", "/api/calls/caps", Fz.k, {"device": f2["id"], "caps": CAPS24})
+    caps(Fz, CAPS24, f2)
     age(f2, 50)
     r = start(M[g3a], g3a)
     ok(f"nur alte Geraete ohne Lebenszeichen (alle 2.4): zaehlen alle -> direkt ({r})", r == ("mesh", False), LAST[0])

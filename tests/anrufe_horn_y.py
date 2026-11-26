@@ -93,6 +93,7 @@ def main():
             auth.save_setting(k, v if v is not None else ({} if k == "calls" else True))
         auth._settings_cache["v"] = None
         A_.cleanup()
+        time.sleep(6)       # Bugs-DB 2453: Zwischenspeicher der Instanz (5 s) haelt sonst "Anrufe aus" fuer die naechste Reihe
     print(f"\nANRUFE-HORN-Y {sum(res)}/{len(res)}", "- ALLES GRUEN" if all(res) else "- FEHLER")
     sys.exit(0 if all(res) else 1)
 
