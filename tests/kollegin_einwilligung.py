@@ -308,6 +308,11 @@ def run():
        it.get("note") == "Steht bei uns im Keller." and it.get("question") and it.get("version") == ai_saga.CONSENT_V
        and any("Ende-zu-Ende" in d for d in it.get("details") or []) and it.get("bar", "").endswith(ep["label"]), it)
     ok("Einwilligung anfangs: none", cs.get("state") == "none", cs)
+    ad = s.get("ask_details") or []
+    ok("2505: ask_details fuer „Frag deine Seiten“ - eigene Saetze (nicht die des Gespraechs), Host, keine fruehern Fragen",
+       len(ad) >= 4 and any("Ende-zu-Ende" in x and ep["host"] in x for x in ad) and any("Frühere Fragen gehen nicht mit" in x for x in ad)
+       and not any("letzten Sätze dieses Gesprächs" in x for x in ad) and any("Diese Seite" in x for x in ad)
+       and not any("Im Web suchen" in x for x in ad) and list(s).index("ask_details") > list(s).index("intro"), ad)
 
     # --- ohne Einwilligung: nichts ans Modell ----------------------------------------------------------------------------
     for u in (A, B):
@@ -500,7 +505,12 @@ def run():
         c.execute("INSERT INTO ai_history (uid, created, kind, question, answer, sources) VALUES (?,?,?,?,?,?)",
                   (A, time.time(), "ask", "Frage im Verlauf", "Antwort im Verlauf", "{}"))
     jb = jobs.create(B, "test.echo", title="Auftrag von Ben", steps=[{"tool": "echo", "args": {"x": 1}}])
+    with connect() as c, c:                       # 2503: worauf ein Auftrag wartet, gehoert zur Auskunft
+        c.execute("INSERT INTO job_wait (job_id, step_n, on_kind, ref, until) VALUES (?,?,?,?,?)", (j1, 0, "test.wait", "kw-ref", time.time() + 3600))
     st, d = req("GET", "/api/ai/mydata?format=json", A)
+    w1 = next((j.get("waits") for j in d.get("jobs") or [] if j["id"] == j1), None)
+    ok(f"2503: Export mit job_wait (waits je Auftrag: on, ref, until) ({w1})", w1 and w1[0]["on"] == "test.wait" and w1[0]["ref"] == "kw-ref"
+       and w1[0]["until"] and all(isinstance(j.get("waits"), list) for j in d["jobs"]))
     st0, _x = req("GET", "/api/ai/mydata?format=json", None)
     ok("Export ohne Anmeldung/X-Saga -> 401", st0 == 401, st0)
     acts = [x["action"] for x in d.get("consent") or []]
@@ -514,7 +524,8 @@ def run():
     st, md, hd = req("GET", "/api/ai/mydata?format=md", A, raw=True)
     ok("Export Markdown: Datei mit Ueberschriften, Gespraech, Verlauf",
        st == 200 and hd.get("content-type", "").startswith("text/markdown") and "attachment" in hd.get("content-disposition", "")
-       and "## Einwilligungen" in md and "## Gespräch" in md and "Und im Herbst?" in md and "Frage im Verlauf" in md, (st, md[:300]))
+       and "## Einwilligungen" in md and "## Gespräch" in md and "Und im Herbst?" in md and "Frage im Verlauf" in md
+       and "Wartet auf „test.wait“ bis" in md, (st, md[:300]))
     st, _x = req("GET", "/api/ai/mydata?format=pdf", A)
     ok("Export: unbekanntes Format 400", st == 400, st)
 
@@ -563,6 +574,8 @@ def browser_setup():
     j = jobs.create(BA, "test.echo", title="Grillkohle", steps=[{"tool": "echo", "args": {"x": 1}}])
     with connect() as c, c:
         c.execute("UPDATE job SET state='laeuft', next_at=?, updated=? WHERE id=?", (time.time() + 86400, time.time(), j))
+        c.execute("INSERT INTO job_wait (job_id, step_n, on_kind, ref, until) VALUES (?,?,?,?,?)",     # 2503: Export mit job_wait
+                  (j, 0, "test.wait", "kw-b", time.time() + 86400))
     print(json.dumps({"job": j, "a": BA, "off": BO, "pw": PW}))
 
 

@@ -1590,11 +1590,34 @@ appears in the chat list and is not end-to-end encrypted.
   with ideas** · **Yes, without ideas** · **Not now** (nothing goes to the AI). If the admin switches to a different
   endpoint, Marin asks again.
 - **Conversation:** with history off it disappears after 24 hours; with history on it is kept (up to 200 entries).
-- **Settings › Saga › My data:** withdraw consent (Marin no longer carries out tasks – running ones pause –, brings no
+- **Settings › Saga › My data:** withdraw consent (Marin no longer carries out jobs – running ones pause –, brings no
   ideas, and the conversation in Saga is off; questions elsewhere such as “Ask your pages” still go to the AI, but only
-  when you ask them, with the same notice “What you ask here is read by the AI at …”), export history and tasks
+  when you ask them, with the same notice “What you ask here is read by the AI at …”), export history and jobs
   (JSON or Markdown), delete everything (with confirmation; the consent log stays as proof), and an honest note on
-  “What my admin can see”. “Ask your pages” and the page tools work as before.
+  “What my admin can see”. “Ask your pages” and the page tools work as before; their ⓘ explains what exactly is sent
+  there (your question and matching excerpts – earlier questions are not sent).
+
+#### Jobs for Marin (2.6)
+
+A **job** is something Marin does for you (“Remind me on Friday about the charcoal”, “Add to the Summer party page that
+Ben brings the charcoal”). “Jobs” are not the same as **tasks**: tasks are entries in your task list – a job can create
+one. In 2.6 Marin creates tasks and events and adds to your pages; she doesn't message anyone yet.
+
+1. In **Saga › Conversation**, switch on **As a job** next to the input field and write what you need (⏎ or **Give job**).
+   Without the switch, your text is a normal question.
+2. Marin shows a **plan** in the conversation: the steps, whether each can be **undone** (or **only deleted**) and the
+   line “To do this, I'll read: …”. Nothing has happened yet. ⏎ never approves.
+3. **Go ahead** – only now does she do it. **Change** – change the text or date (then approve again). **No, thanks** – the
+   plan lapses, nothing happened.
+4. Then the **update** appears in the conversation: the result first and an **Undo** button for each change. If you
+   changed the page yourself in the meantime, Saga overwrites nothing and shows you the **previous version**; an event
+   you already deleted counts as done.
+5. **View** opens the job in the **Jobs** tab: all jobs in four groups (**Needs you**, **In progress**, **Finished**,
+   **Didn't work**), each with its exact state, plan, what Marin read and a log.
+
+If Marin doesn't know which page you mean, she asks once; if she can't do something (e.g. order online), she says so
+and offers **Create a task instead**. The Jobs tab used to be in the AI panel of the pages – since 2.6 it lives in
+**Saga**.
 
 ### Account, calendars, Immich, apps
 

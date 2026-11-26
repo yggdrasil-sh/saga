@@ -95,6 +95,8 @@ body.saga-page>main.sg:focus{outline:none}
 .sg-me-tag{display:block;font-size:.875rem;color:var(--muted);margin-bottom:.1rem}
 .sg-job{display:flex;flex-direction:column}
 .sg-feed .kj-card{max-width:44rem}
+.sg-feed .kj-card>.btn,.sg-feed .kj-card>.ai-report,.sg-feed .kj-card>.sg-report{align-self:flex-start}
+.sg-mode{border-color:var(--ai-edge,var(--sg-edge))}
 .kj-change-one{justify-content:flex-start}
 /* Bugs-DB 2503: Zweitknoepfe auf der KI-Flaeche mit sichtbarer Kante (>= 3:1 gegen --ai-tint, auch im Hellen) */
 .sg-card .btn:not(.btn-primary):not(.btn-quiet):not(.linkbtn),.kj-card .btn:not(.btn-primary):not(.btn-quiet):not(.kj-go){

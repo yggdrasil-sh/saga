@@ -29,6 +29,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Fähigkeitsstufe (Pläne / nur Rezepte / nur Antworten), Rezepte, Selbsttest. Pläne kommen als JSON nach Schema
   (Ollama `format`, OpenAI `response_format`; sonst Zeilenformat), der Server prüft jeden Schritt. Schnittstelle:
   docs/APP-API-KI.md Abschnitt 10; API-Token (`sga_`, MCP) erreichen `/api/ai/jobs` nie (403).
+- **Aufträge im Ort „Saga“** (2.6 W2, Abbruchpunkt A zusammengeführt): Der Ort „Saga“ hat die Reiter **Gespräch /
+  Aufträge**; der Reiter „Aufträge“ ist aus dem KI-Bereich der Seiten dorthin gewandert (dort bleiben „Frag deine
+  Seiten“ und die Seiten-Hilfen). Im Gespräch macht der Umschalter **„Als Auftrag“** aus der Bitte einen Auftrag: die
+  Plan-Karte erscheint im Verlauf (dieselbe wie im Detail – es gibt nur ein Freigabe-Muster), danach die Rückmeldung mit
+  „Rückgängig“ und „Ansehen“ (öffnet den Auftrag im Reiter „Aufträge“). Nach dem Neuladen zeigt der Verlauf jeden
+  Auftrag im jetzigen Stand. Englisch heißen Aufträge jetzt **„Jobs“** (Aufgaben bleiben „Tasks“), Spanisch weiter
+  „Encargos“. Schnittstelle: `POST /api/ai/jobs` mit `thread: true`, docs/APP-API-KI.md Abschnitt 11.7.
 - **Gjallarhorn ab Werk an – Anrufe laufen über den eingebauten Knoten** (2263-4, Entscheidung 24.11., Frage 3, nach der
   Messreihe 2263-9): Große Gruppenanrufe (bis 16 mit Video / 50 nur Ton über den eingebauten Knoten, 25 / 50 über einen
   Knoten mit UDP) sind jetzt Standard. **Beim Update:** Auch ein gespeichertes „aus“ von 2.5 gilt als an, solange der
@@ -289,6 +296,16 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   `tests/kollegin_einwilligung.py`, `tests/browser_kollegin_kennenlernen.js`.
 
 ### Behoben
+- **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
+  der Gegenstand); ✓ in der Auftragsliste nur bei „Erledigt“ (Abgebrochen –, Zurückgenommen ↶); per Knopf eingetragene
+  Aufträge heißen nach der ersten Zeile statt „Auftrag“; im Protokoll steht „Freigegeben“ vor „Läuft“; ein schon
+  gelöschter Termin gilt beim Rückgängigmachen als „Schon erledigt“ statt 409; der Export „Meine Daten“ enthält, worauf
+  ein Auftrag wartet (`waits`). „Frag deine Seiten“ hat eigene ⓘ-Details (frühere Fragen gehen nicht mit) statt der Sätze
+  des Gesprächs (2505). Nach der Einwilligung im Ort „Saga“ steht der Fokus im Eingabefeld; Zweitknöpfe auf der
+  KI-Fläche haben im Hellen eine sichtbare Kante (2503). Bausteine: `say("cant", {"alt": "add_task"})` bietet die
+  Aufgabe auch ohne Titel an (2497); `where.*`/`ident.who_reads` nennen den Host wie Karte und Leiste – mit Anbieter,
+  Land bzw. „im Internet“ (2495). Einstellungen ohne KI: kein versteckter 0-px-Eintrag „Saga“ mehr in der Navigation
+  (2502).
 
 - **Eigener Sprechring überall gleich** (Bugs-DB 2472, Entscheidung 26.11., Web inkl. Mac-Hülle/Linux): Spricht man selbst,
   bekommt jetzt auch im direkten Gruppenanruf (Mesh) die eigene Kachel den grünen Ring – bisher nur über den Knoten

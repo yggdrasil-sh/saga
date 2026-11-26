@@ -516,6 +516,85 @@ def part_api(pages):
     setlevel("plans")
 
 
+def part_websaga(pages):
+    """web-saga (W2): Auftrag aus dem Gespraech im Ort "Saga" (thread), "Freigegeben" vor "Laeuft", Titel beim Eintragen
+    per Knopf, Rueckmeldung mit label, geloeschter Termin -> "Schon erledigt" (2504)."""
+    from saga import ai_saga, ai_undo, api_calendar
+    from saga.api_v1 import Fail
+    i18n.set_lang("de")
+    cA = K.ck(A)
+    K.req("DELETE", "/api/ai/thread", cA)
+    n0 = len(ai_saga.turns(A))
+    st, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Erinnere mich Freitag an die Grillkohle"})
+    ok("ohne thread: keine Zuege im Gespraech", st == 200 and K.get(ev, "plan") and len(ai_saga.turns(A)) == n0 and "turn" not in (K.get(ev, "plan") or {}))
+    jobs.cancel((K.get(ev, "plan") or {}).get("job") or 0, A)
+    st, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Kümmer dich um die Grillkohle bis Freitag", "thread": True})
+    p = K.get(ev, "plan") or {}
+    s, th = K.req("GET", "/api/ai/thread", cA)
+    tn = th.get("turns") or []
+    ok(f"thread: Bitte (zug job) + Plan-Zug mit job_id, Ereignis mit turn ({[(x['role'], x['zug'], x['job_id']) for x in tn]})",
+       st == 200 and p.get("job") and p.get("turn") and len(tn) == 2 and tn[0]["role"] == "me" and tn[0]["zug"] == "job"
+       and "Grillkohle" in tn[0]["text"] and tn[1]["zug"] == "plan" and tn[1]["job_id"] == p["job"] and tn[1]["n"] == p["turn"]
+       and tn[1]["text"].startswith("Plan: "))
+    jid = p["job"]
+    s, d = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": p["plan_v"], "plan_hash": p["plan_hash"]})
+    run_jobs(jid)
+    s, det = K.req("GET", f"/api/ai/jobs/{jid}", cA)
+    texts = [e["text"] for e in det.get("events") or []]
+    ia = next((i for i, x in enumerate(texts) if x.startswith("Freigegeben")), -1)
+    il = next((i for i, x in enumerate(texts) if x == "Läuft"), -1)
+    ok(f"2504: Protokoll „Freigegeben“ vor „Läuft“ ({texts})", 0 <= ia < il)
+    ln = (det.get("report") or {}).get("lines") or [{}]
+    ok(f"2504: Rueckmeldung-Zeile mit label (Gegenstand) ({ln})", ln[0].get("label") and ln[0]["label"] in ln[0]["text"] and ln[0]["label"] != ln[0]["text"])
+    st, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Bestell die Kohle in einem Onlineshop", "thread": True})
+    rf = K.get(ev, "refuse") or {}
+    tn = K.req("GET", "/api/ai/thread", cA)[1].get("turns") or []
+    ok(f"thread: Absage als Zug refuse mit Alternative ({tn[-1:]})", rf.get("turn") and tn[-1]["zug"] == "refuse" and tn[-1]["text"] == rf.get("text")
+       and (tn[-1]["fields"] or {}).get("alternative", {}).get("recipe") == "aufgabe" and "Onlineshop" in (tn[-1]["fields"] or {}).get("q", ""))
+    st, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Bestell die Kohle in einem Onlineshop", "recipe": "aufgabe",
+                                           "fields": {"text": "Kohle bestellen"}, "thread": True})
+    p2 = K.get(ev, "plan") or {}
+    tn = K.req("GET", "/api/ai/thread", cA)[1].get("turns") or []
+    ok(f"thread: Knopf „Als Aufgabe anlegen“ steht als Bitte im Verlauf ({[x['text'] for x in tn[-2:]]})",
+       p2.get("job") and tn[-2]["text"] == "Als Aufgabe anlegen" and tn[-1]["job_id"] == p2["job"])
+    jobs.cancel(p2.get("job") or 0, A)
+    # 2504: Titel beim Eintragen per Knopf (Rezept eintragen) = erste Zeile, nicht "Auftrag"
+    st, ev, _ = K.sse("/api/ai/jobs", cA, {"recipe": "eintragen", "fields": {"page": pages["fest"], "text": "- **Ben** bringt die Kohle mit.\nZweite Zeile"}})
+    p3 = K.get(ev, "plan") or {}
+    ok(f"2504: Titel beim Eintragen per Knopf = erste Zeile ({p3.get('title')})", p3.get("title") == "Ben bringt die Kohle mit.")
+    jobs.cancel(p3.get("job") or 0, A)
+    ok("_auto_title: Rezept ohne Text -> Name des Rezepts", ai_plan._auto_title([{"args": {"start": "2026-12-01"}}], "termin") == "Termin eintragen"
+       and ai_plan._auto_title([], None) == "Auftrag")
+    # 2504: Termin schon geloescht -> "Schon erledigt" statt 409
+    j = jobs.create(A, ai_plan.KIND, title="Elternabend", plan={"v": 1, "labels": {}},
+                    steps=[{"tool": "create_event", "args": {"summary": "Elternabend", "start": "2027-01-05T19:30"}, "klass": "own",
+                            "undo_class": "delete_only"}])
+    with connect() as c, c:
+        c.execute("UPDATE job SET state='erledigt', ended_at=?, updated=? WHERE id=?", (time.time(), time.time(), j))
+        c.execute("INSERT INTO job_change (job_id, step_n, idem_key, target, at, before, after) VALUES (?,?,?,?,?,CAST(? AS JSONB),CAST(? AS JSONB))",
+                  (j, 0, f"kp-gone-{j}", "event:1:cal:/x/elternabend.ics", time.time(), json.dumps({"op": "event_delete"}),
+                   json.dumps({"summary": "Elternabend"})))
+        cid = c.execute("SELECT id FROM job_change WHERE job_id=?", (j,)).fetchone()[0]
+    orig = api_calendar.event_delete
+
+    def gone(tok, a):
+        raise Fail(404, "Termin gibt es nicht mehr – bitte neu laden")
+    api_calendar.event_delete = gone
+    try:
+        s, d = ai_undo.undo_one(j, A, cid)
+    finally:
+        api_calendar.event_delete = orig
+    texts = [e["text"] for e in (ai_jobs.detail(A, j) or {}).get("events") or []]
+    ok(f"2504: Termin schon geloescht -> 200 „Schon erledigt“, Auftrag zurueckgenommen ({s}, {d}, {texts[-2:]})",
+       s == 200 and d.get("already") and d.get("text", "").startswith("Schon erledigt") and jobs.state_of(j)["state"] == "zurueckgenommen"
+       and any(x.startswith("Schon erledigt") for x in texts))
+    import hkcal
+    ok("hkcal: 404 beim Laden -> Gone (CalError) -> Fail 404", issubclass(hkcal.Gone, hkcal.CalError)
+       and api_calendar._cal_err(hkcal.Gone("x")).status == 404 and api_calendar._cal_err(hkcal.Conflict("x")).status == 409
+       and api_calendar._cal_err(hkcal.CalError("x")).status == 400)
+    K.req("DELETE", "/api/ai/thread", cA)
+
+
 def part_admin():
     adm = K.Admin("kp-adm")
     s, html = adm.go("/settings/ai")
@@ -610,6 +689,7 @@ def main():
         part_contract(pages)
         part_row(pages)
         part_api(pages)
+        part_websaga(pages)
         part_admin()
         part_classes_en()
         part_consent()

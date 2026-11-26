@@ -3,11 +3,14 @@
 // Daten (Mein Backup) · Hilfe. Alle Bereiche erreichbar, aria-current, Fokus auf die Ueberschrift; Passwort/Passkeys unter
 // "Sicherheit", Benachrichtigungen unter "Mitteilungen"; alte Deep-Links (?settings=, HKSettings.open, #hk-tab-*) und das
 // Zahnrad der Glocke gehen weiter; am Handy Liste -> Bereich mit Zurueck, 44-px-Ziele.
-//   SAGA_BASE=… SAGA_USER=… SAGA_PASS=… node tests/browser_einstellungen_nav.js
+// W2 (web-saga, Bugs-DB 2502): mit KI=an steht „Saga“ in der Gruppe Konto und ist erreichbar; mit KI=aus fehlt der Eintrag
+// ganz (kein versteckter 0-px-Eintrag, nicht in der Pfeil-Reihenfolge). Ohne KI=… wird nur geprueft, dass kein Eintrag 0 px hat.
+//   SAGA_BASE=… SAGA_USER=… SAGA_PASS=… [KI=an|aus] node tests/browser_einstellungen_nav.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const E = process.env, BASE = E.SAGA_BASE, USER = E.SAGA_USER, PASS = E.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const ALL = ['account', 'security', 'push', 'pages', 'calendar', 'bookmarks', 'contacts', 'immich', 'nextcloud', 'apps', 'api', 'backup', 'help'];
+const KI = E.KI || '';
 (async () => {
   const b = await chromium.launch({ channel: E.PW_CHANNEL || undefined }), res = [], errs = [];
   const ok = (c, m, x) => { res.push([!!c, m]); console.log((c ? 'OK   ' : 'FAIL ') + m + (c || x === undefined ? '' : ' ' + JSON.stringify(x))); };
@@ -37,6 +40,21 @@ const ALL = ['account', 'security', 'push', 'pages', 'calendar', 'bookmarks', 'c
   ok(nav && ALL.every(k => nav.keys.indexOf(k) >= 0) && nav.keys[nav.keys.length - 1] === 'help', 'alle Bereiche, Hilfe zuletzt', nav && nav.keys);
   ok(nav && nav.labels[0] === 'Profil & Sprache' && nav.labels.indexOf('Sicherheit') === 1 && nav.labels.indexOf('Mitteilungen') === 2, 'Konto: Profil & Sprache, Sicherheit, Mitteilungen', nav && nav.labels);
   ok(nav && !nav.tabs, 'keine Reiterleiste mehr');
+  const zero = await p.evaluate(() => [...document.querySelectorAll('.hk-dialog-set .hk-setnav-i')].filter(x => !x.getClientRects().length || x.getBoundingClientRect().height < 1).map(x => x.dataset.k));
+  ok(!zero.length, '2502: kein Eintrag der Navigation mit 0 px (versteckt)', zero);
+  if (KI) {
+    const has = nav && nav.keys.indexOf('saga') >= 0;
+    ok(KI === 'an' ? has && nav.keys.indexOf('saga') === nav.keys.indexOf('push') + 1 : !has && !(await p.$('#hk-tab-saga')),
+      KI === 'an' ? 'KI an: „Saga“ in der Gruppe Konto nach Mitteilungen' : 'KI aus: kein Eintrag „Saga“ (auch nicht versteckt)', nav && nav.keys);
+    if (KI === 'an') {
+      await p.click('#hk-tab-saga'); await p.waitForTimeout(150);
+      const ss = await state();
+      ok(ss.cur.join() === 'saga' && ss.vis.join() === 'saga' && ss.focus === 'hk-pane-h-saga', 'KI an: Bereich Saga erreichbar', ss);
+    } else {
+      await p.focus('#hk-tab-push'); await p.keyboard.press('ArrowDown');
+      ok(await p.evaluate(() => document.activeElement.id) === 'hk-tab-pages', 'KI aus: Pfeil runter springt von Mitteilungen direkt zu Seiten');
+    }
+  }
   let s = await state();
   ok(s && s.cur.join() === 'account' && s.vis.join() === 'account', 'Start: Profil & Sprache', s);
   // jeden Bereich anklicken

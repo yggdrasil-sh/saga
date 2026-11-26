@@ -323,14 +323,14 @@ Pfaden unter `/api/ai/jobs` `403`, nie `2xx` (RT-42) – auch auf Pfaden, die es
 
 | Endpunkt | Zweck |
 |---|---|
-| `POST /api/ai/jobs` (SSE) `{text, context?: {note}, choice?, source?}` | Auftrag geben. Ereignisse: `status {phase, text}` (zuerst), dann genau eines von `plan`, `ask {question, choices[]}`, `refuse {zug, case, text, alternative?}`, `error {status, error}` |
+| `POST /api/ai/jobs` (SSE) `{text, context?: {note}, choice?, source?, thread?}` | Auftrag geben. Ereignisse: `status {phase, text}` (zuerst), dann genau eines von `plan`, `ask {question, choices[]}`, `refuse {zug, case, text, alternative?}`, `error {status, error}`. `thread: true` = aus dem Gespräch im Ort „Saga“ (Abschnitt 11.7): Bitte und Ergebnis stehen als Züge im Verlauf, das Ereignis trägt zusätzlich `turn` |
 | `POST /api/ai/jobs` `{recipe: "aufgabe", fields: {text}}` | Rezept direkt, ohne Modell (Knopf „Als Aufgabe anlegen“ aus `refuse.alternative`). Nur die Kennung eines eingeschalteten Rezepts – ein Rezept-Objekt ist 400 |
 | `GET /api/ai/jobs[?group=wartet_auf_dich|laeuft|fertig|nicht_geklappt]` | Liste: `{groups: [{key, label, items: [{id, title, state, state_text, sub, group, line, created, updated, plan_v}]}], counts}` – immer die 4 Gruppen in dieser Reihenfolge, „Fertig“ = letzte 30 Tage |
 | `GET /api/ai/jobs/{id}` | Detail: `state`/`state_text` (genaues Wort), `reason_text`, `plan` (wie Ereignis `plan`), `approved {at, device}`, `changes[]`, `report` (bei Erledigt/Zurückgenommen), `events[] {at, kind, text}` (Protokoll), `actions[]` |
 | `PUT /api/ai/jobs/{id}/plan` `{plan_v, edits: [{n, args}]}` | „Ändern“: nur die Felder aus `steps[].edit`. Antwort = neuer Plan (`plan_v`+1, neuer `plan_hash`, `edited: true`); die alte Freigabe gilt nicht mehr. 409 = veraltet, 400 = Text mit Adresse/Erwähnung oder festes Feld |
 | `POST /api/ai/jobs/{id}/approve` `{plan_v, plan_hash}` | „Passt, los“ → `{state: "laeuft", say}`. 409 `code: stale` (Plan geändert) bzw. `code: state` (schon freigegeben/abgebrochen). Zweimal gleichzeitig = genau eine Freigabe |
 | `POST /api/ai/jobs/{id}/cancel` | „Lieber nicht“ / „Auftrag abbrechen“ → `{state: "abgebrochen", text}` |
-| `POST /api/ai/jobs/{id}/undo` `{change?}` | Rückgängig – ganz oder eine Änderung. 409 `{code: "changed", version_url}` = das Ziel wurde seitdem geändert (nie still überschreiben) |
+| `POST /api/ai/jobs/{id}/undo` `{change?}` | Rückgängig – ganz oder eine Änderung. 409 `{code: "changed", version_url}` = das Ziel wurde seitdem geändert (nie still überschreiben). Einen Termin, den es nicht mehr gibt (von Hand gelöscht), zählt der Server als zurückgenommen: `200 {ok, already: true, text: "Schon erledigt – …"}` statt 409 |
 | `GET /api/ai/jobs/{id}/changes/{c}/before` | „Alte Fassung holen“: `{target, title, text}` (Klartext 30 Tage nach Ende) |
 
 **Plan** (Ereignis `plan` und `detail.plan`): `{job, plan_v, plan_hash, title, state, steps[], read[], read_text, wording[],
@@ -343,11 +343,18 @@ sind Systemtext in der Sprache der Anfrage – Apps zeigen sie unverändert. `wo
 „Erledigt“, `fehlgeschlagen` „Hat nicht geklappt“, `abgebrochen` „Abgebrochen“, `zurueckgenommen` „Zurückgenommen“; nach
 außen 4 Gruppen. Wörter immer aus `state_text`/`label` (Systemtext), nie selbst übersetzen.
 
-**Rückmeldung** (`detail.report`): `{text, lines: [{change, text, undone, can_undo}]}` – Ergebnis zuerst, je Änderung eine
-Zeile mit Knopf „Rückgängig“ (≥ 44 pt). Bei `undo_class` `delete_only` vor dem Löschen nachfragen. `changes[].why`
+**Rückmeldung** (`detail.report`): `{text, lines: [{change, text, label, undone, can_undo}]}` – Ergebnis zuerst, je Änderung
+eine Zeile mit Knopf „Rückgängig“ (≥ 44 pt). `text` nennt die Änderungen schon; damit das Ergebnis nicht zweimal steht,
+zeigt das Web neben „Rückgängig“ nur `label` (den Gegenstand) bzw. bei einer einzigen Änderung nur den Knopf (Name für
+Screenreader: „Rückgängig: {lines[].text}“). Bei `undo_class` `delete_only` vor dem Löschen nachfragen. `changes[].why`
 `changed` + `version_url` → „Das wurde seitdem geändert.“ + „Alte Fassung ansehen“.
 
 **Live:** `ai.job.changed {id, state, sub, plan_v}` an die Besitzerin (nur Kennungen) – Liste/Detail neu laden.
+
+**Protokoll und Titel** (web-saga): Das Ereignis „Freigegeben“ steht vor „Läuft“ (beide in derselben Transaktion).
+Ohne Titel des Modells nimmt der Server den Text des ersten Schritts, beim Eintragen die erste Zeile des Wortlauts,
+sonst den Namen des Rezepts – „Auftrag“ nur, wenn gar nichts da ist. Listen-Symbole im Web: ✓ nur bei „Erledigt“,
+„Abgebrochen“ –, „Zurückgenommen“ ↶.
 
 **Melden:** `POST /api/ai/report {where: "job", page: <auftrag>, reason, text?}` (wie Abschnitt 6).
 
@@ -404,7 +411,9 @@ Freigeben von Aufträgen (`/api/ai/jobs`, `…/plan`, `…/approve` → 403 `{co
 Auftrags (`jobs.consent_ok`), Ideen von sich aus (`ai_saga.ideas_ok`) und das Gespräch im Ort „Saga“. **Unverändert**
 (Fähigkeit `ai`): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI im Chat auf Zuruf – sie zeigen
 denselben Host-Hinweis: `/api/ai/status` → `notice` = „Was du hier fragst, liest die KI auf {label}.“, Details hinter ⓘ
-aus `intro.details`; im Chat steht `endpoint.label` statt des nackten Hosts.
+aus `ask_details` (eigene Sätze: Frage und passende Ausschnitte, frühere Fragen gehen nicht mit, „Diese Seite“, ggf.
+Websuche – nicht die Sätze des Gesprächs aus `intro.details`; ältere Server: `intro.details`); im Chat steht
+`endpoint.label` statt des nackten Hosts.
 
 `POST /api/ai/consent` braucht zusätzlich `host` = `intro.host` (der Host, den die Karte nannte); weicht er vom
 jetzigen Endpunkt ab → **409** `{error, version, host}`: Status neu laden, Karte neu zeigen. `host` (auch `/api/ai/status`
@@ -426,10 +435,10 @@ jetzigen Endpunkt ab → **409** `{error, version, host}`: Status neu laden, Kar
 
 ### 11.4 Einhängepunkt für Plan-Karte und Rückmeldung (Web)
 
-`ai_turn` hat `zug` (Baustein-Kennung, heute `answer`/`no_match`), `fields` (JSON) und `job_id`. Ein Zug mit
-`zug: "plan"`/`"report"` und `job_id` ist für die Plan-Karte/Rückmeldung (K-B) vorgesehen. Im Web: Container
-`#sg-cards` und `HKSaga.mount(node)` (hängt eine Karte an den Verlauf), Ereignisse auf `document`: `saga:status`
-`{status}`, `saga:turn` `{turn, q}` nach jeder Antwort, `saga:consent` `{consent}`.
+`ai_turn` hat `zug` (Baustein-Kennung: `answer`/`no_match`, mit Aufträgen `job`/`plan`/`ask`/`refuse`, Abschnitt 11.7),
+`fields` (JSON) und `job_id`. Im Web: Container `#sg-cards` und `HKSaga.mount(node)` (hängt eine Karte an den Verlauf),
+Ereignisse auf `document`: `saga:status` `{status}`, `saga:turn` `{turn, q}` nach jeder Antwort, `saga:consent`
+`{consent}`.
 
 ### 11.5 Einstellungen der Person – Ergänzung zu `GET/PUT /api/ai/prefs` (Abschnitt 9)
 
@@ -444,7 +453,7 @@ Schlüssel bleiben stehen. `notify_content` und `dictation` werden gespeichert u
 ### 11.6 Meine Daten (M7, Art. 15/17/20, RT-35)
 
 - `GET /api/ai/mydata?format=json|md` → Datei (`Content-Disposition: attachment`): `{format: "saga-ai-export/1",
-  exported_at, account, persona, endpoint, consent: [...], prefs, jobs: [{…, steps, events, changes}], conversation,
+  exported_at, account, persona, endpoint, consent: [...], prefs, jobs: [{…, steps, events, changes, waits}], conversation,
   history, counters: {requests, units}}` bzw. dieselben Inhalte als Markdown. Nur eigene Daten, höchstens 500 Aufträge.
 - `POST /api/ai/mydata/delete {"confirm": true}` → `{ok, deleted: {jobs, turns, history}}`: löscht Aufträge (mit
   Schritten, Protokoll, Änderungen), Gespräch und Verlauf. Es bleiben: das Einwilligungs-Protokoll (Nachweis) und die
@@ -453,3 +462,27 @@ Schlüssel bleiben stehen. `notify_content` und `dictation` werden gespeichert u
   Kontolöschung räumt `ai_consent`, `ai_thread`, `ai_turn` ab.
 - Web: Einstellungen › Saga › „Meine Daten“ mit „Einwilligung widerrufen“, Export (JSON/Markdown), „Alles löschen“
   (Rückfrage) und dem Hinweis „Was mein Admin sehen kann“. Die Apps zeichnen denselben Bereich (Runde 2).
+- `waits[]` (web-saga): worauf ein Auftrag wartet – `{step, on, ref, until, paused_at, hit_at, data}` (Tabelle `job_wait`).
+
+### 11.7 Aufträge im Ort „Saga“ (2.6 W2, web-saga – Abbruchpunkt A)
+
+Konzept K1/K10, UX §2 und R3/R4: Der Ort „Saga“ hat die Reiter **Gespräch / Aufträge** (Apps: Segment). Der Reiter
+„Aufträge“ (Liste in 4 Gruppen + Detail) ist aus dem KI-Bereich der Seiten hierher gewandert; dort bleiben „Frag deine
+Seiten“ und die Hilfen für die offene Seite.
+
+- **Auftrag geben im Gespräch:** ein klarer Umschalter **„Als Auftrag“** neben dem Eingabefeld (kein Raten, ob ein Satz
+  ein Auftrag ist – ein Fehlgriff würde ohne Absicht planen bzw. einen Auftrag als Frage beantworten, und eine
+  Einordnung durch das Modell kostete einen Aufruf je Satz). Aus: `POST /api/ai/thread` (Frage). An: `POST /api/ai/jobs`
+  mit `thread: true` – Knopf „Auftrag geben“, Platzhalter „Sag {name}, was du brauchst …“.
+- **Züge** (`GET /api/ai/thread`): die Bitte `{role: "me", zug: "job", text}`, dann genau einer: `{role: "ai", zug:
+  "plan", job_id, text: "Plan: {title}"}` · `{zug: "ask", text: <frage>, fields: {choices, q}}` · `{zug: "refuse", text,
+  fields: {alternative, q}}`. Fehler (nichts passiert) erzeugen keine Züge. Ein Plan-Zug zeigt immer den **jetzigen
+  Stand** des Auftrags aus `GET /api/ai/jobs/{id}`: `wartet_ok` → Plan-Karte, `erledigt`/`zurueckgenommen` →
+  Rückmeldung mit „Rückgängig“, sonst Zustandswort + Grund + „Ansehen“ (öffnet das Detail im Reiter „Aufträge“). Auf
+  `ai.job.changed` zeichnet der Verlauf den Baustein neu (nicht während „Ändern“ offen ist).
+- **Ein Freigabe-Muster:** Plan-Karte, Rückfrage, Absage und Rückmeldung sind im Web dieselben Bausteine wie im
+  Detail (`static/ai-jobs.js`: `HKJobs.planCard`, `askCard`, `refuseCard`, `feedback`, `head`); `HKJobs.mount(el,
+  {form: false, give})` zeigt Liste und Detail ohne eigene Eingabe. Apps zeichnen ebenso nur eine Plan-Karte.
+- **Begriffe:** „Auftrag“ (etwas, das die KI erledigt) und „Aufgabe“ (Eintrag der Aufgabenliste) sind verschieden:
+  en **Job**/„Jobs“ vs. *Task*, es **Encargo**/„Encargos“ vs. *Tarea* (ru „Поручение“ vs. „Задача“). „Requests“ scheidet
+  aus, weil „Anfragen/Tag“ (Kontingent) im Englischen schon „requests“ heißt. Systemtexte kommen fertig vom Server.

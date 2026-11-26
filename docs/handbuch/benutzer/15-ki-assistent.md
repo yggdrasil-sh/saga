@@ -180,26 +180,34 @@ lesen darf (Seiten, Aufgaben, Termine, Chat-Nachrichten beim Rufen im Chat). Dar
 - **Was mein Admin sehen kann** – ehrlich erklärt: Technisch kann dein Admin alles lesen, was auf dem Server liegt;
   deine Chats nicht (Ende-zu-Ende verschlüsselt). In der Admin-Seite sieht er nur Zahlen.
 
----
+### 9. Aufträge geben (neu in 2.6)
 
-### 7. Aufträge geben (ab 2.6)
+Ein **Auftrag** ist etwas, das Marin für dich erledigt – zum Beispiel „Erinnere mich Freitag an die Grillkohle“ oder
+„Trag auf der Seite Sommerfest ein, dass Ben die Kohle mitbringt“. Aufträge sind keine **Aufgaben**: Aufgaben sind
+Einträge in deiner Aufgabenliste – ein Auftrag kann eine anlegen. In 2.6 legt Marin Aufgaben und Termine an und trägt
+in deine Seiten ein; Nachrichten an andere schreibt sie noch nicht.
 
-Im Reiter **Aufträge** sagst du der KI, was sie für dich erledigen soll – zum Beispiel „Erinnere mich Freitag an die
-Grillkohle“ oder „Trag auf der Seite Sommerfest ein, dass Ben die Kohle mitbringt“. In 2.6 legt sie Aufgaben und
-Termine an und trägt in deine Seiten ein; Nachrichten an andere schreibt sie noch nicht.
-
-1. Schreib deinen Auftrag ins Feld und drück ⏎ (oder **Auftrag geben**).
-2. Die KI zeigt einen **Plan**: die Schritte, ob sich jeder **rückgängig** machen lässt (oder **nur löschbar** ist) und
-   die Zeile **„Ich lese dafür: …“**. Noch ist nichts passiert.
+1. Schalte im Bereich **Saga › Gespräch** neben dem Eingabefeld **Als Auftrag** ein und schreib, was du brauchst
+   (⏎ oder **Auftrag geben**). Ohne den Schalter ist dein Text eine normale Frage.
+2. Marin zeigt im Gespräch einen **Plan**: die Schritte, ob sich jeder **rückgängig** machen lässt (oder **nur
+   löschbar** ist) und die Zeile **„Ich lese dafür: …“**. Noch ist nichts passiert. ⏎ gibt nie frei.
 3. **Passt, los** – erst jetzt trägt sie ein. **Ändern** – Text oder Datum anpassen (danach neu freigeben).
    **Lieber nicht** – der Plan verfällt, nichts ist passiert.
-4. Danach kommt die **Rückmeldung**: das Ergebnis und je Änderung ein Knopf **Rückgängig**. Hast du die Seite
-   inzwischen selbst geändert, überschreibt Saga nichts, sondern zeigt dir die **alte Fassung**.
+4. Danach steht die **Rückmeldung** im Gespräch: zuerst das Ergebnis, dann je Änderung ein Knopf **Rückgängig**. Hast
+   du die Seite inzwischen selbst geändert, überschreibt Saga nichts, sondern zeigt dir die **alte Fassung**; einen
+   Termin, den du schon gelöscht hast, zählt Saga als erledigt.
+5. **Ansehen** öffnet den Auftrag im Reiter **Aufträge**: Dort stehen alle Aufträge in vier Gruppen – **Wartet auf
+   dich**, **Läuft**, **Fertig**, **Hat nicht geklappt** – mit genauem Stand, Plan, was Marin gelesen hat, und einem
+   Protokoll.
 
-Alle Aufträge stehen in vier Gruppen: **Wartet auf dich**, **Läuft**, **Fertig**, **Hat nicht geklappt**. Ein Klick zeigt
-den genauen Stand, den Plan, was die KI gelesen hat, und ein Protokoll. Weiß die KI nicht, welche Seite du meinst,
-fragt sie einmal nach. Kann sie etwas nicht (z. B. im Onlineshop bestellen), sagt sie es und bietet **Als Aufgabe
-anlegen** an.
+Weiß Marin nicht, welche Seite du meinst, fragt sie einmal nach. Kann sie etwas nicht (z. B. im Onlineshop
+bestellen), sagt sie es und bietet **Als Aufgabe anlegen** an. Den Reiter „Aufträge“ gab es vorher im KI-Bereich der
+Seiten – seit 2.6 wohnt er im Bereich **Saga**.
+
+**„Frag deine Seiten“** und die Hilfen auf einer Seite bleiben im KI-Bereich. Ihr **ⓘ** erklärt, was dort genau
+rausgeht: deine Frage und passende Ausschnitte – frühere Fragen gehen nicht mit, anders als im Gespräch.
+
+---
 
 ## Beispiel aus dem Alltag
 

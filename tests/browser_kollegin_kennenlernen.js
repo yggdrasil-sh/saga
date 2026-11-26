@@ -25,6 +25,10 @@ const api = (p, m, u, b) => p.evaluate(([m, u, b]) => fetch(u, { method: m, cred
 const until = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, 150)); } return null; };
 const py = (...a) => JSON.parse(execFileSync(PY, [path.join(HERE, 'kollegin_einwilligung.py'), ...a], { env: E, encoding: 'utf8' }).trim().split('\n').pop());
 const host = (() => { try { return new URL(E.BASE_URL || BASE).host; } catch (e) { return ''; } })();
+// Kontrast (WCAG 2.x) zweier berechneter Farben im Browser - web-saga 2503 (Knöpfe auf der KI-Fläche im Hellen)
+const CONTRAST = `(() => { const rgb = (c) => { const m = String(c).match(/[\\d.]+/g).map(Number); return /^color\\(/.test(c) ? m.slice(0, 3).map((v) => v * 255) : m.slice(0, 3); };
+  const lum = (c) => { const v = rgb(c).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  return (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }; })()`;
 
 async function login(br, u, pw, opts) {
   const ctx = await br.newContext(Object.assign({ viewport: { width: 1440, height: 900 }, locale: 'de-DE' }, opts || {}));
@@ -140,13 +144,34 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     for (const th of ['dark', 'light']) for (const [vn, vp] of VIEWS) {
       const L = await login(br, cfg.a, cfg.pw, { viewport: vp, theme: th });
       await L.p.goto(BASE + '/saga'); await until(() => L.p.evaluate(() => !!document.querySelector('#sg-intro .sg-intro')), 6000);
-      await shot(L.p, `nachher-saga-karte-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
+      await shot(L.p, `nachher-saga-karte-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`);
+      // web-saga 2503: „Ja, ohne Ideen“ - Kante gegen die KI-Fläche >= 3:1, Schrift >= 4,5:1 (hell und dunkel)
+      const kc = await L.p.evaluate((src) => { const cr = eval(src); const b = [...document.querySelectorAll('#sg-intro .sg-intro-bar .btn')].find((x) => x.textContent === 'Ja, ohne Ideen');
+        const card = document.querySelector('#sg-intro .sg-intro'); if (!b) return null; const bs = getComputedStyle(b), cs = getComputedStyle(card);
+        return { edge: cr(bs.borderTopColor, cs.backgroundColor), text: cr(bs.color, bs.backgroundColor) }; }, CONTRAST);
+      ok(`2503 ${vn} ${th}: „Ja, ohne Ideen“ Kante ≥ 3:1, Schrift ≥ 4,5:1`, kc && kc.edge >= 3 && kc.text >= 4.5, kc);
+      if (vn === 'schmal') {                        // web-saga 2503: ⓘ bei 390 px - erreichbar (≥ 44 px), ganz im Bild, Details ohne Überlauf
+        for (const sel of ['#sg-bar .sg-info-b', '#sg-intro .sg-info-b']) {
+          await L.p.click(sel); await L.p.waitForTimeout(250);
+          const ib = await L.p.evaluate((sel) => { const b = document.querySelector(sel), r = b.getBoundingClientRect(), box = document.getElementById(b.getAttribute('aria-controls'));
+            const br = box ? box.getBoundingClientRect() : null;
+            return { w: r.width, h: r.height, inV: r.left >= 0 && r.right <= innerWidth, open: b.getAttribute('aria-expanded'), box: br && !box.hidden && br.left >= 0 && br.right <= innerWidth + 0.5,
+              over: document.documentElement.scrollWidth > innerWidth + 1 }; }, sel);
+          ok(`2503 schmal ${th}: ⓘ ${sel.split(' ')[0]} ≥ 44 px, im Bild, Details offen ohne Überlauf`, ib.w >= 44 && ib.h >= 44 && ib.inV && ib.open === 'true' && ib.box && !ib.over, ib);
+        }
+        await shot(L.p, `nachher-saga-info-offen-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`);
+      }
+      await L.ctx.close();
     }
     await p.click('#sg-intro .sg-intro-bar .btn-primary');
     await until(() => p.evaluate(() => !document.getElementById('sg-ask').hidden), 6000);
-    const after = await p.evaluate(() => ({ cards: document.querySelectorAll('.sg-intro').length, chips: document.querySelectorAll('.sg-chip').length,
-      empty: (document.querySelector('.sg-empty-t') || {}).textContent }));
-    ok('„Ja, mit Ideen“: Karte weg, Eingabe + leerer Zustand mit 3 Beispielen', after.cards === 0 && after.chips === 3 && /Sag mir, was du brauchst/.test(after.empty || ''), after);
+    const after = await until(() => p.evaluate(() => document.querySelector('.sg-empty') && ({ cards: document.querySelectorAll('.sg-intro').length,
+      chips: document.querySelectorAll('.sg-chip:not(.sg-chip-job)').length, job: document.querySelectorAll('.sg-chip-job').length,
+      empty: (document.querySelector('.sg-empty-t') || {}).textContent, focus: document.activeElement && document.activeElement.id,
+      jobsOn: !!(window.HKSaga && HKSaga.st && HKSaga.st.jobs) })), 6000);
+    ok('„Ja, mit Ideen“: Karte weg, Eingabe + leerer Zustand mit 3 Beispielen (+ 1 Auftrags-Beispiel, wenn Aufträge an sind)',
+      after && after.cards === 0 && after.chips === 3 && after.job === (after.jobsOn ? 1 : 0) && /Sag mir, was du brauchst/.test(after.empty || ''), after);
+    ok('2503: nach der Einwilligung steht der Fokus im Eingabefeld', after && after.focus === 'sg-ta', after);
     st = await api(p, 'GET', '/api/ai/prefs');
     ok('Einwilligung erteilt, Ideen „Nur auf Heute“', st.d.consent.state === 'granted' && st.d.ideas === 'today', st.d);
     fs = await api(p, 'GET', '/api/first-steps');
@@ -178,6 +203,13 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
       const foot = await until(() => L.p.evaluate(() => { const n = document.querySelector('.ai-notice'); return n && n.textContent ? { t: n.textContent, i: !!n.querySelector('.ai-info-b') } : null; }), 6000);
       if (th === 'dark') ok('Frag deine Seiten: „Was du hier fragst, liest die KI auf … (im Heimnetz)“ mit ⓘ', foot && /Was du hier fragst, liest die KI auf 127\.0\.0\.1:\d+ \(im Heimnetz\)/.test(foot.t) && foot.i, foot);
       const ib = await L.p.$('.ai-info-b'); if (ib) await ib.click();
+      if (th === 'dark') {                           // web-saga 2505: eigene Details statt der Sätze des Gesprächs
+        const ad = await L.p.evaluate(() => (document.querySelector('.ai-info-box') || {}).textContent || '');
+        ok('2505: Frag deine Seiten - eigene ⓘ-Details (frühere Fragen gehen nicht mit, nicht „die letzten Sätze dieses Gesprächs“)',
+          /Frühere Fragen gehen nicht mit/.test(ad) && !/letzten Sätze dieses Gesprächs/.test(ad) && /Ende-zu-Ende/.test(ad), ad);
+        const tabs = await L.p.evaluate(() => [...document.querySelectorAll('#ai-panel .ai-tab')].map((b) => b.textContent));
+        ok('web-saga: KI-Bereich ohne Reiter „Aufträge“ (der wohnt im Ort „Saga“)', tabs.indexOf('Aufträge') < 0 && tabs.indexOf('Frag deine Seiten') >= 0, tabs);
+      }
       await shot(L.p, `nachher2-frag-deine-seiten-hinweis-desktop-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
     }
     {                                                  // schmal: Tab "Saga" statt Seitenleiste (M1)
@@ -216,6 +248,9 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     const exm = await api(p, 'GET', '/api/ai/mydata?format=md');
     ok('Export JSON (Einwilligungen, Gespräch, Aufträge) und Markdown', ex.s === 200 && ex.d.consent.length >= 2 && ex.d.conversation.length === 2
       && ex.d.jobs.some(j => j.id === cfg.job) && exm.s === 200 && /^text\/markdown/.test(exm.h || '') && /## Gespräch/.test(exm.d), { s: ex.s, ms: exm.s });
+    const wj = (ex.d.jobs || []).find(j => j.id === cfg.job) || {};
+    ok('2503: Export mit job_wait - worauf der Auftrag wartet (JSON waits, Markdown „Wartet auf …“)', Array.isArray(wj.waits) && wj.waits.length === 1
+      && wj.waits[0].on === 'test.wait' && /Wartet auf „test\.wait“ bis/.test(exm.d), wj.waits);
     // Widerruf -> laufender Auftrag haelt an
     { const L = await login(br, cfg.a, cfg.pw, { theme: 'light' }); await L.p.goto(BASE + '/saga'); await L.p.waitForTimeout(800);
       await L.p.evaluate(() => window.HKSettings.open('saga'));

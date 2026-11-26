@@ -616,6 +616,34 @@ def api(adm):
     K.setai(groups=[])
 
 
+def websaga():
+    """web-saga (W2-Reste): 2497 Angebot ohne Gegenstand, 2495 Host-Label wie Karte/Leiste (ai_saga.endpoint_hint)."""
+    from saga import ai_saga, i18n
+    plain = {"de": "Soll ich dir stattdessen eine Aufgabe anlegen?", "en": "Shall I add a task instead?",
+             "es": "¿Te creo una tarea en su lugar?", "ru": "Вместо этого создать задачу?", "th": "หรือจะให้สร้างงานแทนไหม"}
+    for lg in S.LANGS:
+        t1 = S.say("cant", {"what": "order", "alt": "add_task"}, lg)
+        t2 = S.say("cant", {"what": "order", "alt": "add_task", "task": "Kohle kaufen"}, lg)
+        t3 = S.say("fail", {"reason": "kein_zugriff", "next": "add_task"}, lg)
+        ok(f"2497 {lg}: cant ohne task bietet die Aufgabe an ({t1})", plain[lg] in t1 and "Kohle kaufen" in t2 and plain[lg] not in t2)
+        ok(f"2497 {lg}: fail next=add_task ohne task ebenso ({t3})", plain[lg] in t3)
+    ok("2497: Sie-Form ohne Gegenstand", "Soll ich Ihnen stattdessen eine Aufgabe anlegen?" in S.say("cant", {"alt": "add_task"}, "de", {"address": "sie"}))
+    for lg in ("de", "en", "es"):
+        tok = i18n.set_lang(lg)
+        try:
+            h = ai_saga.endpoint_hint()
+        finally:
+            i18n._cur.reset(tok)
+        wr = S.say("ident", {"kind": "who_reads"}, lg)
+        wh = S.say("ident", {"kind": "who_reads", "host": h["host"]}, lg)
+        other = S.say("ident", {"kind": "who_reads", "host": "stimme.example", "home": True}, lg)
+        ok(f"2495 {lg}: who_reads ohne host nennt das Server-Label ({h['label']} | {wr})", h and h["label"] in wr and "(" in h["label"])
+        ok(f"2495 {lg}: who_reads mit dem Endpunkt-Host ebenso ({wh})", h["label"] in wh)
+        ok(f"2495 {lg}: anderer Host bleibt beim Baustein where.* ({other})", "stimme.example" in other and h["host"] not in other)
+    intro = S.say("intro", {"name": "Marin", "host": "x.example (Anthropic, USA)"}, "de")
+    ok(f"intro: fertiges Label als host bleibt unveraendert ({intro})", "x.example (Anthropic, USA)" in intro)
+
+
 def cleanup():
     from saga.userdata import delete_user_data
     with connect() as c:
@@ -655,6 +683,7 @@ def main():
         evals()
         rt41_local()
         report_log("ks-a", "ks-c")
+        websaga()
         fake_path()
         time.sleep(WAIT)
         api(Admin("ks-adm"))

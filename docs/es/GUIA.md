@@ -1660,7 +1660,30 @@ es un chat**: no aparece en la lista de chats y no está cifrada de extremo a ex
   en …»),
   exportar historial y encargos (JSON o Markdown), borrar todo (con confirmación; el registro del consentimiento queda
   como prueba) y una explicación honesta de «Qué puede ver mi admin». «Pregunta a tus páginas» y las ayudas de página
-  funcionan como antes.
+  funcionan como antes; su ⓘ explica qué se envía exactamente allí (tu pregunta y fragmentos adecuados; las preguntas
+  anteriores no se envían).
+
+#### Encargos para Marin (2.6)
+
+Un **encargo** es algo que Marin hace por ti («Recuérdame el viernes el carbón», «Apunta en la página Fiesta de verano
+que Ben trae el carbón»). Los encargos no son **tareas**: las tareas son entradas de tu lista de tareas; un encargo
+puede crear una. En 2.6 Marin crea tareas y citas y escribe en tus páginas; todavía no escribe a nadie.
+
+1. En **Saga › Conversación**, activa **Como encargo** junto al campo y escribe lo que necesitas (⏎ o **Dar encargo**).
+   Sin el interruptor, tu texto es una pregunta normal.
+2. Marin muestra un **plan** en la conversación: los pasos, si cada uno se puede **deshacer** (o **solo borrar**) y la
+   línea «Para esto leeré: …». Todavía no ha pasado nada. ⏎ nunca aprueba.
+3. **Adelante**: solo ahora lo hace. **Cambiar**: ajustar texto o fecha (luego hay que aprobar de nuevo). **Mejor no**:
+   el plan caduca, no ha pasado nada.
+4. Después aparece la **respuesta** en la conversación: primero el resultado y un botón **Deshacer** por cada cambio. Si
+   entretanto cambiaste la página tú, Saga no sobrescribe nada y te muestra la **versión anterior**; una cita que ya
+   borraste cuenta como hecha.
+5. **Ver** abre el encargo en la pestaña **Encargos**: todos los encargos en cuatro grupos (**Te necesita**, **En
+   curso**, **Terminados**, **No ha funcionado**), cada uno con su estado exacto, el plan, lo que leyó Marin y un registro.
+
+Si Marin no sabe qué página quieres decir, pregunta una vez; si no puede hacer algo (p. ej. pedir en una tienda en
+línea), lo dice y ofrece **Crear una tarea en su lugar**. La pestaña de encargos estaba antes en el panel de IA de las
+páginas; desde 2.6 está en **Saga**.
 
 ### Cuenta, calendarios, Immich, apps
 

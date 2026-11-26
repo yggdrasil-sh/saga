@@ -2,7 +2,10 @@
 // Fertig · Hat nicht geklappt), Detail mit genauem Zustandswort, Plan, „Was ich gelesen habe“ und Protokoll aus job_event,
 // Rückgängig dauerhaft im Detail, bei Konflikt „Das wurde seitdem geändert.“ + „Alte Fassung ansehen“, Zustandswörter als
 // Systemtext in allen 5 Sprachen, leerer Zustand, Tastatur (Liste per Tab erreichbar), hell/dunkel, keine Skriptfehler.
-// Bilder (SHOTS=<ordner>): auftraege-hell/dunkel, detail-dunkel, konflikt-dunkel.
+// W2 (web-saga): der Ort „Aufträge“ ist der Reiter „Aufträge“ im Ort „Saga“ (/saga?tab=jobs) - ohne eigene Eingabe (Aufträge
+// gibt man im Gespräch, der Beispiel-Chip wechselt dorthin); ✓ nur bei „Erledigt“ (2504), Protokoll „Freigegeben“ vor
+// „Läuft“ (2504), Titel beim Eintragen per Knopf = erste Zeile (2504), en „Jobs“ statt „Tasks“ (2505), schmal.
+// Bilder (SHOTS=<ordner>): saga-auftraege-hell/dunkel/schmal, saga-detail-dunkel, saga-konflikt-dunkel, saga-auftraege-leer-dunkel.
 // Voraussetzung wie tests/browser_kollegin_plan.js (fake-plan, Stufe „Pläne“, Seite „Sommerfest“, frisches Konto).
 //   SAGA_BASE=http://127.0.0.1:8900 SAGA_USER=kp-web2 SAGA_PASS=... [SHOTS=/tmp/x] node tests/browser_kollegin_auftraege.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
@@ -37,18 +40,23 @@ const WORDS = {
   }, b);
   await api('PUT', '/api/account/lang', { lang: 'de' });
   await api('POST', '/api/first-steps', { answer: 'no' });
-  async function openJobs() {
-    await p.goto(BASE + '/dashboard'); await until(() => p.evaluate(() => !!(window.HKAI && HKAI.state && HKAI.state())));
-    await p.evaluate(() => HKAI.open('jobs'));
-    return until(() => p.evaluate(() => !!document.querySelector('.kj-root .kj-list') && !document.querySelector('.kj-list:empty')));
+  async function openJobs() {                     // W2: Reiter „Aufträge“ im Ort „Saga“
+    await p.goto(BASE + '/saga?tab=jobs');
+    return until(() => p.evaluate(() => !document.getElementById('sg-jobs').hidden && !!document.querySelector('#sg-jobs .kj-root .kj-list') && !document.querySelector('#sg-jobs .kj-list:empty')));
   }
-  async function shot(name) { if (SHOTS) { const b = await p.$('#ai-panel'); if (b) await b.screenshot({ path: SHOTS + '/' + name + '.png' }); } }
+  async function shot(name) { if (SHOTS) { await sleep(300); await p.screenshot({ path: SHOTS + '/' + name + '.png' }); } }
 
   // leerer Zustand
   ok('Ort „Aufträge“ öffnet', await openJobs());
   const empty = await p.evaluate(() => (document.querySelector('.kj-empty') || {}).textContent || '');
   ok('leer: „Noch keine Aufträge. Gib mir einen, z. B. …“ + Beispiel-Chip', /^Noch keine Aufträge\. Gib mir einen/.test(empty) && /Pavillon/.test(empty), empty);
-  await shot('auftraege-leer-dunkel');
+  ok('Reiter „Aufträge“ ohne eigene Eingabe (Aufträge gibt man im Gespräch)', await p.evaluate(() => { const f = document.querySelector('#sg-jobs .kj-form'); return !!f && f.hidden && !f.getClientRects().length; }));
+  await shot('saga-auftraege-leer-dunkel');
+  await p.click('#sg-jobs .kj-empty .kj-chip');
+  const chipPlan = await until(() => p.evaluate(() => !document.getElementById('sg-talk').hidden && document.getElementById('sg-tab-talk').getAttribute('aria-selected') === 'true'
+    && document.getElementById('sg-mode').getAttribute('aria-pressed') === 'true' && !!document.querySelector('#sg-feed .kj-plan') && +document.querySelector('#sg-feed .kj-plan').dataset.job), 15000);
+  ok('Beispiel-Chip: wechselt ins Gespräch, „Als Auftrag“ an, Plan-Karte im Verlauf', !!chipPlan, chipPlan);
+  if (chipPlan) await api('POST', '/api/ai/jobs/' + chipPlan + '/cancel', {});
   // Daten: wartet, erledigt, abgebrochen, erledigt mit spaeterer Aenderung (Konflikt)
   const wait = (await sse({ recipe: 'aufgabe', fields: { text: 'Pavillon abholen' } })).data;
   const done = (await sse({ recipe: 'aufgabe', fields: { text: 'Grillkohle kaufen' } })).data;
@@ -59,6 +67,9 @@ const WORDS = {
   const fest = (Array.isArray(notes) ? notes : notes.notes || []).find((n) => n.title === 'Sommerfest');
   const conf = (await sse({ text: 'Trag auf der Seite Sommerfest ein, dass Ben die Grillkohle mitbringt.' })).data;
   ok('Testdaten angelegt', wait && done && stop && conf && conf.job && fest, { wait, conf, fest: !!fest });
+  const knopf = (await sse({ recipe: 'eintragen', fields: { page: fest.id, text: 'Clara bringt den Salat mit.\nUnd Brot.' } })).data;
+  ok('2504: eintragen per Knopf heißt nach der ersten Zeile, nicht „Auftrag“', knopf && knopf.title === 'Clara bringt den Salat mit.', knopf && knopf.title);
+  if (knopf && knopf.job) await api('POST', '/api/ai/jobs/' + knopf.job + '/cancel', {});
   await api('POST', '/api/ai/jobs/' + conf.job + '/approve', { plan_v: conf.plan_v, plan_hash: conf.plan_hash });
   await until(async () => (await api('GET', '/api/ai/jobs/' + done.job)).d.state === 'erledigt' && (await api('GET', '/api/ai/jobs/' + conf.job)).d.state === 'erledigt', 15000);
   const pg = (await api('GET', '/api/notes/' + fest.id)).d;
@@ -76,10 +87,13 @@ const WORDS = {
   ok('Fertig: genaues Wort je Zeile (Erledigt / Abgebrochen)', fertig.items.some((i) => /^Erledigt/.test(i.l)) && fertig.items.some((i) => /^Abgebrochen/.test(i.l)), fertig);
   const wz = (L && L[0].items[0]) || {};
   ok('Wartet auf dich: „Wartet auf dein OK“', /Wartet auf dein OK/.test(wz.l || ''), wz);
-  await shot('auftraege-dunkel');
-  await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('auftraege-hell'); await p.emulateMedia({ colorScheme: 'dark' });
-  // Tastatur: erster Eintrag per Tab erreichbar, Enter oeffnet das Detail
-  await p.focus('.kj-ta');
+  const syms = await p.evaluate(() => [...document.querySelectorAll('#sg-jobs .kj-g-fertig .kj-item')].map((i) => [i.querySelector('.kj-iline').textContent.split(' ')[0], i.querySelector('.kj-isym').textContent]));
+  ok('2504: ✓ nur bei „Erledigt“ - „Abgebrochen“ –, „Zurückgenommen“ ↶', syms.length >= 2 && syms.every(([w, y]) => (w === 'Erledigt') === (y === '✓'))
+    && syms.some(([w, y]) => w === 'Abgebrochen' && y === '–'), syms);
+  await shot('saga-auftraege-dunkel');
+  await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-auftraege-hell'); await p.emulateMedia({ colorScheme: 'dark' });
+  // Tastatur: vom Reiter „Aufträge“ ist der erste Eintrag per Tab erreichbar, Enter oeffnet das Detail
+  await p.focus('#sg-tab-jobs');
   let reached = false;
   for (let i = 0; i < 12 && !reached; i++) { await p.keyboard.press('Tab'); reached = await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('kj-item')); }
   ok('Tastatur: Auftrags-Zeile per Tab erreichbar', reached);
@@ -91,8 +105,10 @@ const WORDS = {
     secs: [...d.querySelectorAll('.kj-sec h4')].map((h) => h.textContent) }; }));
   ok('Detail: Titel und genaues Zustandswort „Erledigt“', D && D.title === 'Grillkohle kaufen' && D.state === 'Erledigt', D);
   ok('Detail: Plan, Protokoll aus job_event', D && D.secs.includes('Plan') && D.secs.includes('Protokoll') && D.log.some((x) => /Freigegeben/.test(x)) && D.log.some((x) => /Erledigt/.test(x)), D);
+  const iF = D ? D.log.findIndex((x) => /Freigegeben/.test(x)) : -1, iL = D ? D.log.findIndex((x) => / Läuft$/.test(x)) : -1;
+  ok('2504: Protokoll „Freigegeben“ vor „Läuft“', iF >= 0 && iL > iF, D && D.log);
   ok('Detail: Rückgängig dauerhaft möglich', D && D.undo);
-  await shot('detail-dunkel');
+  await shot('saga-detail-dunkel');
   await p.click('.kj-detail .kj-undo');
   if (await until(() => p.evaluate(() => !!document.querySelector('.hk-ask-box')), 2000)) await p.click('.hk-ask-box .btn-destr');
   ok('Rückgängig im Detail -> „Zurückgenommen“', await until(async () => (await api('GET', '/api/ai/jobs/' + done.job)).d.state === 'zurueckgenommen'));
@@ -100,13 +116,13 @@ const WORDS = {
   await p.click('.kj-back');
   // Konflikt: Detail des Eintrags in "Sommerfest"
   await until(() => p.evaluate(() => !!document.querySelector('.kj-item')));
-  await p.evaluate((id) => window.HKAI && document.querySelectorAll('.kj-item').length && [...document.querySelectorAll('.kj-item')].find((i) => /Ben/.test(i.textContent)).click(), conf.job);
+  await p.evaluate((id) => document.querySelectorAll('.kj-item').length && [...document.querySelectorAll('.kj-item')].find((i) => /Ben/.test(i.textContent)).click(), conf.job);
   const K = await until(() => p.evaluate(() => { const d = document.querySelector('.kj-detail:not([hidden]) .kj-changed'); return d && d.textContent; }));
   ok('Konflikt: „Das wurde seitdem geändert.“ statt Rückgängig', K && /Das wurde seitdem geändert\./.test(K), K);
   await p.click('.kj-detail .kj-old');
   const old = await until(() => p.evaluate(() => (document.querySelector('.kj-detail .kj-oldtext') || {}).textContent));
   ok('„Alte Fassung ansehen“ zeigt den Stand vor Marin', old && /Pavillon/.test(old) && !/umgeschrieben/.test(old), old);
-  await shot('konflikt-dunkel');
+  await shot('saga-konflikt-dunkel');
   const pg2 = (await api('GET', '/api/notes/' + fest.id)).d;
   ok('Konflikt: nichts überschrieben', /umgeschrieben/.test(pg2.body || ''));
   await p.click('.kj-back');
@@ -116,7 +132,24 @@ const WORDS = {
     const d = (await api('GET', '/api/ai/jobs')).d;
     ok(`Gruppen in ${lg}: ${WORDS[lg].join(' · ')}`, JSON.stringify(d.groups.map((g) => g.label)) === JSON.stringify(WORDS[lg]), d.groups.map((g) => g.label));
   }
+  await api('PUT', '/api/account/lang', { lang: 'en' });
+  await openJobs();
+  const en = await p.evaluate(() => ({ tab: document.getElementById('sg-tab-jobs').textContent, talk: document.getElementById('sg-tab-talk').textContent }));
+  await p.click('#sg-tab-talk');
+  const enMode = await p.evaluate(() => document.getElementById('sg-mode').textContent);
+  ok('2505 en: Reiter „Jobs“ (nicht „Tasks“), Umschalter „As a job“', en.tab === 'Jobs' && en.talk === 'Conversation' && enMode === 'As a job', { en, enMode });
+  await api('PUT', '/api/account/lang', { lang: 'es' });
+  await openJobs();
+  const es = await p.evaluate(() => document.getElementById('sg-tab-jobs').textContent);
+  ok('2505 es: Reiter „Encargos“ (nicht „Tareas“)', es === 'Encargos', es);
   await api('PUT', '/api/account/lang', { lang: 'de' });
+  // schmal: Liste ohne waagrechten Ueberlauf, Eintraege >= 44 px
+  await p.setViewportSize({ width: 390, height: 844 }); await openJobs();
+  const mob = await p.evaluate(() => ({ h: Math.min(...[...document.querySelectorAll('#sg-jobs .kj-item')].map((i) => i.getBoundingClientRect().height)),
+    over: document.documentElement.scrollWidth > innerWidth + 1 }));
+  ok('schmal: Einträge ≥ 44 px, kein waagrechter Überlauf', mob.h >= 44 && !mob.over, mob);
+  await shot('saga-auftraege-schmal-dunkel');
+  await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-auftraege-schmal-hell'); await p.emulateMedia({ colorScheme: 'dark' });
   await api('POST', '/api/ai/jobs/' + wait.job + '/cancel', {});
   ok('keine Skriptfehler', !errs.length, errs);
   await br.close();

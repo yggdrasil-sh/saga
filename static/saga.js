@@ -301,9 +301,10 @@
   function refreshJob(w) {
     var id = w.dataset.job; if (!id) return Promise.resolve();
     return api('GET', '/api/ai/jobs/' + id).then(function (d) {
-      var had = w.contains(document.activeElement);
+      var had = w.contains(document.activeElement), was = w.dataset.state;
       var n = jobNode(d, w); w.textContent = ''; w.appendChild(n); w.dataset.state = d.state;
       if (had) focusSoft(n);
+      if (was && was !== d.state) live().textContent = d.state_text;   // Zeile unter dem Feld nicht beim alten "Laeuft" lassen
     }).catch(function (e) {
       if (e.status === 404) { w.textContent = ''; var c = el('div', 'kj-card kj-small'); c.appendChild(HKJobs.head(''));
         c.appendChild(el('p', 'kj-lead', T('Diesen Auftrag gibt es nicht mehr.'))); w.appendChild(c); w.dataset.state = 'weg'; }
