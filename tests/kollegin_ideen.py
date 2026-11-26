@@ -529,7 +529,9 @@ def server():
             lean = tasksrc.collect(c, A, _date(2026, 7, 7), BER, clean=False, until="2026-07-08")[0]
         want_k = [x["key"] for x in full if x.get("due") and x["due"] <= "2026-07-08"]
         ok(f"tasksrc.collect(until): dieselben Eintraege wie der volle Weg, nur mit Datum bis until ({len(lean)}/{len(full)})",
-           [x["key"] for x in lean] == want_k and all(x["overdue"] == y["overdue"] for x, y in zip(lean, [f for f in full if f["key"] in want_k])),
+           sorted(x["key"] for x in lean) == sorted(want_k)
+           and all({k: x.get(k) for k in ("due", "due_end", "time", "overdue", "prio", "text")} == {k: fx[x["key"]].get(k) for k in
+                   ("due", "due_end", "time", "overdue", "prio", "text")} for x in lean for fx in [{f["key"]: f for f in full}]),
            ([x["key"] for x in lean], want_k))
         ok("tasksrc.collect(until): Auswahl (erledigt ausgenommen, Zeitraum, Uhrzeit) wie erwartet",
            {x["text"] for x in lean if x["text"].startswith("Status")} == {"Status offen", "Status Zeitraum", "Status Uhrzeit"},
