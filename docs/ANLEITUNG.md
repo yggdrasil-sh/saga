@@ -1398,7 +1398,12 @@ Instanz teilen“ bei der Föderation – der regelt nur, ob Personen anderer Se
   wird mit deinem Konto gelöscht.
 - **Wenn eine Person geht:** Wird ihr Konto gelöscht oder der verbundene Server entfernt, verschwindet ein leerer
   Kontakt; einer mit deinen eigenen Angaben bleibt als selbst angelegter Kontakt, nur ohne Saga-Adresse.
-- **Noch nicht dabei:** Übernahme ins Adressbuch des Handys, „Über Saga anrufen“ ins Telefonnetz (Saga 3.0) und
+- **Ins Adressbuch des Handys:** Im Kontakt-Detail der App für iPhone/iPad und unter Android übernimmt **Zu Kontakten
+  hinzufügen** Name, Telefonnummern und E-Mail-Adressen in die Kontakte des Geräts. Du entscheidest dort, ob ein neuer
+  Kontakt entsteht oder ein vorhandener ergänzt wird; gesichert wird erst, wenn du es bestätigst. Die Saga-Adresse,
+  Anrede und Grußform gehen nicht mit. Saga bekommt dafür keinen Zugriff auf deine Kontakte, liest sie nicht und gleicht
+  nichts ab. Der Knopf erscheint nur bei Kontakten mit mindestens einer Nummer oder E-Mail-Adresse.
+- **Noch nicht dabei:** laufender Abgleich mit dem Adressbuch des Handys, „Über Saga anrufen“ ins Telefonnetz (Saga 3.0) und
   Kontakte als Ausnahme bei „Nicht stören“. API-Tokens und MCP kommen nicht an das Adressbuch. Schnittstelle für Apps:
   `docs/APP-API.md`, Abschnitt „Kontakte“.
 

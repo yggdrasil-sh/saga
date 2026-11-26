@@ -1175,7 +1175,12 @@ this instance” in federation – that only controls whether people on other se
   **personal backup** (section 11, “Personal backup”) and is deleted with your account.
 - **When a person leaves:** if their account is deleted or the connected server is removed, an empty contact
   disappears; one with your own details stays as a contact you created, just without the Saga address.
-- **Not yet included:** export to the phone's address book, “Call via Saga” into the phone network (Saga 3.0) and
+- **Into your phone's contacts:** in the contact details of the iPhone/iPad app and on Android, **Add to Contacts**
+  copies the name, phone numbers and email addresses into the device's contacts. You choose there whether to create a
+  new contact or add to an existing one; nothing is saved until you confirm. The Saga address, form of address and
+  greeting are not copied. Saga gets no access to your contacts, doesn't read them and doesn't sync. The button only
+  appears for contacts with at least one number or email address.
+- **Not yet included:** ongoing sync with the phone's address book, “Call via Saga” into the phone network (Saga 3.0) and
   contacts as exceptions for “Do not disturb”. API tokens and MCP can't access the address book. Interface for apps:
   `docs/APP-API.md` (German), section “Kontakte”.
 

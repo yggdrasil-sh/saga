@@ -1226,7 +1226,12 @@ de otros servidores os encuentran por el nombre.
   personal») y se borra con tu cuenta.
 - **Cuando una persona se va:** si se borra su cuenta o se quita el servidor conectado, un contacto vacío desaparece;
   uno con tus propios datos se queda como contacto creado por ti, solo que sin dirección de Saga.
-- **Todavía no:** exportar a la libreta del teléfono, «Llamar a través de Saga» a la red telefónica (Saga 3.0) y
+- **A los contactos del teléfono:** en el detalle del contacto de la app para iPhone/iPad y en Android, **Añadir a
+  Contactos** copia el nombre, los números de teléfono y las direcciones de correo a los contactos del dispositivo. Allí
+  decides si se crea un contacto nuevo o se completa uno existente; no se guarda nada hasta que lo confirmas. La
+  dirección de Saga, el tratamiento y el saludo no se copian. Saga no obtiene acceso a tus contactos, no los lee y no
+  sincroniza nada. El botón solo aparece en contactos con al menos un número o una dirección de correo.
+- **Todavía no:** sincronización continua con la libreta del teléfono, «Llamar a través de Saga» a la red telefónica (Saga 3.0) y
   contactos como excepción en «No molestar». Los tokens de API y MCP no acceden a la libreta. Interfaz para apps:
   `docs/APP-API.md` (en alemán), sección «Kontakte».
 

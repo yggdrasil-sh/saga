@@ -20,6 +20,9 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+
+- **Kontakte ins Adressbuch des Handys** (Bugs-DB 2027b, Doku): Anleitung (de/en/es) und `docs/APP-API.md` beschreiben
+  „Zu Kontakten hinzufügen“ in den Apps – einzeln, ohne Kontakte-Berechtigung, ohne Abgleich, ohne Saga-Adresse.
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte
 - **Widgets sofort aktuell** (Bugs-DB 2188, ohne Migration): Ändert sich etwas, das ein Homescreen-Widget zeigt (Titel,
   Titelbild, Unterseiten, Datenbank-Zeilen, Aufgaben – auch von einem anderen Gerät oder im Widget selbst), schickt Saga

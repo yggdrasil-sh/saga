@@ -4335,8 +4335,12 @@ ignorieren.
 - **Anrede für die Kollegin (K-H):** `form`/`salutation` liest die Kollegin nur über eine eigene Lesefunktion im
   Kontakte-Modul, die genau diese beiden Felder eines eigenen Kontakts liefert – nicht über `GET /api/contacts` und nie
   aus Chats abgeleitet (RT-41). Gesetzt wird beides weiter nur von der Person selbst.
-- **Export ins System-Adressbuch (2027b):** iOS/Android übernehmen Kontakte auf Wunsch ins Adressbuch des Geräts;
-  vorgesehen ist, dafür die bestehende API (`GET /api/contacts`) zu lesen. Einzelheiten folgen mit 2027b.
+- **Export ins System-Adressbuch (2027b, Beginn 2.6):** iOS/Android bieten im Kontakt-Detail „Zu Kontakten hinzufügen“
+  und öffnen den System-Dialog vorausgefüllt (iOS `CNContactViewController(forUnknownContact:)`, Android
+  `ACTION_INSERT_OR_EDIT`) – ohne Kontakte-Berechtigung, ohne Lesen, ohne Abgleich. **Kein eigener API-Aufruf:** die
+  Apps bauen die Vorbefüllung aus dem schon geladenen Kontakt. Übertragen werden nur der Name („Name für mich“, sonst
+  Name der Person; nie der Rückfall-Name oder eine Kennung), gültige E.164-Nummern und Mails (genau ein Empfänger) mit
+  Typ, je höchstens 10; nie feste Saga-Adressen, Anrede oder Grußform. Laufender Abgleich (W3) ist nicht gebaut.
 - **Öffentliche Adressen `name@domain` (2113, Saga 2.7):** werden `kind: "fed"` mit dem Wert `name@domain`; Eingabe in
   2027a abgelehnt (`400`). Apps überspringen unbekannte `kind`-Werte wie unbekannte Felder.
 - **Telefon, Anrufer-Erkennung und Status-Ausnahmen (3.0-A):** Zuordnung „wer ruft an / wen rufe ich“ über
