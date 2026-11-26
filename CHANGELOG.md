@@ -285,7 +285,7 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Verlauf und Aufträge exportieren (JSON/Markdown), alles löschen, „Was mein Admin sehen kann“. Erste Schritte (2031)
   bekommen mit KI den Punkt „Marin kennenlernen“, ohne KI bleiben sie wie bisher. Neu `/saga`, `/api/ai/consent`,
   `/api/ai/prefs`, `/api/ai/thread`, `/api/ai/mydata`; `/api/ai/status` mit `endpoint`, `consent`, `intro`
-  (APP-API-KI Abschnitt 10). Neue Tabellen `ai_consent`, `ai_thread`, `ai_turn` (ohne Migration). Testreihen
+  (APP-API-KI Abschnitt 11). Neue Tabellen `ai_consent`, `ai_thread`, `ai_turn` (ohne Migration). Testreihen
   `tests/kollegin_einwilligung.py`, `tests/browser_kollegin_kennenlernen.js`.
 
 ### Behoben

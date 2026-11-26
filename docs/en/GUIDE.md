@@ -1590,7 +1590,9 @@ appears in the chat list and is not end-to-end encrypted.
   with ideas** · **Yes, without ideas** · **Not now** (nothing goes to the AI). If the admin switches to a different
   endpoint, Marin asks again.
 - **Conversation:** with history off it disappears after 24 hours; with history on it is kept (up to 200 entries).
-- **Settings › Saga › My data:** withdraw consent (running tasks pause, ideas switch off), export history and tasks
+- **Settings › Saga › My data:** withdraw consent (Marin no longer carries out tasks – running ones pause –, brings no
+  ideas, and the conversation in Saga is off; questions elsewhere such as “Ask your pages” still go to the AI, but only
+  when you ask them, with the same notice “What you ask here is read by the AI at …”), export history and tasks
   (JSON or Markdown), delete everything (with confirmation; the consent log stays as proof), and an honest note on
   “What my admin can see”. “Ask your pages” and the page tools work as before.
 

@@ -1654,7 +1654,10 @@ es un chat**: no aparece en la lista de chats y no está cifrada de extremo a ex
   Botones: **Sí, con ideas** · **Sí, sin ideas** · **Ahora no** (no se envía nada a la IA). Si el admin cambia de
   servicio, Marin vuelve a preguntar.
 - **Conversación:** con el historial desactivado desaparece a las 24 horas; con historial se guarda (hasta 200 entradas).
-- **Ajustes › Saga › Mis datos:** retirar el consentimiento (los encargos en curso se pausan, las ideas se desactivan),
+- **Ajustes › Saga › Mis datos:** retirar el consentimiento (Marin ya no hace encargos – los que estén en curso se
+  pausan –, no trae ideas y la conversación en Saga queda desactivada; las preguntas en otros sitios, como «Pregunta a
+  tus páginas», siguen yendo a la IA, solo cuando las haces tú, con el mismo aviso «Lo que preguntas aquí lo lee la IA
+  en …»),
   exportar historial y encargos (JSON o Markdown), borrar todo (con confirmación; el registro del consentimiento queda
   como prueba) y una explicación honesta de «Qué puede ver mi admin». «Pregunta a tus páginas» y las ayudas de página
   funcionan como antes.

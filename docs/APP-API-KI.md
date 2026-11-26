@@ -399,9 +399,16 @@ Konzept K10/K11/K19, M1/M3/M4/M7/M11; Server `saga/ai_saga.py`. Alle Endpunkte m
 erteilt, aber für einen anderen Host (Admin hat den Endpunkt gewechselt) – gilt nicht, Karte erneut zeigen.
 Ohne Fähigkeit `ai` → 403. Gespeichert als Protokoll (`ai_consent`), Nachweis bis zur Kontolöschung.
 
-**Was die Einwilligung sperrt:** Aufträge (jeder Schritt prüft `jobs.consent_ok`), Ideen von sich aus
-(`ai_saga.ideas_ok`) und das Gespräch im Ort „Saga“. **Unverändert** (wie bis 2.5, Fähigkeit `ai` + Hinweis bei jeder
-Nutzung): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI im Chat auf Zuruf.
+**Was die Einwilligung sperrt** (Entscheidung 26.11.: der Widerruf stoppt nur die Kollegin): Planen, Ändern und
+Freigeben von Aufträgen (`/api/ai/jobs`, `…/plan`, `…/approve` → 403 `{consent: "needed"}`), jeden Schritt eines
+Auftrags (`jobs.consent_ok`), Ideen von sich aus (`ai_saga.ideas_ok`) und das Gespräch im Ort „Saga“. **Unverändert**
+(Fähigkeit `ai`): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI im Chat auf Zuruf – sie zeigen
+denselben Host-Hinweis: `/api/ai/status` → `notice` = „Was du hier fragst, liest die KI auf {label}.“, Details hinter ⓘ
+aus `intro.details`; im Chat steht `endpoint.label` statt des nackten Hosts.
+
+`POST /api/ai/consent` braucht zusätzlich `host` = `intro.host` (der Host, den die Karte nannte); weicht er vom
+jetzigen Endpunkt ab → **409** `{error, version, host}`: Status neu laden, Karte neu zeigen. `host` (auch `/api/ai/status`
+`host`) nie mit Zugangsdaten (`user:pw@` fällt weg).
 
 ### 11.3 Gespräch im Ort „Saga“ (K10)
 
@@ -409,7 +416,9 @@ Nutzung): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI 
   keep, consent}`. `keep` = 86400 (Verlauf aus: Züge laufen nach 24 h ab), `null` mit Verlauf (höchstens 200 Züge).
 - `POST /api/ai/thread {q, tasks?, calendar?}` → `text/event-stream` wie `/api/ai/ask` (`sources`, `status`, `delta`,
   `done`), `done.turn` = Nummer des KI-Zugs, `done.read` = Kontext-Ausweis. Die letzten 6 Züge der letzten 24 h gehen
-  als Gespräch an das Modell. Ohne Einwilligung **403** `{error, consent: "needed"}` – nichts geht ans Modell.
+  im Datenrahmen an das Modell (als zitierte Daten, nie als eigene `assistant`-Nachrichten – K7). Ohne Einwilligung
+  **403** `{error, consent: "needed"}` – nichts geht ans Modell. Höchstens 200 eigene Fragen je 24 h (429); der eigene
+  Zug wird erst nach bestandener Kontingent-Prüfung gespeichert.
   Kontingent, Spur und Fehler wie bei `/api/ai/ask`. Keine Websuche (kommt später).
 - `DELETE /api/ai/thread` → `{deleted}` (Gespräch leeren).
 - Kein E2E-Chat: eigene Tabellen `ai_thread`/`ai_turn`, nie in `/api/chats`. Apps zeigen den Ort als eigenen Tab bzw.
