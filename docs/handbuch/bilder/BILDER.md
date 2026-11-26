@@ -145,7 +145,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b12-10-archiv.png | B12 | Web | hell | Rechtsklick in der Chatliste: öffnen, stummschalten, anheften, ungelesen, sperren, melden, archivieren, löschen | 1 = Archivieren |
 | b12-13-status-chatkopf.png | B12 | Web | hell | Bens Direkt-Chat mit Anna: im Kopf „Nicht stören bis … · Im Kundentermin“ (Ende im 5-Minuten-Raster), in der Chatliste roter Punkt an Annas Profilbild | 1 = Status im Chat-Kopf (Klick zeigt den ganzen Text) |
 | b13-01-anruf-video.png | B13 | Web | dunkel | Videoanruf Anna ↔ Ben über den Knoten (dunkel, Kamera-Ersatzbild statt Gesicht, Bens Handy) | 1 = Stummschalten; 2 = Kamera aus; 3 = Bildschirm teilen; 4 = Auflegen |
-| b13-02-bildschirm-teilen.png | B13 | Web | hell | Ben teilt seinen Bildschirm (Fotos vom Urlaub) – Anna sieht ihn groß | – |
+| b13-02-bildschirm-teilen.png | B13 | Web | dunkel | Ben teilt seinen Bildschirm (Fotos vom Urlaub) – Anna sieht ihn groß | – |
 | b13-03-gruppenanruf.png | B13 | Web | dunkel | Gruppen-Videoanruf mit vier Personen über den Knoten (dunkel) | – |
 | b13-04-hierher-uebernehmen.png | B13 | Web | hell | Bens Laptop: „Anruf läuft auf Chrome · Android …“ – Hinzufügen oder Hierher übernehmen | 1 = Hierher übernehmen |
 | b13-05-klingeln-handy.png | B13 | Handy | dunkel | Ben wird angerufen (Handy-Browser, dunkel): Ablehnen, nur Ton, mit Video | 1 = Ablehnen; 2 = Mit Video annehmen |
