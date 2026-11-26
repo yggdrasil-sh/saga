@@ -10,8 +10,8 @@
 
 - **Anrufe auch aus dem Mobilfunknetz.** Bens Anrufe aus dem Zug brechen ab („Direktverbindung nicht möglich“). Anna
   trägt einen eigenen TURN-Server ein – ab jetzt klappt es.
-- **Die Mitgliederversammlung per Video.** 15 Vereinsmitglieder wollen sich per Video treffen. Frieda schaltet
-  **Große Gruppenanrufe über Gjallarhorn** ein – der eingebaute Knoten trägt den Anruf.
+- **Die Mitgliederversammlung per Video.** 15 Vereinsmitglieder wollen sich per Video treffen. **Große Gruppenanrufe
+  über Gjallarhorn** ist ab Werk an – der eingebaute Knoten trägt den Anruf (bis 16 Geräte mit Video).
 - **Mehr Leistung.** Der Verein wächst. Frieda koppelt einen zweiten Knoten auf einem kleinen Server mit guter
   Anbindung.
 - **Datenschutz.** Anna ersetzt den voreingestellten fremden STUN-Server durch ihren eigenen, damit niemand Fremdes
@@ -24,9 +24,10 @@ Auf der Seite **Anrufe** im Admin-Bereich stellst du ein, was dafür nötig ist:
 
 - **1:1-Anrufe (TURN, optional):** Hilfsserver, damit Anrufe auch durch strenge Firewalls und Mobilfunknetze kommen.
 - **Gruppenanrufe ohne Knoten (Mesh):** Grenzen, wie viele Geräte direkt miteinander telefonieren.
-- **Gjallarhorn – große Gruppenanrufe:** Knoten, die Gruppenanrufe mit vielen Personen weiterleiten – und in Saga 2.5
-  auf Wunsch **alle** Anrufe, auch die zu zweit. Inhalte bleiben Ende-zu-Ende verschlüsselt; die Knoten leiten nur
-  weiter. Gjallarhorn ist in Saga 2.5 noch **experimentell** und ab Werk aus.
+- **Gjallarhorn – große Gruppenanrufe:** Knoten, die Gruppenanrufe mit vielen Personen weiterleiten – und ab Werk
+  **alle** Anrufe, auch die zu zweit. Inhalte bleiben Ende-zu-Ende verschlüsselt; die Knoten leiten nur weiter. Ab
+  Saga 2.6 ist Gjallarhorn **ab Werk an** (in 2.5 war es experimentell und aus). Der eingebaute Knoten reicht für den
+  Anfang; weitere Knoten koppelst du nur, wenn du mehr Leistung brauchst.
 
 Wie Anrufe für eure Leute aussehen, steht im Benutzer-Handbuch, [B13 Anrufe](../benutzer/13-anrufe.md).
 
@@ -69,11 +70,13 @@ Ohne Knoten sendet in einem Gruppenanruf jedes Gerät an jedes andere. Das klapp
 - **Höchstens Geräte je Anruf mit Video** – 2 bis 4.
 - **Höchstens Geräte je Anruf nur mit Ton** – 2 bis 6. Mit 2 gibt es nur 1:1-Anrufe.
 
-### 3. Gjallarhorn einschalten
+### 3. Gjallarhorn (ab Werk an)
 
 Ganz oben auf der Seite steht **Gjallarhorn – große Gruppenanrufe**.
 
-1. Setz den Haken bei **Große Gruppenanrufe über Gjallarhorn**.
+1. **Große Gruppenanrufe über Gjallarhorn** ist ab Saga 2.6 ab Werk an. Hattest du den Schalter in 2.5 aus, gilt er
+   nach dem Update trotzdem als an – solange du ihn nicht ab 2.6 bewusst setzt. Willst du Gjallarhorn nicht, nimm den
+   Haken heraus und speichere.
 2. Lass **Eingebauten Knoten für Anrufe nutzen** an – er steckt schon in Saga.
 3. **Alle Anrufe über Knoten (auch 1:1)** ist ab Werk an. Dann laufen auch Anrufe zu zweit und Gruppen zu dritt und
    zu viert über den Knoten: Die Geräte sehen sich gegenseitig keine IP-Adressen, und es gibt weniger
@@ -111,8 +114,14 @@ Betriebsart **„Ein Port“** nutzen; ein Knoten mit **eigenem Namen** geht wei
 
 Aus: Anrufe laufen wie bisher direkt zwischen den Geräten (Gruppen bis 4 mit Video / 6 nur mit Ton).
 
-Wie du einen bestehenden Server auf 2.5 bringst und was du dabei am Proxy und hier prüfst, steht in der
-[Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md).
+**Grenzen je Anruf:** Über den eingebauten Knoten (Tunnel bzw. TCP) passen bis **16 Geräte mit Video** bzw. **50 nur
+mit Ton** in einen Anruf, über einen Knoten mit UDP (zum Beispiel einen gekoppelten, Abschnitt 5) bis **25 mit Video**
+bzw. **50 nur mit Ton**. Welche Grenze gilt, steht beim Start des Anrufs fest; ist ein Knoten mit UDP bereit, startet
+ein neuer Anruf dort. Die Seite zeigt die wirksamen Werte in der Zeile **Grenzen je Anruf über Knoten**. Messwerte
+dazu stehen in der [Anleitung, „Grenzen und Messwerte“](../../ANLEITUNG.md#grenzen-und-messwerte-gjallarhorn).
+
+Wie du einen bestehenden Server auf 2.6 bringst, steht in der [Upgrade-Anleitung 2.6](../../UPGRADE-2.6.md), für
+2.3/2.4 auf 2.5 in der [Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md).
 
 ### 4. Die Knoten-Liste
 
@@ -124,7 +133,11 @@ Je Knoten siehst du:
 - **Weg** – ob TCP und UDP erreichbar sind,
 - **Auslastung** – CPU und Upload,
 - **Teilnehmende** – wie viele gerade darüber telefonieren,
-- **Version** und ob der Knoten **geteilt** ist.
+- **Version** und ob der Knoten **geteilt** ist,
+- **Geschätzte Kapazität: etwa N mit Video / M nur Ton gleichzeitig** – über alle Anrufe auf diesem Knoten, gerechnet
+  aus gemessenen Kosten je Gerät, den Kernen des Knotens, `HORN_MAX_LEGS` und dem Upload, falls angegeben. Ist
+  `HORN_MAX_LEGS` zu klein für einen Anruf an der Grenze (zum Beispiel noch der alte Wert 48), steht hier eine Warnung
+  mit dem nötigen Wert.
 
 Knöpfe je Knoten:
 
@@ -134,8 +147,9 @@ Knöpfe je Knoten:
 - **Leeren** – der Knoten nimmt keine neuen Anrufe mehr an; laufende Anrufe dürfen zu Ende gehen. Gut vor Wartungen.
 
 Unter **Grenzen** legst du fest, ab wie vielen Mitgliedern ein Gruppenanruf über einen Knoten läuft (**Über Knoten
-ab** – gilt nur, wenn „Alle Anrufe über Knoten“ aus ist), wie viele Personen mit Video bzw. nur mit Ton in einen Anruf dürfen, und das **Kontingent je verbundenem
-Server**.
+ab** – gilt nur, wenn „Alle Anrufe über Knoten“ aus ist), wie viele Personen mit Video bzw. nur mit Ton in einen Anruf
+dürfen (nur **senken**: höchstens 16/50 über den eingebauten Knoten, 25/50 mit UDP), und das **Kontingent je
+verbundenem Server**.
 
 ### 5. Einen weiteren Knoten koppeln (Erweitern)
 
@@ -185,13 +199,14 @@ sie unter **Geteilte Knoten anderer Server**.
 **Die Mitgliederversammlung des Gartenvereins.** Der Verein will seine Jahresversammlung per Video machen – 15
 Personen.
 
-1. Frieda öffnet **Anrufe** und setzt den Haken bei **Große Gruppenanrufe über Gjallarhorn**. **Eingebauten Knoten
-   für Anrufe nutzen** bleibt an. Sie speichert.
-2. In der Knoten-Liste klickt sie beim eingebauten Knoten auf **Port prüfen**. TCP ist erreichbar ✓, UDP noch nicht.
-3. Sie gibt den angezeigten UDP-Port in der Firewall des Servers frei und klickt auf **Erneut prüfen** – jetzt UDP ✓.
-4. Am Abend der Versammlung startet Frieda im Gruppenchat „Mitglieder“ einen Videoanruf. Weil mehr als 4 Personen
-   dabei sind, läuft der Anruf über den Knoten.
-5. Während der Versammlung zeigt die Liste bei **Auslastung** 35 % und bei **Teilnehmende** 15.
+1. Frieda öffnet **Anrufe**: **Große Gruppenanrufe über Gjallarhorn** und **Eingebauten Knoten für Anrufe nutzen**
+   sind schon an (ab Werk).
+2. Die Zeile **Grenzen je Anruf über Knoten** zeigt 16 mit Video über den eingebauten Knoten – 15 Personen passen.
+   Beim Knoten steht, wie viele er gleichzeitig etwa schafft.
+3. Am Abend der Versammlung startet Frieda im Gruppenchat „Mitglieder“ einen Videoanruf. Er läuft über den
+   eingebauten Knoten – über die normale Saga-Adresse, ohne weiteren Port.
+4. Während der Versammlung zeigt die Liste bei **Teilnehmende** 15 und bei **Auslastung**, wie viel der Knoten
+   gerade zu tun hat.
 
 **Anna sorgt für Anrufe aus dem Zug.** Ben ruft oft aus dem Zug an, und die Verbindung kommt nicht zustande.
 

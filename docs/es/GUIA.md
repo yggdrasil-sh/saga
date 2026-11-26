@@ -202,14 +202,15 @@ Desde la 2.5, las **apps** (iOS, Android) llaman a través del **nodo Gjallarhor
 proxy inverso que termina TLS por sí mismo (Nginx Proxy Manager, Caddy, Traefik, nginx): con la dirección normal de
 Saga, solo el puerto 443, sin nodo compartido y sin más cambios en el proxy. Por cada línea, la app pasa sus medios
 (ICE-TCP, contenido cifrado de extremo a extremo) como WebSocket a `wss://saga.example.org/api/sfu/ws`; saga-media lo
-entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
+entrega sin cambios al nodo. Desde la 2.6 Gjallarhorn viene activado de fábrica (en la 2.5 era experimental y estaba
+desactivado), así que el túnel es el camino estándar detrás de un proxy así.
 
 - **Obligatorio: el proxy deja pasar WebSocket.** Nginx Proxy Manager: activa «Websockets Support» en el host del proxy;
   Gjallarhorn lo necesita de todos modos (medición `/probe`, canal de eventos). Caddy y Traefik: nada que hacer. nginx:
   añade en `location /` `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` y
   `proxy_set_header Connection $http_connection;` (como NPM). Sin esto el nodo responde `426`; Admin → Llamadas muestra
   entonces «el proxy no deja pasar WebSocket» (botón «Comprobar ahora») y las apps avisan lo mismo.
-- `BASE_URL` es la dirección https con nombre DNS y Gjallarhorn está activado (Admin → Llamadas). Sin `HORN_NAME` y sin
+- `BASE_URL` es la dirección https con nombre DNS y Gjallarhorn está activado (Admin → Llamadas, de fábrica desde la 2.6). Sin `HORN_NAME` y sin
   archivos de certificado para el nodo, el nodo integrado funciona en **modo túnel**: sin puerto ni certificado
   propios; Admin → Llamadas muestra «Llamadas por la dirección de Saga (túnel)» con contadores. Con un nombre propio
   para el nodo o en el modo «Un puerto» todo sigue igual; allí el túnel es además el último camino de las apps (p. ej.
@@ -1233,21 +1234,28 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
 - **Llamadas en grupo (desde 2.4):** en chats de grupo, libres y de página, 📞/🎥 inician una **llamada en grupo**.
   Suena para todos los miembros con Saga 2.4 (en chats de más de 8 miembros solo un aviso silencioso «Llamada en grupo en
   curso – Unirse»); se puede entrar y salir en cualquier momento y la llamada sigue mientras haya al menos dos personas.
-  Como máximo **4 dispositivos con vídeo** o **6 solo con audio** (cuentan tus dispositivos adicionales; el administrador solo puede reducir estos límites en General → «Llamadas»).
+  Directamente entre los dispositivos (malla, sin nodo) como máximo **4 dispositivos con vídeo** o **6 solo con audio**
+  (cuentan tus dispositivos adicionales; el administrador solo puede reducir estos límites en General → «Llamadas»); a
+  través de un nodo (por defecto desde la 2.6, punto siguiente) caben muchos más.
   Cada persona
   aparece como mosaico y quien habla tiene un marco verde; compartir pantalla funciona como en los chats directos. Cifrado
   de extremo a extremo como siempre (cada conexión por separado, el servidor no ve nada). Quien aún tenga una app antigua
   ve «necesita Saga 2.4»; entre servidores solo funciona si todos los servidores Saga implicados tienen 2.4.
-- **A través de un nodo (desde 2.5, Gjallarhorn experimental):** si Gjallarhorn está activado (Admin → Llamadas,
-  desactivado por defecto), desde 2.5 **todas** las llamadas pasan por un nodo, también las de dos personas (ajuste
-  «Todas las llamadas a través de nodos (también 1:1)», activado por defecto; un «desactivado» guardado antes de 2.5 cuenta una
-  vez como activado, después se mantiene una elección consciente). Los dispositivos no ven entonces las direcciones IP del
-  otro y hay menos problemas de NAT; sigue cifrado de extremo a extremo. Saga solo conecta directamente como reserva: si
-  no hay ningún nodo listo, uno de los dispositivos de la otra persona no puede (p. ej. la app de Linux, una app antigua,
-  Safari con el nodo de túnel) o el nodo no es accesible durante 30 s en la llamada.
-  Gjallarhorn es **experimental** en la 2.5: probado con hasta 4 personas o dispositivos por llamada; la web y la
-  administración lo indican con una pequeña etiqueta «Experimental». Informa de los problemas con **Ajustes → Ayuda →
-  Enviar diagnóstico**.
+- **A través de un nodo (Gjallarhorn, por defecto desde 2.6):** desde la 2.6 Gjallarhorn viene **activado de fábrica**
+  (Admin → Llamadas → «Llamadas de grupo grandes con Gjallarhorn»; en la 2.5 era experimental y estaba desactivado). Un
+  «desactivado» guardado en la 2.5 cuenta como activado tras la actualización, mientras el administrador no fije el
+  interruptor conscientemente a partir de la 2.6. Con Gjallarhorn activado, **todas** las llamadas pasan por un nodo,
+  también las de dos personas (ajuste «Todas las llamadas a través de nodos (también 1:1)», activado por defecto; un
+  «desactivado» guardado antes de 2.5 cuenta una vez como activado, después se mantiene una elección consciente). Sin nodo
+  propio, es el **nodo integrado** en el contenedor de Saga; los nodos vinculados son un añadido para más capacidad. Los
+  dispositivos no ven entonces las direcciones IP del otro y hay menos problemas de NAT; sigue cifrado de extremo a
+  extremo. Saga solo conecta directamente como reserva: si no hay ningún nodo listo, un dispositivo de la otra persona
+  usado en los últimos 30 días no puede (p. ej. una app antigua, Safari con el nodo de túnel) o el nodo no es accesible
+  durante 30 s en la llamada. La app de Linux sí puede (suena y la conversación sigue en el navegador); los dispositivos
+  que no se usan desde hace tiempo no cuentan. Cuántas personas caben en una llamada está en
+  [Límites y mediciones](#límites-y-mediciones-gjallarhorn). Para seguir llamando directamente (malla), desactiva
+  «Llamadas de grupo grandes con Gjallarhorn» y guarda. Informa de los problemas con **Ajustes → Ayuda → Enviar
+  diagnóstico**.
 - **Una llamada individual se convierte en conferencia (desde 2.5):** en una llamada individual a través de un nodo, elige
   «Añadir persona» en la lista de participantes: se crea un **grupo nuevo** con vosotros dos y las personas añadidas, y la
   llamada continúa allí **sin interrupción** (ambos sois administradores del grupo); a las personas nuevas les suena. En el
@@ -1283,6 +1291,48 @@ llamada según el esquema TURN REST, válidas 12 horas; el servidor TURN solo ve
 o con **usuario/contraseña fijos**, **Conectar solo a través de TURN** (los dispositivos no ven la dirección IP de la
 otra persona) y la **duración del tono** (15–120 s). Los secretos se guardan cifrados; «Borrar credenciales TURN» los
 elimina.
+
+#### Límites y mediciones (Gjallarhorn)
+
+**Límites por llamada** (desde 2.6): son límites máximos; el administrador solo puede reducirlos en Admin → Llamadas.
+Cuál se aplica queda fijado al empezar la llamada y depende del nodo en el que empieza; si hay un nodo con UDP listo (por
+debajo del 70 % de carga), una llamada nueva empieza allí.
+
+| Camino | con vídeo | solo audio |
+|---|---|---|
+| Nodo integrado (túnel/TCP por la dirección de Saga) | 16 dispositivos | 50 dispositivos |
+| Nodo con UDP (p. ej. un nodo vinculado) | 25 dispositivos | 50 dispositivos |
+| Directamente entre los dispositivos (malla, sin nodo) | 4 dispositivos | 6 dispositivos |
+
+Cuentan tus dispositivos adicionales (dispositivos acompañantes). En una llamada a través de un nodo cada dispositivo oye
+hasta a tres personas que están hablando (audio top-3); quien empieza a hablar se oye al cabo de unos 0,6–1 s. Admin →
+Llamadas muestra por nodo «Capacidad estimada: unos N con vídeo / M solo audio a la vez», calculada a partir del coste
+medido por dispositivo (abajo), los núcleos del nodo (desde el nodo 2.6 con la cuota de CPU del contenedor),
+`HORN_MAX_LEGS` y la subida, si se indica. Si el `HORN_MAX_LEGS` de un nodo queda por debajo de lo que necesita una
+llamada en el límite (p. ej. el antiguo valor por defecto 48), aparece un aviso; el valor por defecto desde la 2.6 es 200.
+
+**Mediciones** (serie 2263-9 del 25-11-2026, equipo de pruebas Intel i7-10875H con 8 núcleos / 16 hilos, mediana de 3
+ejecuciones por nivel; 4 navegadores con cámara de 480 × 270 a 20 fps, el resto como dispositivos de prueba; delante de
+Saga un nginx con «Websockets Support» y TLS; datos brutos en `tools/perf/horn-2263.json`). «Sin problemas» significa
+que se cumplen todos los criterios de aprobación, entre ellos como máximo 1 congelación por minuto, latencia de imagen
+p95 hasta 400 ms en el túnel o 250 ms con UDP, huecos y pérdida de audio hasta el 1 %:
+
+| Camino | Vídeo sin problemas hasta | Audio sin problemas hasta | Latencia de imagen p95 | Fotogramas orador / mosaicos | Memoria por tramo (vídeo / audio) | Coste por dispositivo en núcleos (vídeo / audio) | Subida por dispositivo (vídeo / audio) |
+|---|---|---|---|---|---|---|---|
+| Nodo integrado (túnel) | 16 dispositivos | 50 dispositivos ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
+| Nodo con UDP | 25 dispositivos | 50 dispositivos ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
+
+¹ Sin problemas en estado estable (ejecución de 240 s: proceso de Saga de media al 8,2 % de un núcleo, ocultación de
+audio como máximo 0,4 %). Si entran muchos a la vez o hay gente entrando y saliendo sin parar, la carga del proceso de
+Saga sube mientras dure (primer minuto de media 19 % de un núcleo; con una entrada y una salida cada 10 s durante 300 s,
+de media 33 %); el audio de los navegadores siguió limpio en todo momento.
+² Por TCP o el túnel los mosaicos reciben como máximo 10 fotogramas por segundo, el orador la tasa completa.
+³ Nodo y saga-media juntos (saga-media lleva el túnel); el nodo solo, 0,0094 / 0,0032.
+⁴ Medido durante 60 s; el estado estable solo con el nodo integrado (¹). 100 solo con audio fueron demasiados por UDP
+(proceso de Saga, tasa de señales); por eso 50.
+
+Memoria: un nodo con 200 tramos (`HORN_MAX_LEGS`) necesita por tanto unos 0,24–0,54 GB. Por TCP o el túnel cada
+dispositivo usa dos tramos (audio y vídeo), con UDP uno.
 
 #### TURN por el puerto 443 (coturn detrás del proxy inverso, mediante SNI)
 
@@ -1403,7 +1453,8 @@ con DTLS-SRTP, las señales se sellan y firman para cada dispositivo de destino,
 contra la lista de dispositivos firmada de su persona (los desconocidos se rechazan). El servidor solo reenvía las
 señales (en estrella a través del servidor que dirige la llamada, también entre servidores que no están conectados
 directamente) y no ve ni SDP ni medios. De ahí el límite de 4 dispositivos con vídeo o 6 solo con audio; para grupos más
-grandes haría falta un servidor de reenvío (SFU) con cifrado adicional del contenido, que todavía no forma parte de Saga.
+grandes hace falta un servidor de reenvío (SFU) con cifrado adicional del contenido: desde la 2.5 es Gjallarhorn («A
+través de un nodo», arriba; por defecto desde la 2.6).
 Interfaz para apps: `docs/APP-API.md`, secciones «Anrufe: saga-call v3», «Anrufe: Bildschirm v2» y «Anrufe: Mehrgeräte
 und Gruppen».
 
@@ -2092,6 +2143,11 @@ atención:
    funcionando, solo que sin estas funciones; las llamadas en grupo muestran ahí «necesita Saga 2.4» y los vídeos grandes
    aparecen como adjunto «Abrir con Saga 2.4». Los servidores conectados con 2.3 siguen conectados; llamadas en grupo,
    leído/en línea y vídeos grandes solo funcionan entre servidores con 2.4.
+
+**De 2.5 a 2.6:** ver la guía corta [UPGRADE-2.6.md](../en/UPGRADE-2.6.md) (en inglés; en alemán:
+[../UPGRADE-2.6.md](../UPGRADE-2.6.md)) – copia de seguridad, migraciones hasta el esquema 40, Gjallarhorn activado de
+fábrica (también 1:1 por el nodo integrado; se desactiva en Admin → Llamadas), proxy sin cambios, llamadas grandes
+federadas solo cuando todos los servidores implicados tienen 2.6, vuelta atrás solo con la copia de seguridad.
 
 **De 2.3/2.4 a 2.5:** ver la guía aparte [UPGRADE-2.5.md](../en/UPGRADE-2.5.md) (en inglés; versión completa en
 alemán: [../UPGRADE-2.5.md](../UPGRADE-2.5.md)) – copia de seguridad y sin vuelta atrás tras las migraciones (esquema

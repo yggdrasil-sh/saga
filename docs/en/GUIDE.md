@@ -199,14 +199,15 @@ From 2.5 on, the **apps** (iOS, Android) can call through the **built-in Gjallar
 that terminates TLS itself (Nginx Proxy Manager, Caddy, Traefik, nginx): under the normal Saga address, port 443 only,
 without a shared node and without further changes to the proxy. Per line, the app passes its media (ICE-TCP, content
 end-to-end encrypted) as a WebSocket to `wss://saga.example.org/api/sfu/ws`; saga-media hands it to the node
-unchanged. Gjallarhorn stays experimental in 2.5.
+unchanged. From 2.6 on Gjallarhorn is on by default (in 2.5 it was experimental and off) – so the tunnel is the
+standard path behind such a proxy.
 
 - **Required: the proxy passes WebSocket through.** Nginx Proxy Manager: turn on “Websockets Support” for the proxy
   host – Gjallarhorn needs it anyway (`/probe` measurement, event channel). Caddy and Traefik: nothing to do. nginx: add
   `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` and `proxy_set_header Connection $http_connection;`
   to `location /` (like NPM). Without it the node answers `426`; Admin → Calls then shows “the proxy does not pass
   WebSocket through” (button “Check now”), and the apps report the same.
-- `BASE_URL` is the https address with a DNS name, Gjallarhorn is on (Admin → Calls). Without `HORN_NAME` and without
+- `BASE_URL` is the https address with a DNS name, Gjallarhorn is on (Admin → Calls, on by default from 2.6). Without `HORN_NAME` and without
   certificate files for the node, the built-in node then runs in **tunnel mode**: no port and no certificate of its
   own; Admin → Calls shows “Calls through the Saga address (tunnel)” with counters. With a name of its own for the node
   or in “One port” mode, everything stays as before; there the tunnel is an extra last path for the apps (e.g. behind
@@ -1180,18 +1181,23 @@ up the call over the regular web port (live channel + normal requests).
   show it as a presentation (both ways, 2.5 and later) – only the sharing device itself does not.
 - **Group calls (2.4 and later):** in group, free and page chats 📞/🎥 start a **group call**. All members with Saga 2.4
   ring (in chats with more than 8 members only a silent "Group call in progress – Join"); you can join and leave at any
-  time, the call runs as long as at least two people are in it. At most **4 devices with video** or **6 audio only**
-  (your extra devices count; the admin can only lower these limits under General → "Calls"). Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
+  time, the call runs as long as at least two people are in it. Directly between the devices (mesh, without a node) at
+  most **4 devices with video** or **6 audio only** (your extra devices count; the admin can only lower these limits
+  under General → "Calls"); through a node (the default from 2.6, next item) many more fit in. Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
   in direct chats. End-to-end encrypted as before (each connection separately, the server sees nothing). People with an
   older app see "needs Saga 2.4"; across servers it only works when all involved Saga servers run 2.4.
-- **Through a node (from 2.5, Gjallarhorn experimental):** If Gjallarhorn is on (Admin → Calls, off by default), from 2.5
-  **all** calls go through a node – including calls between two people (setting "All calls via nodes (including
-  1:1)", on by default; an "off" saved before 2.5 counts as on once, after that a deliberate choice stays). The devices
-  then don't see each other's IP addresses and there are fewer NAT problems; it stays end-to-end encrypted. Saga only
-  connects directly as a fallback: if no node is ready, one of the other person's devices can't do it (e.g. the Linux
-  app, an older app, Safari with the tunnel node) or the node can't be reached for 30 s during the call.
-  Gjallarhorn is **experimental** in 2.5 – tested with up to 4 people or devices per call; the web and the admin area
-  show a small "Experimental" label for it. Please report problems via **Settings → Help → Send diagnostics**.
+- **Through a node (Gjallarhorn, the default from 2.6):** From 2.6 Gjallarhorn is **on by default** (Admin → Calls →
+  "Large group calls via Gjallarhorn"; in 2.5 it was experimental and off). An "off" saved in 2.5 counts as on after the
+  update, as long as the admin hasn't deliberately set the switch from 2.6 on. With Gjallarhorn on, **all** calls go
+  through a node – including calls between two people (setting "All calls via nodes (including 1:1)", on by default; an
+  "off" saved before 2.5 counts as on once, after that a deliberate choice stays). Without a node of your own this is the
+  **built-in node** in the Saga container; paired nodes are an add-on for more capacity. The devices then don't see each
+  other's IP addresses and there are fewer NAT problems; it stays end-to-end encrypted. Saga only connects directly as a
+  fallback: if no node is ready, a device of the other person used in the last 30 days can't do it (e.g. an older app,
+  Safari with the tunnel node) or the node can't be reached for 30 s during the call. The Linux app can do it (it rings,
+  the call runs in the browser); devices not used for a while don't count. How many fit into a call is listed under
+  [Limits and measurements](#limits-and-measurements-gjallarhorn). To keep calling directly (mesh), turn off "Large
+  group calls via Gjallarhorn" and save. Please report problems via **Settings → Help → Send diagnostics**.
 - **A one-to-one call becomes a conference (from 2.5):** In a one-to-one call through a node, choose "Add person" in the
   participant list – a **new group** with both of you and the added people is created, and the call continues there
   **without interruption** (both of you are admins of the group); the new people's devices ring. The one-to-one chat then
@@ -1225,6 +1231,48 @@ with a **shared secret** (recommended: Saga creates per-call credentials followi
 hours; the TURN server only sees a hash instead of the account name) or a **fixed username/password**, **Connect via
 TURN only** (the devices then don't see each other's IP address) and the **ring duration** (15–120 s). Secrets are
 stored encrypted; "Delete TURN credentials" removes them.
+
+#### Limits and measurements (Gjallarhorn)
+
+**Limits per call** (from 2.6): these are upper limits – the admin can only lower them under Admin → Calls. Which one
+applies is fixed when the call starts and depends on the node it starts on; if a node with UDP is ready (below 70 % load),
+a new call starts there.
+
+| Path | with video | audio only |
+|---|---|---|
+| Built-in node (tunnel/TCP through the Saga address) | 16 devices | 50 devices |
+| Node with UDP (e.g. a paired node) | 25 devices | 50 devices |
+| Directly between the devices (mesh, without a node) | 4 devices | 6 devices |
+
+Your extra devices (companion devices) count. In a call through a node every device hears up to three current speakers
+(top-3 audio); someone who starts speaking can be heard after about 0.6–1 s. Admin → Calls shows per node "Estimated
+capacity: about N with video / M audio only at the same time" – calculated from the measured cost per device (below),
+the node's cores (from node 2.6 with the container's CPU quota), `HORN_MAX_LEGS` and the upload if given. If a node's
+`HORN_MAX_LEGS` is below what a call at the limit needs (e.g. the old default 48), a warning appears there; the default
+from 2.6 is 200.
+
+**Measurements** (measurement series 2263-9 of 2026-11-25, test machine Intel i7-10875H with 8 cores / 16 threads, median
+of 3 runs per step; 4 browsers with a 480 × 270 camera at 20 fps, the other devices as test devices; in front of Saga an
+nginx with "Websockets Support" and TLS; raw data in `tools/perf/horn-2263.json`). "Clear" means all release criteria
+were met – among them at most 1 freeze per minute, frame latency p95 up to 400 ms in the tunnel or 250 ms with UDP,
+audio gaps and loss up to 1 %:
+
+| Path | Video clear up to | Audio clear up to | Frame latency p95 | Frame rate speaker / tiles | Memory per leg (video / audio) | Cost per device in cores (video / audio) | Upload per device (video / audio) |
+|---|---|---|---|---|---|---|---|
+| Built-in node (tunnel) | 16 devices | 50 devices ¹ | 260 ms | 20 / 10 fps ² | 1.36 / 1.08 MB | 0.017 / 0.0058 ³ | 1.1 / 0.12 Mbit/s |
+| Node with UDP | 25 devices | 50 devices ⁴ | 90 ms | 20 / 19.4 fps | 1.9 / 1.25 MB | 0.016 / 0.0046 | 2.1 / 0.13 Mbit/s |
+
+¹ Clear in steady state (240 s run: Saga process at 8.2 % of a core on average, audio concealment at most 0.4 %). When
+many join at once or people keep coming and going, the load in the Saga process rises for as long as that lasts (first
+minute 19 % of a core on average; with someone coming and going every 10 s over 300 s, 33 % on average) – the browsers'
+audio stayed clean throughout.
+² Over TCP or the tunnel tiles get at most 10 frames per second, the speaker the full rate.
+³ Node and saga-media together (saga-media carries the tunnel); the node alone 0.0094 / 0.0032.
+⁴ Measured over 60 s; steady state only for the built-in node (¹). 100 audio only was too much over UDP (Saga process,
+signal rate) – hence 50.
+
+Memory: a node with 200 legs (`HORN_MAX_LEGS`) therefore needs about 0.24–0.54 GB. Over TCP or the tunnel every device
+uses two legs (audio and video), with UDP one.
 
 #### TURN over port 443 (coturn behind the reverse proxy, via SNI)
 
@@ -1343,7 +1391,8 @@ each pair of devices builds its own DTLS-SRTP-encrypted connection, signals are 
 every new device is checked against its person's signed device list (unknown ones are rejected). The server only relays
 the signals (star-shaped via the server that leads the call – also between servers that are not directly connected) and
 sees neither SDP nor media. Hence the limit of 4 devices with video or 6 audio only; bigger rounds would need a
-forwarding server (SFU) with additional content encryption – not part of Saga yet. API for apps: `docs/APP-API.md`,
+forwarding server (SFU) with additional content encryption – since 2.5 that is Gjallarhorn ("Through a node" above,
+the default from 2.6). API for apps: `docs/APP-API.md`,
 sections "Anrufe: saga-call v3", "Anrufe: Bildschirm v2" and "Anrufe: Mehrgeräte und Gruppen".
 
 #### Built-in node behind an L4 proxy (e.g. NetBird 0.67 or later)
@@ -2004,6 +2053,10 @@ for:
    group calls, another device in the call and read receipts. Apps 2.3 and 2.1 keep working, just without these
    features; group calls show “needs Saga 2.4” there, large videos appear as an attachment “Open with Saga 2.4”.
    Connected servers on 2.3 stay connected; group calls, read/online and large videos only work between servers on 2.4.
+
+**From 2.5 to 2.6:** see the short guide [UPGRADE-2.6.md](UPGRADE-2.6.md) – backup, migrations up to schema 40,
+Gjallarhorn on by default (1:1 through the built-in node too; turn off under Admin → Calls), proxy unchanged, federated
+large calls only once all involved servers run 2.6, way back only via the backup.
 
 **From 2.3/2.4 to 2.5:** see the separate guide [UPGRADE-2.5.md](UPGRADE-2.5.md) – backup and no way back after
 the migrations (schema 35), reverse proxy (one domain, port 443, "Websockets Support" in Nginx Proxy Manager), what

@@ -58,7 +58,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | a05-05-mitteilungen.png | A05 | Web | hell | Mitteilungen: Web Push, ntfy, UnifiedPush, Apple Push (Felder leer) | – |
 | a05-06-diagnose.png | A05 | Web | hell | Allgemein → Diagnose: „Diagnose senden“ der Benutzer (clientlog) | – |
 | a06-01-anrufe.png | A06 | Web | hell | Anrufe → 1:1-Anrufe: STUN/TURN (Geheimnis leer), nur über TURN, Anruf-Diagnose, Klingeldauer, Gruppenanrufe ohne Knoten | – |
-| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn (Experimentell): drei Schalter (alle an), Tunnel-Kasten („Bereit als Rückweg“), Knoten-Liste mit dem eingebauten Knoten knoten.verein.example (Bereit, 2.5.0), Erweitern | – |
+| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn (noch mit Marke „Experimentell“ aus 2.5 – neu aufnehmen, s. u.): drei Schalter (alle an), Tunnel-Kasten („Bereit als Rückweg“), Knoten-Liste mit dem eingebauten Knoten knoten.verein.example (Bereit, 2.5.0), Erweitern | – |
 | a06-03-knoten-koppeln.png | A06 | Web | hell | Erweitern: weiteren Knoten koppeln – Name (Vorschlag des Servers), Optionen, Kopplungs-Skript erzeugen | 1 = Name des neuen Knotens; 2 = Skript erzeugen (auf dem neuen Server ausführen) |
 | a06-04-tunnel-kasten.png | A06 | Web | hell | Kasten „Anrufe über die Saga-Adresse (Tunnel)“ nach „Jetzt prüfen“: Zustand „Bereit als Rückweg“ (Knoten mit eigenem Namen), „Proxy reicht WebSocket durch? Ja ✓“, Tunnel, Browser (WebSocket) | – |
 | a07-01-foederation.png | A07 | Web | hell | Föderation (ganze Seite): diese Instanz verein.example, Fingerprint, Einladen, Verbinden, verbundene Instanz saga.example | – |
@@ -247,6 +247,24 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   Zeilen gekürzt.
 - a01-02: Admin-Anmeldung ohne zweiten Faktor (Demo verlangt keinen); 2FA-Abfrage selbst siehe b01-03.
 - b10-04: öffentliche Adresse ist `saga.example/@anna-sommer/sommerfest` (öffentlicher Name der Demo), nicht `@sommer`.
+
+## Neu aufnehmen für 2.6: Marke „Experimentell“ (2263-10)
+
+Seit 2.6 ist Gjallarhorn ab Werk an; die Marke „Experimentell“, der Kasten „getestet mit bis zu 4 …“ (Admin) und der
+Chip im Anrufkopf sowie der Satz in der Teilnehmerliste (Web) sind weg (2263-4, 2263-5). Diese Bilder zeigen sie noch
+und müssen neu aufgenommen werden (`tools/handbuch-stack.sh --nur a06-02,b13-01,b13-02,b13-03,b13-07,b13-08,b13-09`):
+
+- **a06-02** – Marke neben „Gjallarhorn – große Gruppenanrufe“ und „Knoten“, Kasten „Gjallarhorn ist in Saga 2.5
+  experimentell …“; neu dazu: Zeile „Grenzen je Anruf über Knoten“ und „Geschätzte Kapazität“ beim Knoten, Version 2.6.
+- **b13-01, b13-02, b13-03, b13-07, b13-09** – Chip „Experimentell“ im Anrufkopf.
+- **b13-08** – Chip im Anrufkopf und Kasten „Experimentell – Gjallarhorn ist in Saga 2.5 experimentell …“ in der
+  Teilnehmerliste.
+- **Projektseite** (nicht Handbuch, `tools/website-bilder.py`): `docs/bilder/anruf-gruppe.webp` (Chip und Kasten in der
+  Teilnehmerliste) und `docs/bilder/handy-anruf.webp` (Chip) – Alt-Texte in `docs/index.html` und den Sprachfassungen
+  nennen „Experimentell“ noch, bis die Bilder neu sind.
+
+Geprüft am 26.11.2026 durch Ansehen der Bilder; a07-01 ist sauber. Nicht angesehen: a01-01, a06-01, a06-03, a06-04,
+b13-04, b13-05, b13-10 – beim Neuaufnehmen mit prüfen.
 
 ## Funde aus Durchgang 2
 

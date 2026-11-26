@@ -24,8 +24,9 @@
 ## Wofür ist das?
 
 Mit Saga kannst du aus jedem Chat heraus anrufen: nur mit Ton, mit Video und mit geteiltem Bildschirm – auch in
-Gruppen. Die Geräte verbinden sich möglichst direkt miteinander. Bild und Ton sind **Ende-zu-Ende verschlüsselt**;
-der Saga-Server vermittelt nur und kann nicht mithören.
+Gruppen. Ab Saga 2.6 laufen Anrufe ab Werk über den Anruf-Knoten deines Saga-Servers; hat dein Admin ihn
+abgeschaltet, verbinden sich die Geräte direkt miteinander. Bild und Ton sind **Ende-zu-Ende verschlüsselt**; der
+Saga-Server und der Knoten leiten nur weiter und können nicht mithören.
 
 Anrufen kannst du alle, mit denen du einen Chat hast (siehe [Chats](12-chats.md)) – auch Personen auf anderen
 Saga-Servern (siehe [Föderation](11-foederation.md)).
@@ -140,12 +141,17 @@ die nächste Person dazu. **Hierher übernehmen** geht trotzdem.
 
 ![Gruppen-Videoanruf im Familienchat mit vier Kacheln im dunklen Modus](../bilder/b13-03-gruppenanruf.png)
 
-Ohne weitere Einrichtung passen **4 Personen mit Video** oder **6 nur mit Ton** in einen Gruppenanruf.
+Wie viele in einen Gruppenanruf passen, hängt davon ab, wie er läuft (jedes Gerät zählt):
 
-> **Große Gruppenanrufe:** Dein Admin kann einen Anruf-Knoten einschalten (Gjallarhorn, in Saga 2.5 noch
-> experimentell). Dann passen deutlich mehr Personen in einen Anruf, und **alle** Anrufe laufen über den Knoten –
-> auch die zu zweit. Die Geräte sehen dann gegenseitig ihre IP-Adressen nicht; Ende-zu-Ende verschlüsselt bleibt es.
-> Das geht auch, wenn Saga hinter einem Reverse Proxy steht – du merkst davon nichts.
+- **Über den Anruf-Knoten** (Gjallarhorn, ab Saga 2.6 Standard): bis **16 Geräte mit Video** oder **50 nur mit Ton**.
+  Hat dein Admin zusätzlich einen Knoten mit UDP gekoppelt, bis **25 mit Video**. Dein Admin kann weniger einstellen.
+- **Direkt zwischen den Geräten** (Knoten abgeschaltet oder gerade keiner bereit): **4 mit Video** oder **6 nur mit
+  Ton**.
+
+> **Anrufe über den Knoten:** Ist der Anruf-Knoten an, laufen **alle** Anrufe darüber – auch die zu zweit. Die Geräte
+> sehen dann gegenseitig ihre IP-Adressen nicht; Ende-zu-Ende verschlüsselt bleibt es. Das geht auch, wenn Saga hinter
+> einem Reverse Proxy steht – du merkst davon nichts. In großen Runden hörst du die bis zu drei, die gerade sprechen;
+> wer neu zu sprechen beginnt, ist nach etwa einer Sekunde zu hören.
 
 ### 5a. Aus einem Gespräch zu zweit wird eine Runde
 
