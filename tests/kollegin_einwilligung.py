@@ -512,6 +512,16 @@ def run():
     st, ev = sse("/api/ai/thread", B, {"q": "Danke!"})
     ok("2538: zweiter Zug (Dank) wie gehabt ans Modell", st == 200 and fcount() == n0 + 2 and "no_match" not in (get(ev, "done") or {})
        and len(q("SELECT 1 FROM ai_turn WHERE uid=?", (B,))) == 4)
+    # Pruefer prr4: Fehler am Modell (Endpunkt aus, gleicher Host -> Einwilligung gilt) -> Kontingent zurueck, kein KI-Zug
+    used1, nt = q("SELECT COALESCE(SUM(n), 0) FROM ai_usage WHERE uid=?", (B,))[0][0], len(q("SELECT 1 FROM ai_turn WHERE uid=? AND role='ai'", (B,)))
+    setai(url="http://127.0.0.1:9/v1", pinned=["127.0.0.1"])
+    st, ev = sse("/api/ai/thread", B, {"q": "Hallo nochmal"})
+    er = get(ev, "error") or {}
+    ok("2538: Gruss bei Modellfehler -> error ohne Teilantwort, Kontingent zurueck, kein KI-Zug",
+       st == 200 and er.get("error") and er.get("partial") is False and get(ev, "done") is None
+       and q("SELECT COALESCE(SUM(n), 0) FROM ai_usage WHERE uid=?", (B,))[0][0] == used1
+       and len(q("SELECT 1 FROM ai_turn WHERE uid=? AND role='ai'", (B,))) == nt, (st, ev, used1))
+    setai(url=FAKE + "/v1", pinned=["127.0.0.1"])
     ta = ai_saga.thread_task(A, "Hello, what can you do?")
     ok("2538: thread_task: Sie-Anrede aus den Einstellungen; Auftrags-Schalter in der Sprache der Frage nur, wenn Auftraege an",
        "Address the person formally" in ta and (("«As a job»" in ta) == bool(ai_plan.jobs_on(A))) and "pages, tasks and appointments" in ta, ta)
@@ -553,6 +563,10 @@ def run():
     st, s = req("GET", "/api/ai/status", A)
     ok("Endpunkt gewechselt -> stale, consent_ok False (Karte erneut, Auftraege halten an)",
        (s.get("consent") or {}).get("state") == "stale" and not ai_saga.consent_ok(A), s.get("consent"))
+    n0 = fcount()
+    st, d = sse("/api/ai/thread", A, {"q": "Hi"})
+    ok("2538: Gruss bei stale (anderer Endpunkt) -> 403 consent=needed, kein Modellaufruf",
+       st == 403 and isinstance(d, dict) and d.get("consent") == "needed" and fcount() == n0, (st, d))
     setai(url=FAKE + "/v1", pinned=["127.0.0.1"])
     ok("zurueck zum alten Endpunkt -> wieder granted", ai_saga.consent(A)["state"] == "granted")
 
@@ -671,6 +685,9 @@ def dns_case(ai_saga):
     ok("2494: Status vom Server: endpoint.net internet, consent stale, Karte nennt 'im Internet'",
        (s.get("endpoint") or {}).get("net") == "internet" and (s.get("consent") or {}).get("state") == "stale"
        and "im Internet" in " ".join((s.get("intro") or {}).get("lines") or []), s if st == 200 else st)
+    st, d = sse("/api/ai/thread", D, {"q": "Hi"})
+    ok("2538/2494: Gruss bei stale (Heimnetz -> Internet) -> 403 consent=needed, kein Zug",
+       st == 403 and isinstance(d, dict) and d.get("consent") == "needed" and not q("SELECT 1 FROM ai_turn WHERE uid=?", (D,)), (st, d))
     ok("2494: neue Einwilligung (jetzt fuer 'internet')", grant() == "granted" and net_of_last() == "internet")
     err = model("8.8.8.8")
     ok(f"2494: trotz neuer Einwilligung keine Verbindung ins Internet, bis der Admin neu speichert ({err})",
