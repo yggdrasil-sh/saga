@@ -1883,7 +1883,10 @@ def restore_cmd(keyfile, ref, out=print):
     except RuntimeError as ex:
         raise SystemExit(str(ex))
     out("Spiele Datenbank zurueck ...")
-    db.restore(dump)
+    try:
+        db.restore(dump)
+    except RuntimeError as ex:              # z. B. kein Saga-Backup (2461): Meldung statt Traceback, nichts geaendert
+        raise SystemExit(str(ex))
     out(f"Datenbank zurueckgespielt (Schema-Stand {db.schema_version()}).")
     if os.path.isfile(os.path.join(d, "dateien.tar.age")):
         out(f"Dateien: {restore_files(os.path.join(d, 'dateien.tar.age'), keyfile)} nach {STATE_DIR} zurueckgeholt.")
@@ -1937,7 +1940,10 @@ def check_cmd(keyfile, ref=None, out=print):
             c.execute(f"CREATE DATABASE {dbname}")
         try:
             db.DATABASE_URL = make_conninfo(real, dbname=dbname)
-            db.restore(dump)
+            try:
+                db.restore(dump)
+            except RuntimeError as ex:
+                raise SystemExit(str(ex))
             with psycopg.connect(db.DATABASE_URL) as c:
                 tables = c.execute("SELECT count(*) FROM pg_tables WHERE schemaname='public'").fetchone()[0]
                 notes = c.execute("SELECT count(*) FROM note").fetchone()[0] if c.execute(

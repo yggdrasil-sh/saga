@@ -2442,6 +2442,14 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 2.3 neu):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
+Vor dem Einspielen prüft `run.py restore` (auch `restore --schluessel` und `backup-pruefen`), ob die Datei ein
+Saga-Backup ist (Tabellen `schema_version`, `users`, `setting`, `note`); eine andere Datei – etwa das Backup einer
+anderen Datenbank – lehnt es ab, ohne etwas zu ändern. **Sehr altes Backup (z. B. von 2.4):** Seit 2.6 entfernt das
+Zurückspielen vorher **alle** Tabellen, die die laufende Version kennt; was das Backup nicht enthält, ist danach leer –
+bei einem 2.4-Backup u. a. die Gjallarhorn-Knoten (`horn_*`, auch die Sperrliste entfernter Knoten-Schlüssel) und der
+Verlauf der verschlüsselten Backups. Nach dem Zurückspielen eines alten Backups daher unter Admin → Anrufe die Knoten
+prüfen und früher entfernte (gesperrte) Knoten bei Bedarf erneut entfernen – das sperrt ihren Schlüssel wieder.
+
 **Apps:** Die Apps prüfen beim Start die Version des Servers. Ist eine App zu alt für den Server, zeigt sie
 „Bitte App aktualisieren“. In den Einstellungen der App stehen App- und Server-Version.
 

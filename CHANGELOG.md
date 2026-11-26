@@ -253,6 +253,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Zurückspielen eines 2.5-Backups mit ihren 2.6-Daten stehen und galten beim nächsten Update wieder. Rückweg in
   [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) Abschnitt 7 (mit 2.6 zurückspielen, dann 2.5 starten); getestet mit der
   `db.py` von v2.5.0.
+- **Zurückspielen lehnt fremde Archive ab** (Bugs-DB 2461): `run.py restore` (auch `restore --schluessel` und
+  `backup-pruefen`) prüft vor dem Einspielen per `pg_restore --list`, dass das Archiv ein Saga-Backup ist (Tabellen
+  `schema_version`, `users`, `setting`, `note`). Das gültige Backup einer anderen Datenbank leerte sonst seit 2454 alle
+  Saga-Tabellen – der nächste Start fand eine leere Instanz. Jetzt Abbruch mit Meldung (ohne Traceback), nichts
+  geändert. Erkennung der Saga-Tabellen auch bei klein geschriebenem `create table`. Doku (Abschnitt 11): nach dem
+  Zurückspielen eines sehr alten Backups (z. B. 2.4) gesperrte Gjallarhorn-Knoten prüfen und erneut sperren.
 - **Gjallarhorn: eigene Kachel zeigt „spricht“ wieder richtig** (Bugs-DB 2458, Web inkl. Mac-Hülle/Linux, Gruppen ab drei
   Personen über den Knoten): Der eigene Pegel wurde nur während eines Knotenwechsels gemessen – ohne Wechsel zeigte die
   eigene Kachel nie „spricht“, nach einem Wechsel, bei dem man sprach, dauerhaft. Jetzt jeden Takt gemessen (älter als

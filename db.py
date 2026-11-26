@@ -1580,6 +1580,11 @@ def backup(label="manuell"):
 # nichts. tests/sicherung.py prueft, dass jede Tabelle einer frisch gestarteten Datenbank hier enthalten ist.
 _RESTORE_MODULE_TABLES = ("app_token", "user_kv", "app_code", "device_login", "cal_account", "file", "immich_key")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
+# Ist das Archiv ein Saga-Backup? Vor dem Einspielen (Bugs-DB 2461): _RESTORE_DROP entfernt alle Saga-Tabellen - ein
+# gueltiges Archiv einer anderen Datenbank liesse sonst eine leere Instanz zurueck (auch schema_version weg). Diese
+# Tabellen hat jede Saga seit 2.0 (SCHEMA ganz oben); pg_restore --list liest nur das Inhaltsverzeichnis des Archivs.
+_RESTORE_CORE = ("schema_version", "users", "setting", "note")
+_RESTORE_TOC = re.compile(rb"^[ \t]*\d+;[ \t]+\d+[ \t]+\d+[ \t]+TABLE[ \t]+(\S+)[ \t]+(\S+)", re.M)
 
 
 def _restore_filter(src, dst, known):
@@ -1622,6 +1627,25 @@ def _restore_filter(src, dst, known):
     return held if begun else None
 
 
+def _restore_check(path, env):
+    """Inhaltsverzeichnis des Archivs (pg_restore --list) pruefen, bevor etwas geaendert wird. Kein lesbares Archiv oder
+    keine Saga-Tabellen darin (Backup einer anderen Datenbank) -> RuntimeError, nichts geaendert."""
+    import subprocess
+    try:
+        r = subprocess.run(["pg_restore", "--list", path], env=env, capture_output=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Zurueckspielen fehlgeschlagen (nichts geaendert): pg_restore --list antwortet nicht")
+    if r.returncode != 0:
+        msg = r.stderr.decode("utf-8", "replace").strip()[:500] or "pg_restore --list fehlgeschlagen"
+        raise RuntimeError("Zurueckspielen fehlgeschlagen (nichts geaendert): kein lesbares Backup - " + msg)
+    have = {t.decode("utf-8", "replace") for s, t in _RESTORE_TOC.findall(r.stdout) if s == b"public"}
+    miss = [t for t in _RESTORE_CORE if t not in have]
+    if miss:
+        raise RuntimeError(f"Zurueckspielen abgebrochen (nichts geaendert): {os.path.basename(path)} ist kein Saga-Backup "
+                           f"(es fehlen die Tabellen {', '.join(miss)}). Nur Backups von Saga (python run.py backup, "
+                           "Backups vor Updates in /data/backups) lassen sich zurueckspielen.")
+
+
 def restore(path):
     """Backup zurueckspielen (Saga vorher stoppen!). Ersetzt alle Tabellen durch den Stand im Backup - alles oder nichts.
 
@@ -1629,7 +1653,8 @@ def restore(path):
     die eigenen Backups im Format 1.16, die pg_restore 16 nicht lesen kann), Postgres 16 kennt aber das von pg_restore 17
     gesetzte transaction_timeout nicht. Deshalb: pg_restore erzeugt SQL, _restore_filter laesst unbekannte SET-Zeilen
     weg, psql spielt es in EINER Transaktion ein. COMMIT geht erst raus, wenn pg_restore fehlerfrei fertig ist - ein
-    beschaedigtes Backup aendert nichts. Funktioniert so mit Postgres 16 und 17 (und neueren Clients)."""
+    beschaedigtes Backup aendert nichts. Funktioniert so mit Postgres 16 und 17 (und neueren Clients). Vorher prueft
+    _restore_check, dass das Archiv ein Saga-Backup ist (Bugs-DB 2461)."""
     import shutil
     import subprocess
     import tempfile
@@ -1638,9 +1663,10 @@ def restore(path):
     for tool in ("pg_restore", "psql"):
         if not shutil.which(tool):
             raise RuntimeError(f"{tool} fehlt - Zurueckspielen nicht moeglich (im Saga-Image enthalten)")
+    env = _pg_env()
+    _restore_check(path, env)               # fremdes oder unlesbares Archiv: abbrechen, bevor etwas geaendert wird
     with psycopg.connect(DATABASE_URL, autocommit=True) as c:
         known = {r[0] for r in c.execute("SELECT name FROM pg_settings")}
-    env = _pg_env()
     with tempfile.TemporaryFile() as e1, tempfile.TemporaryFile() as e2:
         rp = subprocess.Popen(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges",
                                "--single-transaction", "--file", "-", path], env=env, stdout=subprocess.PIPE, stderr=e1)
@@ -1775,11 +1801,14 @@ END $$;
 
 
 
+_RESTORE_CREATE = re.compile(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(", re.I)   # auch klein geschrieben (2461)
+
+
 def _restore_tables():
     """Alle Tabellen, die diese Version anlegt (Namen aus SCHEMA, TREE_SEQ_SQL, MIGRATIONS und _RESTORE_MODULE_TABLES)."""
     names = []
     for sql in (SCHEMA, TREE_SEQ_SQL, *MIGRATIONS.values()):
-        names += re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)\s*\(", sql)
+        names += [n.lower() for n in _RESTORE_CREATE.findall(sql)]    # ohne Anfuehrungszeichen: Postgres schreibt klein
     return tuple(dict.fromkeys([*names, *_RESTORE_MODULE_TABLES]))
 
 

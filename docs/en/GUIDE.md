@@ -2136,6 +2136,14 @@ e.g. `docker compose run --rm saga …` with `SAGA_VERSION=2` in `.env`. You can
 tables by hand (2.3 recreates them on its next start):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
+Before restoring, `run.py restore` (also `restore --schluessel` and `backup-pruefen`) checks that the file is a Saga
+backup (tables `schema_version`, `users`, `setting`, `note`); any other file – such as a backup of a different
+database – is rejected without changing anything. **Very old backup (e.g. from 2.4):** since 2.6, restoring first
+removes **all** tables the running version knows; whatever the backup doesn't contain is empty afterwards – for a 2.4
+backup this includes the Gjallarhorn nodes (`horn_*`, including the block list of removed node keys) and the history of
+the encrypted backups. So after restoring an old backup, check the nodes under Admin → Calls and remove previously
+removed (blocked) nodes again if needed – that blocks their key again.
+
 **Apps:** The apps check the server version on start. If an app is too old for the server, it asks you to
 update it. The app's settings show both the app and the server version.
 

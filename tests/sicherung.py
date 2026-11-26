@@ -4,7 +4,8 @@ Wegwerf-Datenbank auf demselben Postgres-Server, die echte Datenbank bleibt unbe
 Prueft vor allem: pg_restore aus dem Image (17) gegen den Server der Standard-Compose (postgres:16) - frueher Abbruch an
 "SET transaction_timeout"; Inhalte, die wie Steuerzeilen aussehen, bleiben erhalten; ein Backup von vor 2.2 (ohne die
 abgeleiteten Tabellen) laesst sich einspielen; ein kaputtes Backup aendert nichts; Rueckweg 2.5 -> 2.6 -> Backup von vor
-dem Update -> 2.5 -> 2.6 mit der db.py von v2.5.0 (Bugs-DB 2454: keine 2.6-Tabellen bleiben stehen)."""
+dem Update -> 2.5 -> 2.6 mit der db.py von v2.5.0 (Bugs-DB 2454: keine 2.6-Tabellen bleiben stehen); ein fremdes
+Archiv (Custom-Dump einer anderen Datenbank) wird vor dem Einspielen abgelehnt, nichts geaendert (Bugs-DB 2461)."""
 import os, secrets, sys
 import psycopg
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
@@ -86,7 +87,8 @@ try:
     after = state()
     with open(p, "rb") as f:
         data = f.read()
-    for name, blob in (("abgeschnitten", data[:len(data) * 2 // 3]), ("kein Backup", b"kein backup\n" * 50)):
+    for name, blob in (("abgeschnitten", data[:len(data) * 2 // 3]), ("kein Backup", b"kein backup\n" * 50),
+                       ("nur Kopf", data[:64]), ("leer", b"")):
         bad = p + "." + name.replace(" ", "-")
         made.append(bad)
         with open(bad, "wb") as f:
@@ -101,6 +103,68 @@ try:
         ok("Fehlende Datei -> Fehler", False)
     except RuntimeError as ex:
         ok("Fehlende Datei -> Fehler", "nicht gefunden" in str(ex))
+
+    # Fremdes Archiv (Bugs-DB 2461): ein gueltiges Custom-Dump einer anderen Datenbank -> Abbruch VOR dem Einspielen,
+    # nichts geaendert (ohne die Pruefung leerte _RESTORE_DROP alle Saga-Tabellen samt schema_version -> leere Instanz)
+    NAMEF = NAME + "_fremd"
+    URLF = make_conninfo(REAL, dbname=NAMEF)
+    q(f"CREATE DATABASE {NAMEF}", url=REAL)
+    try:
+        q("CREATE TABLE kunde (id INT PRIMARY KEY, name TEXT)", url=URLF)
+        q("INSERT INTO kunde VALUES (1, 'fremd')", url=URLF)
+        db.DATABASE_URL = URLF
+        fremd = db.backup("sicherung-fremd")
+        made.append(fremd)
+        q("CREATE TABLE note (id INT)", url=URLF)          # fast wie Saga: note und schema_version, sonst nichts
+        q("CREATE TABLE schema_version (v INT)", url=URLF)
+        halb = db.backup("sicherung-halb")
+        made.append(halb)
+    finally:
+        db.DATABASE_URL = URL
+        q(f"DROP DATABASE IF EXISTS {NAMEF} WITH (FORCE)", url=REAL)
+
+    def ntab(url=None):
+        return q("SELECT count(*) FROM pg_tables WHERE schemaname='public'", url=url)[0][0]
+    t0, v0 = ntab(), db.schema_version()
+    for name, f, want in (("andere Datenbank", fremd, "schema_version, users, setting, note"),
+                          ("nur note/schema_version", halb, "users, setting")):
+        try:
+            db.restore(f)
+            ok(f"Fremdes Archiv ({name}) -> Abbruch", False)
+        except RuntimeError as ex:
+            ok(f"Fremdes Archiv ({name}) -> Abbruch mit Meldung, nichts geaendert ({str(ex)[:90]}...)",
+               "kein Saga-Backup" in str(ex) and "nichts geaendert" in str(ex) and want in str(ex) and state() == after
+               and ntab() == t0 and db.schema_version() == v0 and q("SELECT to_regclass('public.kunde')")[0][0] is None)
+    # Leere Ziel-Datenbank wie bei run.py backup-pruefen: fremdes Archiv abgelehnt (nichts angelegt), echtes geht
+    NAMEL = NAME + "_leer"
+    URLL = make_conninfo(REAL, dbname=NAMEL)
+    q(f"CREATE DATABASE {NAMEL}", url=REAL)
+    try:
+        db.DATABASE_URL = URLL
+        try:
+            db.restore(fremd)
+            okf = False
+        except RuntimeError as ex:
+            okf = "kein Saga-Backup" in str(ex)
+        okf = okf and ntab(URLL) == 0
+        db.restore(p)
+        ok("Leere Datenbank (wie backup-pruefen): fremdes Archiv abgelehnt, Saga-Backup eingespielt",
+           okf and q("SELECT count(*) FROM note", url=URLL)[0][0] == 3 and db.schema_version() == db.SCHEMA_VERSION)
+    finally:
+        db.DATABASE_URL = URL
+        q(f"DROP DATABASE IF EXISTS {NAMEL} WITH (FORCE)", url=REAL)
+    # Echtes Saga-Backup geht nach den Ablehnungen normal durch (danach wieder der Stand "nach dem Backup")
+    db.restore(p)
+    ok("Saga-Backup danach eingespielt", state() == before)
+    q("UPDATE note SET title = 'nach dem Backup' WHERE id = 3")
+
+    # _restore_tables: CREATE TABLE auch klein geschrieben, Name wie in Postgres (klein) - Bugs-DB 2461
+    k = max(db.MIGRATIONS) + 1000
+    db.MIGRATIONS[k] = "create table if not exists Sich_Klein_T (x int)"
+    try:
+        ok("_restore_tables erkennt klein geschriebenes CREATE TABLE", "sich_klein_t" in db._restore_tables())
+    finally:
+        del db.MIGRATIONS[k]
 
     # Backup von vor 2.2: ohne note_derived/note_link/note_stale - einspielbar auf einer Datenbank, die sie hat
     q("DROP TABLE note_link, note_stale, note_derived")
@@ -227,6 +291,12 @@ try:
                        env=env, capture_output=True, text=True, timeout=300)
     ok(f"python run.py restore ({r.returncode}) {(r.stderr or '').strip()[-120:]}", r.returncode == 0
        and "Zurueckgespielt" in r.stdout and q("SELECT title FROM note WHERE id = 1")[0][0] == "Seite 1")
+    q("UPDATE note SET title = 'per run.py fremd' WHERE id = 1")
+    r = subprocess.run([sys.executable, "run.py", "restore", fremd], cwd=os.path.dirname(os.path.abspath(db.__file__)),
+                       env=env, capture_output=True, text=True, timeout=300)
+    ok(f"python run.py restore <fremdes Archiv> ({r.returncode}) {(r.stderr or '').strip()[-120:]}", r.returncode != 0
+       and "kein Saga-Backup" in r.stderr and "Traceback" not in r.stderr
+       and q("SELECT title FROM note WHERE id = 1")[0][0] == "per run.py fremd")
 
     # 2.5 -> 2.6 -> Backup von vor dem Update zurueckspielen -> 2.5 startet -> wieder 2.6 (Bugs-DB 2454, Rueckweg aus
     # docs/UPGRADE-2.6.md Abschnitt 7) in einer zweiten Wegwerf-Datenbank. Die 2.5-Seite ist die echte db.py von v2.5.0

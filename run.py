@@ -262,7 +262,10 @@ def do_restore(path):
     docker compose stop saga && docker compose run --rm saga python run.py restore /data/backups/<datei>"""
     import db
     db.wait_ready(30)
-    db.restore(path)
+    try:
+        db.restore(path)
+    except RuntimeError as ex:              # kein/fremdes/kaputtes Backup: Meldung statt Traceback, nichts geaendert
+        raise SystemExit(str(ex))
     print(f"Zurueckgespielt: {path} (Schema-Stand {db.schema_version()})")
     print("Hinweis: Bilder/Dateien (/data/files) gehoeren nicht zum Datenbank-Backup. Passende Sicherung "
           "(saga-dateien-<zeit>.tar.gz) bei Bedarf so zurueckholen: tar -xzf /data/backups/<datei> -C /data")
