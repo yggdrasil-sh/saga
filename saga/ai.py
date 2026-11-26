@@ -187,8 +187,8 @@ def blocked_error(c):
     except Exception:  # noqa: BLE001
         cur = {}
     if cur.get("url") == c.get("url") and ai_saga.left_home(cur):
-        return AIError(t("Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. "
-                         "Bitte im Admin-Bereich prüfen und neu speichern."))
+        msg = t("Der Modell-Endpunkt liegt jetzt im Internet statt im Heimnetz – es wurde nichts gesendet. Bitte im Admin-Bereich prüfen und neu speichern.")
+        return AIError(msg)
     return AIError(t("Verbindung zum Modell-Endpunkt nicht erlaubt (Adresse geändert? Im Admin-Bereich neu speichern)."))
 
 
