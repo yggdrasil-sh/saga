@@ -72,10 +72,13 @@
     card.appendChild(head(36));
     var lines = it.lines || [];
     lines.forEach(function (l, i) {
-      var p = el('p', 'sg-intro-l' + (i === 1 ? ' sg-intro-where' : ''), l);
+      var p = el('p', 'sg-intro-l' + (i === 1 ? ' sg-intro-where' : ''), i === 1 ? null : l);
       if (i === 1) {
         var inf = infoBtn(it.details, T('Was genau rausgeht'));
-        p.appendChild(document.createTextNode(' ')); p.appendChild(inf.btn);
+        // Bugs-DB 2503: ⓘ haengt am letzten Wort (schmal nie allein in einer eigenen Zeile)
+        var m = /^([\s\S]*\s)(\S+)$/.exec(l), tail = el('span', 'sg-nowrap');
+        if (m) p.appendChild(document.createTextNode(m[1]));
+        tail.appendChild(document.createTextNode((m ? m[2] : l) + '\u00a0')); tail.appendChild(inf.btn); p.appendChild(tail);
         card.appendChild(p);
         if (it.note) card.appendChild(el('p', 'sg-intro-note', it.note));
         card.appendChild(inf.box);

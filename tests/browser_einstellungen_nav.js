@@ -50,6 +50,7 @@ const KI = E.KI || '';
       await p.click('#hk-tab-saga'); await p.waitForTimeout(150);
       const ss = await state();
       ok(ss.cur.join() === 'saga' && ss.vis.join() === 'saga' && ss.focus === 'hk-pane-h-saga', 'KI an: Bereich Saga erreichbar', ss);
+      await p.click('#hk-tab-account'); await p.waitForTimeout(150);          // zurueck zum Start fuer die folgenden Pruefungen
     } else {
       await p.focus('#hk-tab-push'); await p.keyboard.press('ArrowDown');
       ok(await p.evaluate(() => document.activeElement.id) === 'hk-tab-pages', 'KI aus: Pfeil runter springt von Mitteilungen direkt zu Seiten');

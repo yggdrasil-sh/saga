@@ -155,10 +155,14 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
           await L.p.click(sel); await L.p.waitForTimeout(250);
           const ib = await L.p.evaluate((sel) => { const b = document.querySelector(sel), r = b.getBoundingClientRect(), box = document.getElementById(b.getAttribute('aria-controls'));
             const br = box ? box.getBoundingClientRect() : null;
+            const pr = b.closest('p') ? b.closest('p').getBoundingClientRect() : null;
             return { w: r.width, h: r.height, inV: r.left >= 0 && r.right <= innerWidth, open: b.getAttribute('aria-expanded'), box: br && !box.hidden && br.left >= 0 && br.right <= innerWidth + 0.5,
-              over: document.documentElement.scrollWidth > innerWidth + 1 }; }, sel);
-          ok(`2503 schmal ${th}: ⓘ ${sel.split(' ')[0]} ≥ 44 px, im Bild, Details offen ohne Überlauf`, ib.w >= 44 && ib.h >= 44 && ib.inV && ib.open === 'true' && ib.box && !ib.over, ib);
+              boxH: br ? Math.round(br.height) : 0, notAlone: !pr || r.left > pr.left + 40, over: document.documentElement.scrollWidth > innerWidth + 1 }; }, sel);
+          ok(`2503 schmal ${th}: ⓘ ${sel.split(' ')[0]} ≥ 44 px, im Bild, nicht allein am Zeilenanfang, Details offen ohne Überlauf (≤ 45 % der Höhe)`,
+            ib.w >= 44 && ib.h >= 44 && ib.inV && ib.notAlone && ib.open === 'true' && ib.box && ib.boxH <= 0.45 * 844 && !ib.over, ib);
+          await L.p.click(sel); await L.p.waitForTimeout(150);
         }
+        await L.p.click('#sg-bar .sg-info-b'); await L.p.click('#sg-intro .sg-info-b');
         await shot(L.p, `nachher-saga-info-offen-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`);
       }
       await L.ctx.close();

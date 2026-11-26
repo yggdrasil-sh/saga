@@ -31,6 +31,8 @@ body.heute-page .sg-intro-slot{margin:1.4rem 0 0}
 .sg-info-box{margin:.3rem 0 .5rem;padding:.55rem .75rem;border-left:3px solid var(--ai-edge,var(--sg-edge));background:var(--card);
   border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:.875rem;color:var(--fg)}
 .sg-info-box p{margin:.2rem 0}
+.sg-nowrap{white-space:nowrap}
+.sg-intro-where .sg-info-b{vertical-align:middle;margin:-.5rem 0}     /* 2503: Ziel bleibt gross, die Zeile waechst nicht */
 
 /* Ort "Saga" (/saga): schmal = Vollbild */
 body.saga-page>main.sg{display:flex;flex-direction:column;gap:.9rem;max-width:52rem;padding:1.4rem 2.2rem 2rem;min-height:calc(100vh - 3.4rem);
@@ -77,6 +79,7 @@ body.saga-page>main.sg:focus{outline:none}
   body.saga-page{--sg-ask-b:calc(3.6rem + env(safe-area-inset-bottom))}
   .sg-chip{min-height:2.75rem}
   .sg-info-b{min-height:2.75rem;min-width:2.75rem}
+  .sg-bar .sg-info-box{max-height:40vh;overflow:auto}             /* 2503: offenes ⓘ in der festen Leiste verdeckt nicht alles */
 }
 
 /* web-saga (UX §2/R3): Reiter Gespraech / Auftraege, Umschalter "Als Auftrag", Auftraege im Verlauf (static/ai-jobs.js) */
