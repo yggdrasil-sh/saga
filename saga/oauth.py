@@ -71,6 +71,7 @@ PENDING_MAX = 2000
 VERIFIER_RE = re.compile(r"[A-Za-z0-9._~-]{43,128}")
 CHALLENGE_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 CLIENT_RE = re.compile(r"sgc_[A-Za-z0-9_-]{20,40}")
+HOST_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*")
 LOOPBACK = ("localhost", "127.0.0.1", "[::1]", "::1")
 
 _lock = threading.Lock()
@@ -188,6 +189,13 @@ def redirect_ok(uri):
     del port
     if u.fragment or "#" in uri or u.username is not None or u.password is not None or not u.hostname:
         return False
+    # Host nur als ASCII (IDN als Punycode xn--) oder IP-Literal: der Origin landet im Kopf Content-Security-Policy
+    # (form-action der Zustimmungsseite) - sonst ; , * ' als Direktiven/Platzhalter bzw. Unicode -> 500 (latin-1)
+    if not HOST_RE.fullmatch(u.hostname):
+        try:
+            ipaddress.ip_address(u.hostname)
+        except ValueError:
+            return False
     if u.scheme == "https":
         return True
     if u.scheme == "http":

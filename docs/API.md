@@ -371,7 +371,7 @@ zurück zur Zustimmung), bekommt den Code mit `state` und `iss` an seine `redire
   `code_verifier`, derselben `redirect_uri` und demselben Client. Höchste Laufzeit einer Verbindung: Admin-Wert
   „Höchste Laufzeit (Tage)“, sonst 365 Tage.
 - **Clients:** `redirect_uris` 1–5, `https://` (ohne Fragment und Zugangsdaten) oder `http://` nur für `localhost`,
-  `127.0.0.1`, `[::1]` (RFC 8252); Name höchstens 80 Zeichen (länger als 200 → `400`). Registrierungen: höchstens 10 je
+  `127.0.0.1`, `[::1]` (RFC 8252); Host nur als ASCII-Name (IDN als Punycode `xn--…`) oder IP-Adresse; Name höchstens 80 Zeichen (länger als 200 → `400`). Registrierungen: höchstens 10 je
   IP und Stunde (`SAGA_OAUTH_REG_PER_IP`), 100 je Stunde insgesamt, 2000 Clients bzw. 300 noch nie benutzte; Clients
   ohne Zustimmung verfallen nach 24 Stunden. `grant_types` sind immer `authorization_code` und `refresh_token`.
 - **Frische Bestätigung** wie beim Anlegen eines `sga_`-Tokens (`apitok._confirmed`): vor den Rechten fragt Saga nach
