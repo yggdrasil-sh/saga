@@ -309,6 +309,27 @@
       box.appendChild(st);
       box.appendChild(el('p', 'hk-hint', T('Entwürfe in deinem Namen richten sich nach der Anrede im Kontakt, nicht nach dieser Einstellung.')));
     }).catch(function () { hideSaga(sec); });
+    todayLine(sec);
+  }
+  // 2.6 (K-D, Bugs-DB 2271): Tageszeile "Kurz gesagt" auf "Heute" an/aus (PUT /api/ai/today {on}). Erklaerung = info des
+  //     Servers (ohne KI berechnet). Alter Server (404) oder Konto ohne ai: kein Schalter. Eigener Block - K-C haengt eigene an.
+  function todayLine(sec) {
+    var kd = el('div', 'hk-saga-today'); sec.appendChild(kd);
+    api('GET', '/api/ai/today').then(function (d) {
+      if (!d || d.enabled === false || typeof d.on !== 'boolean') { kd.remove(); return; }
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch');
+      i.id = 'hk-saga-today'; i.checked = d.on; l.htmlFor = i.id;
+      l.appendChild(el('span', null, T('Tageszeile auf „Heute“'))); l.appendChild(i); kd.appendChild(l);
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); kd.appendChild(st);
+      if (d.info) { var h = el('p', 'hk-hint', d.info); h.id = 'hk-saga-today-h'; i.setAttribute('aria-describedby', h.id); kd.appendChild(h); }
+      i.addEventListener('change', function () {
+        i.disabled = true;
+        api('PUT', '/api/ai/today', { on: i.checked }).then(function (r) {
+          i.checked = !!r.on; status(st, T('✓ Gespeichert'), 'ok');
+          if (window.HKKurz) HKKurz.reload();                 // "Heute" dahinter gleich auf den neuen Stand (Zone des Geraets)
+        }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
+      });
+    }).catch(function () { kd.remove(); });
   }
   function hideSaga(sec) {
     sec.hidden = true; sec.classList.add('hk-set-off');

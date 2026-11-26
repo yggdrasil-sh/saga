@@ -3314,6 +3314,46 @@ body.heute-page .rail-add .tsrc-target{max-width:6.2rem}
   body.heute-page .cats>.cat .grid{grid-template-columns:minmax(0,1fr)}
 }
 @media (min-width:761px){body.heute-page .np-head .np-pages{display:none}}
+/* 2.6 (K-D, Bugs-DB 2271): Tageszeile "Kurz gesagt" unter der Lagezeile (static/heute-kurz.js). Keine KI-Marke; Teile sind
+   Knoepfe (>= 32 px, mobil 44), Pille und Frage so hoch wie die Zeile (kein Seitensprung bei ✕). Einblenden nur Deckkraft. */
+.hz-kurz-box{margin:.5rem 0 0}
+.hz-kurz-box.is-in{animation:hz-kurz-in .15s ease-out}
+@keyframes hz-kurz-in{from{opacity:0}}
+.hz-kurz-row{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .3rem;min-height:2.25rem}
+.hz-kurz-l{font-size:var(--fs-sm);font-weight:600;color:var(--muted);margin-right:.2rem;white-space:nowrap}
+.hz-kurz-parts{display:contents}
+.hz-kurz-sep{color:var(--muted)}
+.hz-kurz-p{display:inline-flex;align-items:center;min-height:32px;max-width:100%;padding:.15rem .45rem;border:1px solid transparent;
+  border-radius:var(--r-sm);background:none;color:var(--fg);font:inherit;font-size:var(--fs-md);line-height:inherit;text-align:start;
+  overflow-wrap:anywhere;cursor:pointer;transition:background .15s,border-color .15s}
+.hz-kurz-p.is-plain{cursor:default}
+.hz-kurz-p:not(.is-plain):hover,.hz-kurz-p:focus-visible{background:var(--card-h);border-color:var(--border)}
+.hz-kurz-x,.hz-kurz-m,.hz-kurz-ix{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:0;border:0;
+  border-radius:var(--r-sm);background:none;color:var(--muted);font:inherit;font-size:var(--fs-md);line-height:1;cursor:pointer}
+.hz-kurz-x{margin-left:.15rem}
+.hz-kurz-x:hover,.hz-kurz-m:hover,.hz-kurz-ix:hover,.hz-kurz-x:focus-visible,.hz-kurz-m:focus-visible,.hz-kurz-ix:focus-visible{background:var(--card-h);color:var(--fg)}
+.hz-kurz-pill{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.35rem;min-height:32px;padding:0 .3rem 0 .8rem;border:1px solid var(--border);
+  border-radius:var(--r-pill);background:var(--card);color:var(--muted);font-size:var(--fs-base)}
+.hz-kurz-undo{min-height:28px;padding:0 .6rem;border:0;border-radius:var(--r-pill);background:none;color:var(--accent);font:inherit;font-weight:600;cursor:pointer}
+.hz-kurz-undo:hover,.hz-kurz-undo:focus-visible{background:var(--card-h)}
+.hz-kurz-q{font-size:var(--fs-md);color:var(--fg);margin-right:.3rem}
+.hz-kurz-yes,.hz-kurz-no{min-height:32px}
+.hz-kurz-info{display:flex;align-items:flex-start;gap:.45rem;max-width:44rem;margin:.35rem 0 0;padding:.45rem .3rem .45rem .7rem;
+  border:1px solid var(--border);border-radius:var(--r-md);background:var(--card);color:var(--muted);font-size:var(--fs-sm)}
+.hz-kurz-info .hz-kurz-it{flex:1;padding-top:.35rem}
+.hz-kurz-ic{padding-top:.35rem;color:var(--muted)}
+.hz-wait{margin:.15rem 0 0}
+.hz-wait-a{display:inline-flex;align-items:center;min-height:32px;padding:0 .45rem;border-radius:var(--r-sm);color:var(--accent);font-size:var(--fs-base);
+  font-weight:600;text-decoration:none}
+.hz-wait-a:hover,.hz-wait-a:focus-visible{background:var(--card-h);text-decoration:underline}
+:lang(th) .hz-kurz-box{line-height:1.7}
+.hz-flash{animation:hkflash 1.6s ease-out;border-radius:var(--r-sm)}
+@media (max-width:760px),(pointer:coarse){
+  .hz-kurz-p,.hz-wait-a,.hz-kurz-yes,.hz-kurz-no,.hz-kurz-pill{min-height:44px}
+  .hz-kurz-x,.hz-kurz-m,.hz-kurz-ix{min-width:44px;min-height:44px}
+  .hz-kurz-undo{min-height:40px}
+  .hz-kurz-row{min-height:2.75rem}
+}
 
 /* ===== Design-Runde 12: Tab-Leiste unten am Handy (MOB-01/04/05) ================================================
    Heute · Seiten · Suchen · Chats · Marin in Daumenreichweite; oben bleiben Glocke und Konto. Sheets (KI, Kommentare,

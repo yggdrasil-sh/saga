@@ -148,6 +148,7 @@
     cb.addEventListener('click', function () { cb.disabled = true; complete(task); });
     if (isRow(task) && !task.edit) { cb.disabled = true; cb.title = T('Nur lesen – du kannst diesen Eintrag nicht ändern.'); }
     if (isRow(task)) li.classList.add('is-src');
+    li.dataset.key = task.key || ((isRow(task) ? 'r:' : 't:') + task.id);   // 2.6 (K-D 2271): Ziel der Tageszeile
     li.appendChild(cb);
 
     var d = task.due ? dueLabel(task.due) : null;

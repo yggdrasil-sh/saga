@@ -55,6 +55,10 @@
   <section class="hz-top" aria-labelledby="hz-greet">
     <p class="hz-greet" id="hz-greet" data-first="{{ first_name }}">{{ greeting }}</p>
     <p class="hz-lage" id="hz-lage" aria-live="polite"><span id="hz-date"></span><span id="hz-parts"></span></p>
+    {# 2.6 (K-D 2271): Tageszeile "Kurz gesagt" + "Wartet auf dich" unter der Lagezeile - fuellt static/heute-kurz.js
+       (laeuft hier frueh: Anfrage parallel, zuletzt gemessene Hoehe frei). Ohne Zeile: an der Stelle nichts. #}
+    {% if saga_on %}<div class="hz-kurz-box" id="hz-kurz-box" hidden><div class="hz-kurz" id="hz-kurz" hidden></div><p class="hz-wait" id="hz-wait" hidden></p></div>
+    <script src="/static/heute-kurz.js?v={{ v }}"></script>{% endif %}
     <div class="hz-acts" role="group" aria-label="{{ _("Schnellaktionen") }}">
       <a class="hz-act" id="hz-new" href="/notes?new=1" aria-keyshortcuts="N"><span class="hz-act-ic" aria-hidden="true">＋</span>{{ _("Neue Seite") }}<kbd class="hz-kbd" aria-hidden="true">N</kbd></a>
       <a class="hz-act" id="hz-tpl" href="/notes?gallery=1" aria-keyshortcuts="V"><span class="hz-act-ic" aria-hidden="true">▦</span>{{ _("Aus Vorlage …") }}<kbd class="hz-kbd" aria-hidden="true">V</kbd></a>
