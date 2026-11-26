@@ -682,6 +682,8 @@ try:
         cal_up = False
     if not cal_up:
         print("SKIP Kalender-Werkzeuge (kein CalDAV unter", RAD, ")")
+        if os.environ.get("HK_TEST_CALDAV"):         # ausdruecklich gesetzt (Testumgebung mit Radicale): dann ein Fehler
+            ok("CalDAV unter HK_TEST_CALDAV erreichbar", False, RAD)
     else:
         AUTH = ("test", "geheim-app-pw-123")
         MK = '<?xml version="1.0"?><c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>{}</d:displayname></d:prop></d:set></c:mkcalendar>'

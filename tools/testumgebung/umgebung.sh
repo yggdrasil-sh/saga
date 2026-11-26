@@ -3,6 +3,7 @@
 #   umgebung.sh einrichten                        Test-CA + Zertifikate, NSS-DB (eigenes HOME), LDAP-Bibliotheken, calls.js
 #                                                 aus E0/2.3, Ton-Datei, Knoten-Binaries; prueft age, Python-Playwright, pg_trgm
 #   umgebung.sh lauf <art> <slot> <reihe> [tag]  eine Reihe (slot 0-8) in eigenem Netz-Namensraum <UMG_NS><slot> laufen lassen
+#                                                 (<reihe> mit oder ohne tests/; ein Slot = ein Lauf zur Zeit, Sperre je Namensraum)
 #   umgebung.sh stop <slot>                       Reste eines Laufs beenden (nur PIDs im Namensraum), Namensraum loeschen
 #   umgebung.sh env                               verwendete Pfade/Variablen zeigen
 # Arten: server (ein Server), sso (+ LDAP-Attrappe ldap.test:389 mit StartTLS, OIDC-Attrappe mockoidc:8080),
@@ -15,7 +16,10 @@
 #   UMG_NS (Praefix Namensraum, Standard um), UMG_DB (Praefix DB, Standard saga_umg), UMG_LIMIT (s), UMG_SENV ("K=V ..." fuer
 #   den Server), UMG_PYX (zusaetzlicher PYTHONPATH der Reihe), UMG_HOSTS (weitere Zeilen fuer /etc/hosts des Laufs),
 #   UMG_HORN_NAME/UMG_HORN_CERT/UMG_HORN_KEY (Art knoten: Name und Zertifikat des eingebauten Knotens, Standard localhost und
-#   das Zertifikat der Test-CA). Weitere Variablen (z. B. MESH=1) gehen an die Reihe durch.
+#   das Zertifikat der Test-CA), UMG_BACKUP=1 (Backups vor Migrationen an; versionen.py automatisch), UMG_CALDAV=0 (kein
+#   Radicale), UMG_FIRST_STEPS=frage ("Erste Schritte" nicht vorab beantworten; erste_schritte.py/browser_leere_zustaende.js
+#   automatisch). Server-Variablen einzelner Reihen setzt innen.sh selbst (Liste dort und in README.md).
+#   Weitere Variablen (z. B. MESH=1) gehen an die Reihe durch.
 set -u
 D=$(cd "$(dirname "$0")" && pwd)
 WT=${WT:-$(cd "$D/../.." && pwd)}
@@ -59,18 +63,21 @@ einrichten() {
   # Ton fuer tests/browser_anruf_umzug.js: nicht stationaerer Gleitton (Luecken messbar), 60 s, 48 kHz mono
   [ -f $UMG/ton.wav ] || ffmpeg -v error -f lavfi -i "aevalsrc='0.4*sin(2*PI*t*(350+150*sin(2*PI*0.7*t)))':s=48000:d=60" -ac 1 $UMG/ton.wav
   ls -la $UMG/ton.wav | awk '{print "Ton:", $5, "Bytes"}'
-  # Knoten-Binaries aus dem Worktree (wie das Image: CGO_ENABLED=0 -trimpath)
-  if [ ! -x $UMG_BIN/gjallarhorn ] || [ ! -x $UMG_BIN/saga-media ]; then
-    mkdir -p $UMG_BIN
-    (cd "$WT/gjallarhorn" && CGO_ENABLED=0 go build -trimpath -o $UMG_BIN/gjallarhorn .) && \
-    (cd "$WT/media" && CGO_ENABLED=0 go build -trimpath -o $UMG_BIN/saga-media .) || echo "WARNUNG: Go-Bau fehlgeschlagen"
-  fi
+  bauen
   md5sum $UMG_BIN/gjallarhorn $UMG_BIN/saga-media
   # Vorhanden? (nicht installiert von hier): age, Python-Playwright, pg_trgm
   [ -x $UMG_GOBIN/age ] && echo "age: $($UMG_GOBIN/age --version)" || echo "FEHLT age: GOBIN=$UMG_GOBIN go install filippo.io/age/cmd/...@latest"
   PYTHONPATH=$UMG_PWLIB python -c "import playwright.sync_api; from importlib.metadata import version; print('Python-Playwright', version('playwright'), '(Reihen damit: UMG_PYX=$UMG_PWLIB)')" 2>/dev/null || \
     echo "FEHLT Python-Playwright: pip install --target $UMG_PWLIB playwright==<Version wie node>"
   psql -h /tmp -p 55432 -U saga -Atc "select 'pg_trgm verfuegbar: ' || count(*) from pg_available_extensions where name='pg_trgm'" postgres
+}
+
+bauen() {   # Knoten-Binaries aus dem Worktree (wie das Image: CGO_ENABLED=0 -trimpath) nach UMG_BIN, wenn sie fehlen
+  [ -x $UMG_BIN/gjallarhorn ] && [ -x $UMG_BIN/saga-media ] && return 0
+  echo "baue gjallarhorn/saga-media ($REV) nach $UMG_BIN ..."
+  mkdir -p $UMG_BIN
+  (cd "$WT/gjallarhorn" && CGO_ENABLED=0 go build -trimpath -o $UMG_BIN/gjallarhorn .) && \
+  (cd "$WT/media" && CGO_ENABLED=0 go build -trimpath -o $UMG_BIN/saga-media .) || { echo "WARNUNG: Go-Bau fehlgeschlagen"; return 1; }
 }
 
 aufraeumen() {   # nur Prozesse im Namensraum <UMG_NS><slot> (auch eigene Prozessgruppen wie timeout/Chromium), dann loeschen
@@ -81,10 +88,15 @@ aufraeumen() {   # nur Prozesse im Namensraum <UMG_NS><slot> (auch eigene Prozes
 }
 
 lauf() {
-  local ART=$1 SLOT=$2 F=$3 TAG=${4:-}
+  local ART=$1 SLOT=$2 F=${3#tests/} TAG=${4:-}
   case $ART in server|sso|knoten|fed|fedknoten) ;; *) echo "Art unbekannt: $ART"; exit 2;; esac
   [ "$SLOT" -ge 0 ] 2>/dev/null && [ "$SLOT" -le 8 ] || { echo "Slot 0..8 (Ports 9001+10*slot ... +9)"; exit 2; }
   local NS=$UMG_NS$SLOT NAME=$(basename $F)${TAG:+.$TAG}
+  # Ein Slot = ein Lauf zur Zeit (Namensraum, DB, run/<slot> und Ports gehoeren dem Slot): Sperre je Namensraum, auch ueber
+  # verschiedene UMG-Ordner hinweg. Faellt mit dem Lauf (auch bei Abbruch) - Reste raeumt der naechste Lauf auf.
+  exec 9>/run/lock/saga-umgebung-$NS.lock
+  flock -n 9 || { echo "Slot $SLOT ($NS) ist belegt (anderer Lauf) - anderen Slot nehmen"; exit 3; }
+  case $ART in knoten|fedknoten) bauen || { echo "ohne gjallarhorn/saga-media kein Lauf der Art $ART (UMG_BIN=$UMG_BIN)"; exit 2; } ;; esac
   local RUN=$UMG/run/$SLOT LOG=$UMG/log/$NAME.log
   mkdir -p $UMG/log
   local T0=$(date +%s)
@@ -101,17 +113,17 @@ lauf() {
     printf '127.0.0.1 localhost ldap.test mockoidc\n::1 localhost\n' > $RUN/hosts
     [ -n "${UMG_HOSTS:-}" ] && printf '%s\n' "$UMG_HOSTS" >> $RUN/hosts      # weitere Namen (z. B. Anzeige-Hosts der Handbuch-Bilder)
     ART=$ART SLOT=$SLOT F=$F RUN=$RUN WT=$WT D=$D DBN=${UMG_DB}_$SLOT PGSOCK=$PGSOCK \
-      ip netns exec $NS unshare -m --propagation private bash $D/innen.sh
+      ip netns exec $NS unshare -m --propagation private bash $D/innen.sh 9>&-
     echo "== innen rc=$?"
     aufraeumen $NS
     trap - TERM INT
     dropdb -h /tmp -p 55432 -U saga --if-exists ${UMG_DB}_$SLOT
   } > "$LOG" 2>&1
   local RC=$(sed -n 's/^== test rc=\([0-9]*\).*/\1/p' "$LOG" | tail -1)
-  local NOK=$(grep -cE '^ *OK ' "$LOG") NF=$(grep -cE '^ *FAIL' "$LOG") TB=-
+  local NOK=$(grep -cE '^ *OK ' "$LOG") NF=$(grep -cE '^ *FAIL' "$LOG") NS_=$(grep -cE '^ *SKIP' "$LOG") TB=-
   local SL=$(ls $RUN/server.log $RUN/fed/*/server.log 2>/dev/null)
   [ -n "$SL" ] && TB=$(cat $SL | grep -a -c Traceback)
-  printf '%s\t%s\t%s\trc=%s\tok=%s\tfail=%s\ttb=%s\t%ss\t%s\n' "$NAME" "$ART" "$SLOT" "${RC:-?}" "$NOK" "$NF" "$TB" "$(($(date +%s)-T0))" "$(date +%T)" | tee -a $UMG/ergebnis.tsv
+  printf '%s\t%s\t%s\trc=%s\tok=%s\tfail=%s\tskip=%s\ttb=%s\t%ss\t%s\n' "$NAME" "$ART" "$SLOT" "${RC:-?}" "$NOK" "$NF" "$NS_" "$TB" "$(($(date +%s)-T0))" "$(date +%T)" | tee -a $UMG/ergebnis.tsv
 }
 
 case ${1:-} in
@@ -119,5 +131,5 @@ case ${1:-} in
   lauf) shift; lauf "$@" ;;
   stop) aufraeumen $UMG_NS${2:?slot}; echo "$UMG_NS$2 weg" ;;
   env) echo "UMG=$UMG UMG_BIN=$UMG_BIN UMG_GOBIN=$UMG_GOBIN UMG_PWLIB=$UMG_PWLIB UMG_NS=$UMG_NS UMG_DB=$UMG_DB E0=$E0_REF WT=$WT" ;;
-  *) sed -n 2,17p "$0" ;;
+  *) sed -n 2,22p "$0" ;;
 esac
