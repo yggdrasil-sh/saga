@@ -196,7 +196,7 @@ def api_app_today(request: Request):
 
 
 # --- Widgets: eng begrenzt (nur eigene Daten; lesen = Titel/Zeilen, schreiben = Aufgabe abhaken / Haekchen-Feld) ---
-_PAGE_COLS = "id, title, icon, kind, parent_id, schema, cover, cover_pos, updated, body, format"
+_PAGE_COLS = "id, title, icon, kind, parent_id, schema, cover, cover_pos, updated"
 _PAGE_WHERE = "uid=? AND deleted_at IS NULL AND is_template=0 AND archived IS NULL"
 
 
@@ -213,9 +213,12 @@ def _page_items(c, uid, rows):
     ids = [r[0] for r in rows if not r[6]]
     pv = dict(c.execute("SELECT note_id, preview FROM note_derived WHERE note_id = ANY(?)", (ids,)).fetchall()) if ids else {}
     stale = {r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE uid=?", (uid,)).fetchall()} if ids else set()
+    need = [i for i in ids if i in stale or i not in pv]            # Pruefer pw2188: Inhalt nur dieser Seiten lesen (nicht aller 5000)
+    for i, body, fmt in (c.execute("SELECT id, body, format FROM note WHERE id = ANY(?) AND uid=?", (need, uid)).fetchall() if need else ()):
+        pv[i] = _first_image(body, fmt)
     out = []
     for r in rows:
-        img = r[6] or ((_first_image(r[9], r[10]) if r[0] in stale or r[0] not in pv else pv.get(r[0])) or "")
+        img = r[6] or pv.get(r[0]) or ""
         o = {"id": r[0], "title": r[1] or "", "icon": r[2] or "", "kind": r[3] or "page", "parent_id": r[4],
              "cover": bool(r[6]), "cover_pos": r[7] if r[7] is not None else 50, "cover_v": _cover_v(img), "updated": r[8]}
         if r[3] == "database":
