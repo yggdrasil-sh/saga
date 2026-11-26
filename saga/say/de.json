@@ -147,5 +147,28 @@
  "hedge": " – das steht nur in „{source}“ vom {date}.",
  "hedge.nodate": " – das steht nur in „{source}“.",
 
- "voice.more": "Soll ich weiterlesen?"
+ "voice.more": "Soll ich weiterlesen?",
+
+ "_day": "K-D (2271) Tageszeile: Teile ohne Ich-Form, Satzglieder s.* fuer den Satz (sentence), list/none mit Form; waiting mit Anrede; info nur gesiezt (du = Systemtext).",
+ "day.event": "{title} {time}",
+ "day.event.more": "{title} {time} (+{more})",
+ "day.event.allday": "{title} (ganztägig)",
+ "day.tomorrow": "Morgen {time} {title}",
+ "day.tomorrow.allday": "Morgen: {title}",
+ "day.over": "„{title}“ überfällig",
+ "day.over.more": "„{title}“ überfällig (+{more})",
+ "day.due": "„{title}“ heute",
+ "day.due.more": "„{title}“ heute (+{more})",
+ "day.s.event": "{title} um {time}",
+ "day.s.event.allday": "{title} den ganzen Tag",
+ "day.s.tomorrow": "{title} um {time}",
+ "day.s.tomorrow.allday": "{title}",
+ "day.s.over": "„{title}“ ist überfällig",
+ "day.s.due": "„{title}“ ist heute fällig",
+ "day.list": "Heute: {list}.",
+ "day.list.tomorrow": "Morgen: {list}.",
+ "day.none": "Heute steht nichts an.",
+ "day.waiting": {"": "{n} {n:Auftrag wartet|Aufträge warten} auf dich ›", "sie": "{n} {n:Auftrag wartet|Aufträge warten} auf Sie ›"},
+ "day.a11y.more": "plus {more}",
+ "day.info": {"sie": "Ohne KI berechnet – aus Ihren Aufgaben, Terminen und Aufträgen. Nichts davon geht an ein Sprachmodell."}
 }

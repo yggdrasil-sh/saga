@@ -147,5 +147,28 @@
  "hedge": " – pero eso solo aparece en «{source}» del {date}.",
  "hedge.nodate": " – pero eso solo aparece en «{source}».",
 
- "voice.more": "¿Sigo leyendo?"
+ "voice.more": "¿Sigo leyendo?",
+
+ "_day": "K-D (2271) línea del día - ver de.json.",
+ "day.event": "{title} {time}",
+ "day.event.more": "{title} {time} (+{more})",
+ "day.event.allday": "{title} (todo el día)",
+ "day.tomorrow": "Mañana {time} {title}",
+ "day.tomorrow.allday": "Mañana: {title}",
+ "day.over": "«{title}» vencida",
+ "day.over.more": "«{title}» vencida (+{more})",
+ "day.due": "«{title}» hoy",
+ "day.due.more": "«{title}» hoy (+{more})",
+ "day.s.event": "{title} a las {time}",
+ "day.s.event.allday": "{title} todo el día",
+ "day.s.tomorrow": "{title} a las {time}",
+ "day.s.tomorrow.allday": "{title}",
+ "day.s.over": "«{title}» está vencida",
+ "day.s.due": "«{title}» vence hoy",
+ "day.list": "Hoy: {list}.",
+ "day.list.tomorrow": "Mañana: {list}.",
+ "day.none": "Hoy no hay nada previsto.",
+ "day.waiting": {"": "{n} {n:encargo te espera|encargos te esperan} ›", "sie": "{n} {n:encargo le espera|encargos le esperan} ›"},
+ "day.a11y.more": "y {more} más",
+ "day.info": {"sie": "Calculado sin IA: a partir de sus tareas, citas y encargos. Nada de esto va a un modelo de lenguaje."}
 }

@@ -71,6 +71,7 @@ ZUEGE = {
     "read": {"s": ("items", "when"), "card": 0, "push": None},
     "ident": {"s": ("kind", "owner", "agent", "host", "provider", "home"), "card": 0, "push": 100},
     "hedge": {"s": ("source", "date"), "card": 0, "push": None},
+    "day": {"s": ("part", "title", "time", "more", "n", "items", "when"), "card": 160, "push": None},     # K-D (2271)
 }
 MODEL_GAPS = {z: v["m"] for z, v in ZUEGE.items() if v.get("m")}
 SOBER = ("fail", "oops", "ident", "read")     # immer sachlich (§1.1)
@@ -358,6 +359,14 @@ class _Ctx:
 
     def T(self, key, formal=None, form=None, **vals):
         s = self.raw(key, formal, form)
+        if ":" in s and "{" in s:                # Pluralformen {n:a|b|c} (K-D 2271) wie saga/i18n - RU 1 / 2-4 / 5+
+            def pl(m):
+                v = vals.get(m.group(1), self.f.get(m.group(1)))
+                if v is None or isinstance(v, bool):
+                    raise _Missing(m.group(1))
+                from saga import i18n
+                return i18n.plural(self.lang, v, m.group(2))
+            s = re.sub(r"\{(\w+):([^{}]*)\}", pl, s)
         if self.lang == "th":
             s = s.replace("{P}", {"f": "ค่ะ", "m": "ครับ"}.get(self.form, "")).replace("{Q}", {"f": "คะ", "m": "ครับ"}.get(self.form, ""))
 
@@ -657,6 +666,29 @@ def _b_ident(x):
 
 def _b_hedge(x):
     return x.opt("hedge", "hedge.nodate") or ""
+
+
+DAY_PARTS = ("event", "event.allday", "tomorrow", "tomorrow.allday", "over", "due")
+
+
+def _b_day(x):
+    """K-D (2271) Tageszeile, ohne Modell: part = Teil der Zeile (DAY_PARTS; title, time, more = weitere derselben Art),
+    "s.<teil>" = dasselbe als Satzglied, "list" (items = Satzglieder, when today|tomorrow; ohne items "none"), "waiting" (n,
+    Anrede der Person), "a11y.more" (more, Vorlesetext fuer "(+n)"). Teile ohne Thai-Partikel - nur "list"/"none" tragen {P}."""
+    part = str(x.f.get("part") or "")
+    if part in ("list", "none"):
+        items = [_sv(i, 100) for i in (x.f.get("items") or ()) if _sv(i, 100)] if part == "list" else []
+        if not items:
+            return x.T("day.none")
+        lst = items[0] if len(items) == 1 else ", ".join(items[:-1]) + CAT[x.lang]["join.and"] + items[-1]
+        return x.T("day.list.tomorrow" if x.f.get("when") == "tomorrow" else "day.list", list=lst)
+    if part in ("waiting", "a11y.more"):
+        return x.T("day." + part)
+    if part.removeprefix("s.") not in DAY_PARTS:
+        raise _Missing("part")
+    more = x.f.get("more") if isinstance(x.f.get("more"), int) and not isinstance(x.f.get("more"), bool) else 0
+    key = "day." + part + (".more" if more > 0 and part in ("event", "over", "due") else "")
+    return x.T(key, title=_sv(x.f.get("title"), 80) or None, more=more)
 
 
 _BUILD = {z: globals()[f"_b_{z}"] for z in ZUEGE}

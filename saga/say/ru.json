@@ -147,5 +147,28 @@
  "hedge": " – но это есть только в «{source}» от {date}.",
  "hedge.nodate": " – но это есть только в «{source}».",
 
- "voice.more": "Читать дальше?"
+ "voice.more": "Читать дальше?",
+
+ "_day": "K-D (2271) строка дня - см. de.json.",
+ "day.event": "{title} {time}",
+ "day.event.more": "{title} {time} (+{more})",
+ "day.event.allday": "{title} (весь день)",
+ "day.tomorrow": "Завтра {time} {title}",
+ "day.tomorrow.allday": "Завтра: {title}",
+ "day.over": "«{title}» просрочено",
+ "day.over.more": "«{title}» просрочено (+{more})",
+ "day.due": "«{title}» сегодня",
+ "day.due.more": "«{title}» сегодня (+{more})",
+ "day.s.event": "{title} в {time}",
+ "day.s.event.allday": "{title} весь день",
+ "day.s.tomorrow": "{title} в {time}",
+ "day.s.tomorrow.allday": "{title}",
+ "day.s.over": "«{title}» просрочено",
+ "day.s.due": "«{title}» нужно сделать сегодня",
+ "day.list": "Сегодня: {list}.",
+ "day.list.tomorrow": "Завтра: {list}.",
+ "day.none": "Сегодня ничего не запланировано.",
+ "day.waiting": {"": "{n} {n:поручение ждёт|поручения ждут|поручений ждут} тебя ›", "sie": "{n} {n:поручение ждёт|поручения ждут|поручений ждут} вас ›"},
+ "day.a11y.more": "и ещё {more}",
+ "day.info": {"sie": "Посчитано без ИИ – по вашим задачам, встречам и поручениям. Ничего из этого не уходит в языковую модель."}
 }

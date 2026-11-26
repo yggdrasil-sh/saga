@@ -145,5 +145,28 @@
  "hedge": " – but that's only in “{source}” from {date}.",
  "hedge.nodate": " – but that's only in “{source}”.",
 
- "voice.more": "Shall I keep reading?"
+ "voice.more": "Shall I keep reading?",
+
+ "_day": "K-D (2271) daily line - see de.json.",
+ "day.event": "{title} {time}",
+ "day.event.more": "{title} {time} (+{more})",
+ "day.event.allday": "{title} (all day)",
+ "day.tomorrow": "Tomorrow {time} {title}",
+ "day.tomorrow.allday": "Tomorrow: {title}",
+ "day.over": "“{title}” overdue",
+ "day.over.more": "“{title}” overdue (+{more})",
+ "day.due": "“{title}” today",
+ "day.due.more": "“{title}” today (+{more})",
+ "day.s.event": "{title} at {time}",
+ "day.s.event.allday": "{title} all day",
+ "day.s.tomorrow": "{title} at {time}",
+ "day.s.tomorrow.allday": "{title}",
+ "day.s.over": "“{title}” is overdue",
+ "day.s.due": "“{title}” is due today",
+ "day.list": "Today: {list}.",
+ "day.list.tomorrow": "Tomorrow: {list}.",
+ "day.none": "Nothing on today.",
+ "day.waiting": {"": "{n} {n:job is|jobs are} waiting for you ›"},
+ "day.a11y.more": "plus {more}",
+ "day.info": {}
 }
