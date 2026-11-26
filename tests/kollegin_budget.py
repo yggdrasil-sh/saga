@@ -168,11 +168,12 @@ def run():
     s, raw = raw_status(A)
     d = json.loads(raw)
     keys = list(d)
-    old = {k: d[k] for k in keys if k != "units"}
-    ok(f"status: alte Felder in alter Reihenfolge, units nur angehaengt ({keys})", s == 200 and keys == OLD_STATUS + ["units"])
+    old = {k: d[k] for k in OLD_STATUS if k in d}
+    # spaetere Felder (z. B. style, 2268) duerfen nach units angehaengt werden - die alten bleiben vorn und byteweise gleich
+    ok(f"status: alte Felder in alter Reihenfolge, units nur angehaengt ({keys})", s == 200 and keys[:len(OLD_STATUS) + 1] == OLD_STATUS + ["units"])
     ok("status: alte Felder byteweise gleich (Text bis vor units = alte Darstellung)",
-       raw == json.dumps(old, ensure_ascii=False, separators=(",", ":"))[:-1] + ',"units":'
-       + json.dumps(d["units"], ensure_ascii=False, separators=(",", ":")) + "}")
+       raw.startswith(json.dumps(old, ensure_ascii=False, separators=(",", ":"))[:-1] + ',"units":'
+                      + json.dumps(d["units"], ensure_ascii=False, separators=(",", ":"))))
     ok(f"status: quota 3, used 0, quota_left 3, units {{left, of}} = 3 x 4000 ({d['quota']}, {d['used']}, {d['quota_left']}, {d['units']})",
        d["quota"] == 3 and d["used"] == 0 and d["quota_left"] == 3 and d["units"] == {"left": 12000, "of": 12000})
 

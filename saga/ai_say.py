@@ -247,7 +247,15 @@ def sentences(s, lang):
     s = str(s or "").strip()
     if not s:
         return []
-    return [x for x in (_TH_END if lang == "th" else _SENT).split(s) if x]
+    out = []
+    for x in (_TH_END if lang == "th" else _SENT).split(s):
+        if not x:
+            continue
+        if out and not re.search(r"[^\W\d_]", x):   # nur Emoji/Zeichen ("Fertig! 😉"): gehoert zum Satz davor
+            out[-1] += " " + x
+        else:
+            out.append(x)
+    return out
 
 
 def _cut(s, budget, lang):
@@ -452,19 +460,17 @@ def _b_draft(x):
     if not r:
         return ""                               # kein Text, kein Rezept: kein Entwurf (die Person schreibt selbst)
     formal = x.f.get("address") != "du"         # Kontakt unbekannt -> Sie (Konzept §1)
-    vals = {}
-    if x.f.get("greeting"):
-        vals["recipient"] = _sv(x.f["greeting"], 60)
+    greet = _sv(x.f.get("greeting"), 60)
+    vals = {"recipient": "\x00R\x00"} if greet else {}
     keys = {"ask_bring": ("draft.ask_bring.occ", "draft.ask_bring"), "ask_borrow": ("draft.ask_borrow.date", "draft.ask_borrow"),
             "ask_time": ("draft.ask_time",)}[r]
     for k in keys:
         try:
             s = x.T(k, formal=formal, form="n", **vals)
-            if x.f.get("greeting"):             # Grussform des Kontakts ersetzt "Hi"/"Guten Tag, ..."
-                s = re.sub(r"^[^,!]{0,30}?" + re.escape(vals["recipient"]), vals["recipient"], s, count=1)
-            return s
         except _Missing:
             continue
+        # Grussform des Kontakts (contact.salutation, z. B. "Liebe Frau Becker") ersetzt "Hi {name}" / "Guten Tag, {name}"
+        return re.sub(r"^.*?\x00R\x00", lambda m: greet, s, count=1) if greet else s
     return ""
 
 
@@ -648,7 +654,7 @@ def _rx(*pats, flags=re.I):
 
 
 _P3_FORMAL = {   # Anrede "Sie": diese Formen duerfen nicht vorkommen
-    "de": _rx(r"\b(du|dich|dir|dein\w*|euch|euer\w*)\b"),
+    "de": _rx(r"\b(du|dich|dir|dein\w*|euch|euer\w*|eure[mnrs]?)\b"),
     "es": _rx(r"\b(tú|tu|tus|te|ti|contigo)\b"),
     "ru": _rx(r"\b(ты|тебя|тебе|тобой|тво[йяеёи]\w*)\b"),
 }
@@ -787,9 +793,17 @@ def _p2(text, lang):
         return len(_CYR.findall(text)) / letters >= 0.6
     if len(_LATIN.findall(text)) / letters < 0.6:
         return False
-    from saga.ai import q_lang
-    got = q_lang(text)
-    return got in (None, lang)
+    # de/en/es: nur bei deutlichem Gegenbeleg verwerfen (kurze Saetze mit Namen sind sonst oft 'unklar')
+    from saga.ai import _Q_HINTS
+    low = text.lower()
+    w = re.findall(r"[^\W\d_]+", low)
+    score = {k: sum(x in v for x in w) for k, v in _Q_HINTS.items()}
+    if re.search(r"[äöüß]", low):
+        score["de"] = score.get("de", 0) + 2
+    if re.search(r"[ñ¿¡áéíóú]", low):
+        score["es"] = score.get("es", 0) + 2
+    other = max((v for k, v in score.items() if k != lang), default=0)
+    return not (other >= 2 and score.get(lang, 0) < other)
 
 
 def _p4(text, lang, form):

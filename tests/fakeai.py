@@ -19,6 +19,8 @@ Verhalten nach Modellname:
   fake-usage     (2.6 K-A5) echte Token-Zahlen: OpenAI zum Schluss ein Stueck {choices: [], usage} - nur mit
                  stream_options.include_usage; Ollama prompt_eval_count/eval_count in der letzten Zeile.
                  Zahlen: Eingabe = Woerter aller Nachrichten + 7, Ausgabe = Woerter der Antwort + 3 (Pruefwerte)
+  fake-bausteine (2.6 K-H 2268) Luecken fuer saga/ai_say.py als JSON: Zeile 'FAKE-GAP: {...}' im Material wird
+                 woertlich zurueckgegeben, sonst der erste Satz des Materials; fake-bausteine-junk: Text ohne JSON
   fake-nousage   OpenAI: 400 "Unrecognized request argument supplied: stream_options", wenn die Anfrage es enthaelt
                  (wie Endpunkte ohne usage im Strom); Ollama: ohne Zaehler
 Websuche (2.1): Vorab-Entscheidung ("You decide whether answering a message needs a web search") je nach Frage:
@@ -47,6 +49,8 @@ def answer(messages, model=None):
     data = re.sub(r"(?:^|\n)[0-9a-f]{12} ?$", "", data.rsplit("SAGA_DATA>>>", 1)[0]).strip("\n")
     if model == "fake-evil":                               # K-T 2265: Modell "glaubt" eingeschleusten Anweisungen
         return evil(sys_txt, data)
+    if "You fill gaps in fixed sentence frames" in sys_txt:  # 2.6 K-H (2268): Luecken fuer Gespraechszuege (saga/ai_say.py)
+        return bausteine(sys_txt, data, model)
     if "You decide whether answering a message needs a web search" in sys_txt:
         with LOCK:
             LOG["decide"] += 1
@@ -110,6 +114,20 @@ def answer(messages, model=None):
     if webn:
         return f"Antwort aus {n} Quellen. Laut Web wird es sonnig [{webn[0]}]. Ende."
     return f"Antwort aus {n} Quellen [1]. Ende."
+
+
+def bausteine(sys_txt, data, model):
+    """fake-bausteine: Steht im Material eine Zeile 'FAKE-GAP: {json}', kommt genau dieses JSON zurueck (Tests steuern gute
+    und schlechte Luecken ueber den echten Modellweg). Sonst: erster Satz des Materials in die erste verlangte Luecke.
+    fake-bausteine-junk: Plauderei ohne JSON (Rueckfall auf den Rahmen)."""
+    if model == "fake-bausteine-junk":
+        return "Klar, gern! Hier ist mein Vorschlag ohne JSON."
+    m = re.search(r"(?m)^FAKE-GAP: (\{.*\})\s*$", data)
+    if m:
+        return m.group(1)
+    keys = re.findall(r'"(\w+)": ', sys_txt.split("Return ONLY a JSON object with these keys:", 1)[-1].split("Example:", 1)[0])
+    first = re.split(r"(?<=[.!?])\s", data.strip().splitlines()[0] if data.strip() else "")[0]
+    return json.dumps({keys[0] if keys else "observation": first}, ensure_ascii=False)
 
 
 def evil(sys_txt, data):
