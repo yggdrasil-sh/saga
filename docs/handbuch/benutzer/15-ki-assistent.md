@@ -135,6 +135,49 @@ Ob deine Fragen gespeichert werden, entscheidest du selbst. Klick in der Seitenl
 
 Am Anfang ist der Verlauf **aus**.
 
+### 7. Der Ort „Saga“: Marin kennenlernen (neu in 2.6)
+
+In der Seitenleiste steht direkt unter **Heute** der Eintrag **Saga**. Dort sprichst du mit der KI eures Servers –
+im Beispiel heißt sie **Marin**, oben steht immer „Marin · KI“. Das Gespräch ist **kein Chat**: Es taucht nicht in
+deiner Chat-Liste auf und ist nicht Ende-zu-Ende verschlüsselt.
+
+**Kennenlernen.** Beim ersten Mal stellt sich Marin mit einer kleinen Karte vor – auf **Heute** über „Weitermachen“
+und im Bereich **Saga**:
+
+- „Ich bin Marin, die KI eures Servers.“
+- „Ich sehe nur, was du sehen darfst. Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben und Terminen
+  gehen an **ollama.lan (im Heimnetz)**.“ – Wohin die Daten gehen, schreibt Saga selbst aus der Adresse der KI:
+  „im Heimnetz“ nur, wenn die Adresse wirklich in eurem Netz liegt; bei einem bekannten Anbieter steht er mit Land da,
+  z. B. „api.anthropic.com (Anthropic, USA)“. Dein Admin kann nur einen Satz anfügen.
+- „Ich ändere nichts und schreibe niemandem ohne dein OK.“
+
+Mit **ⓘ** siehst du, was genau rausgeht. Dann entscheidest du: **Ja, mit Ideen** (Marin zeigt ab und zu eine Idee auf
+„Heute“, nie als Mitteilung), **Ja, ohne Ideen** oder **Jetzt nicht**. Bei „Jetzt nicht“ geht nichts an die KI; die
+Karte erscheint wieder, sobald du den Bereich **Saga** öffnest. „Frag deine Seiten“ und die Hilfen auf einer Seite
+funktionieren wie bisher.
+
+**Das Gespräch.** Nach dem Kennenlernen schreibst du unten, was du brauchst. Oben steht immer
+„Was du hier schreibst, liest die KI auf … ⓘ“. Ist dein **Verlauf** aus, verschwindet das Gespräch nach 24 Stunden
+(so lange kann Marin sich auf vorherige Sätze beziehen); mit Verlauf bleibt es gespeichert. Über **⋯ → Gespräch
+leeren** löschst du es sofort.
+
+**Wechselt dein Admin die KI** (zum Beispiel vom Heimnetz zu einem Anbieter im Internet), fragt Marin dich noch einmal –
+deine Zustimmung galt ja für die alte Adresse.
+
+### 8. Einstellungen › Saga › Meine Daten
+
+Unter **Einstellungen › Saga** stellst du ein, ob Marin Ideen zeigt, ob das Gespräch gespeichert wird und was Marin
+lesen darf (Seiten, Aufgaben, Termine, Chat-Nachrichten beim Rufen im Chat). Darunter liegt **Meine Daten**:
+
+- **Einwilligung widerrufen** – Marin bekommt danach nichts mehr von dir. Laufende Aufträge halten an und warten auf
+  dich, Ideen gehen aus. Du kannst Marin jederzeit wieder kennenlernen.
+- **Verlauf und Aufträge exportieren** – als Datei (JSON, vollständig) oder als lesbarer Text (Markdown): deine
+  Einwilligungen, das Gespräch, Aufträge mit Protokoll, dein Verlauf und deine Zähler.
+- **Alles löschen** – nach einer Rückfrage: Aufträge mit Protokoll, das Gespräch und dein Verlauf. Nachrichten, die
+  schon gesendet wurden, bleiben bei den Empfängern. Dass und wann du eingewilligt hast, bleibt als Nachweis stehen.
+- **Was mein Admin sehen kann** – ehrlich erklärt: Technisch kann dein Admin alles lesen, was auf dem Server liegt;
+  deine Chats nicht (Ende-zu-Ende verschlüsselt). In der Admin-Seite sieht er nur Zahlen.
+
 ---
 
 ### 7. Aufträge geben (ab 2.6)

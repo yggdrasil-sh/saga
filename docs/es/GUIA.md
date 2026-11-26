@@ -1640,6 +1640,25 @@ mejores resultados (solo direcciones públicas). La respuesta indica las fuentes
 resumir, mejorar, traducir y sugerir tareas nunca buscan en la web. Cada búsqueda web cuenta como una solicitud más en
 la cuota.
 
+#### El espacio «Saga» y «Mis datos» (2.6)
+
+En la barra lateral, justo debajo de **Hoy**, está la entrada **Saga** (solo para quien puede usar la IA). Ahí hablas
+con la IA de vuestro servidor, que aparece como «Marin · IA» (nombre de la persona + marca de IA). La conversación **no
+es un chat**: no aparece en la lista de chats y no está cifrada de extremo a extremo.
+
+- **Conocer a Marin (consentimiento):** la primera vez, una tarjeta en **Hoy** (encima de «Seguir») y en **Saga** dice
+  quién es Marin, que «tu pregunta y los fragmentos adecuados de tus páginas, tareas y citas se envían a {host}» y que
+  Marin no cambia nada sin tu OK. El aviso del host lo forma Saga a partir de la dirección del modelo: «en tu red
+  doméstica» solo con una dirección privada; proveedores conocidos con nombre y país (p. ej. «api.anthropic.com
+  (Anthropic, EE. UU.)»); el admin puede añadir una frase, que se descarta si afirma «local» con una dirección pública.
+  Botones: **Sí, con ideas** · **Sí, sin ideas** · **Ahora no** (no se envía nada a la IA). Si el admin cambia de
+  servicio, Marin vuelve a preguntar.
+- **Conversación:** con el historial desactivado desaparece a las 24 horas; con historial se guarda (hasta 200 entradas).
+- **Ajustes › Saga › Mis datos:** retirar el consentimiento (los encargos en curso se pausan, las ideas se desactivan),
+  exportar historial y encargos (JSON o Markdown), borrar todo (con confirmación; el registro del consentimiento queda
+  como prueba) y una explicación honesta de «Qué puede ver mi admin». «Pregunta a tus páginas» y las ayudas de página
+  funcionan como antes.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):

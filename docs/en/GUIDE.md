@@ -1576,6 +1576,24 @@ web sources with links; meanwhile it shows “Marin is searching the web …”.
 question with “Search the web”; summarize, improve, translate and suggest tasks never search the web. Each web search
 counts as one more request in the quota.
 
+#### The “Saga” space and “My data” (2.6)
+
+The sidebar has a **Saga** entry right below **Today** (only for people allowed to use the AI). It is where you talk
+to your server's AI – shown as “Marin · AI” (persona name + AI badge). The conversation is **not a chat**: it never
+appears in the chat list and is not end-to-end encrypted.
+
+- **Meeting Marin (consent):** the first time, a card on **Today** (above “Continue”) and in **Saga** says who Marin is,
+  that “your question and matching excerpts from your pages, tasks and events are sent to {host}” and that Marin
+  changes nothing without your OK. Saga builds the host notice itself from the model endpoint address: “on your home
+  network” only for a private address, known providers with name and country (e.g. “api.anthropic.com (Anthropic,
+  USA)”); the admin can add one sentence, which is dropped if it claims “local” for a public address. Buttons: **Yes,
+  with ideas** · **Yes, without ideas** · **Not now** (nothing goes to the AI). If the admin switches to a different
+  endpoint, Marin asks again.
+- **Conversation:** with history off it disappears after 24 hours; with history on it is kept (up to 200 entries).
+- **Settings › Saga › My data:** withdraw consent (running tasks pause, ideas switch off), export history and tasks
+  (JSON or Markdown), delete everything (with confirmation; the consent log stays as proof), and an honest note on
+  “What my admin can see”. “Ask your pages” and the page tools work as before.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):

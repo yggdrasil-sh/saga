@@ -354,3 +354,90 @@ Zeile mit Knopf „Rückgängig“ (≥ 44 pt). Bei `undo_class` `delete_only` v
 **Admin** (Admin-Port): Admin › KI-Assistent › Aufträge – Fähigkeitsstufe, eingebaute Rezepte an/aus, eigene Rezepte
 (JSON, nur Werkzeuge `read`/`own`), Knopf „Selbsttest“ = `POST /api/ai/selftest` (Admin-Sitzung + `X-CSRF-Token`) →
 `{level, valid, total, text: "Vorschlag: Stufe „…“ (x von y Plänen gültig)", note, cases}` – nur ein Vorschlag.
+
+## 11. Ort „Saga“, Einwilligung und „Meine Daten“ (2.6, Bugs-DB 2269 K-I)
+
+Konzept K10/K11/K19, M1/M3/M4/M7/M11; Server `saga/ai_saga.py`. Alle Endpunkte mit Sitzung oder Geräte-Anmeldung und
+`X-Saga: 1` wie der Rest von `/api/ai/*`. Ältere Server kennen sie nicht (404) – Apps blenden dann den Ort „Saga“ aus.
+
+### 11.1 Anbieter-/Host-Hinweis – bildet nur der Server (M4, RT-39)
+
+`GET /api/ai/status` → zusätzlich (am Ende, ältere Felder unverändert):
+
+```json
+"endpoint": {"host": "ollama.lan:11434", "net": "home", "label": "ollama.lan:11434 (im Heimnetz)", "note": "Steht bei uns im Keller."},
+"consent":  {"state": "none"},
+"intro":    {"version": "k19-1", "lines": ["Ich bin Marin, die KI eures Servers.", "Ich sehe nur, … gehen an ollama.lan:11434 (im Heimnetz).", "Ich ändere nichts …"],
+             "note": "Steht bei uns im Keller.", "question": "Soll ich dir ab und zu Ideen zeigen – …?", "ideas_allowed": true,
+             "details": ["Nicht Ende-zu-Ende verschlüsselt: …", "Was genau rausgeht: …", "Die Adresse liegt in eurem Heimnetz.", "Du kannst …"],
+             "bar": "Was du hier schreibst, liest die KI auf ollama.lan:11434 (im Heimnetz)"}
+```
+
+- `host` = Host[:Port] des **Modell-Endpunkts**, nie die Saga-Domain. `net`: `home` nur, wenn alle beim Speichern
+  festgehaltenen IPs (bzw. die IP in der Adresse) privat sind; sonst `internet` – auch ohne festgehaltene IPs.
+- Bekannte Anbieter (nur bei `internet`): `provider` (z. B. „Anthropic“), `country` (ISO, z. B. `US`) und
+  `country_name` (Sprache der Anfrage). Azure/Google Cloud ohne Land (je Region).
+- `note`: der eine Zusatzsatz des Admins (Admin › KI-Assistent, „Zusatzsatz zum Anbieter-Hinweis“): eine Zeile, erster
+  Satz, ≤ 200 Zeichen. Bei `internet` fällt er weg, sobald er „lokal“, „im Heimnetz“, „on-premise“, „local“ o. Ä.
+  behauptet (auch verschleiert geschrieben).
+- `label`, `intro.*`: fertige Texte in der Sprache der Anfrage. **Apps zeigen genau diese Texte** und bauen nie selbst
+  „im Heimnetz“/„lokal“. `intro.lines[1]` nennt immer „Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben
+  und Terminen gehen an {label}.“; `details` gehören hinter ⓘ (M3), `bar` ist die feste Leiste B6 im Ort „Saga“.
+- `question` nur mit Fähigkeit `ai_ideas` (sonst `null`, Knopf „Ja, einverstanden“ statt „Ja, mit/ohne Ideen“).
+
+### 11.2 Einwilligung (K19, Apple 5.1.2(i), Art. 7 DSGVO)
+
+| Aufruf | Wirkung |
+|---|---|
+| `POST /api/ai/consent {"answer": "ideas"\|"no_ideas", "version": "<intro.version>"}` | erteilt (Zeitpunkt, Fassung, Host); `ideas` setzt Ideen „Nur auf Heute“ (nur mit `ai_ideas`). Andere Fassung → **409** `{error, version}`: Status neu laden, Karte neu zeigen. → `{consent, prefs}` |
+| `POST /api/ai/consent {"answer": "later"}` | „Jetzt nicht“: keine Einwilligung; „Heute“ zeigt die Karte nicht mehr, der Ort „Saga“ bei jedem Öffnen. → `{consent}` |
+| `DELETE /api/ai/consent` | Widerruf: Ideen aus, laufende Aufträge → `wartet_dich` mit Grund `einwilligung` (RT-36). → `{consent, paused}` |
+
+`consent.state`: `none` · `later` · `granted` (`at`, `version`, `ideas`, `host`) · `withdrawn` (`at`) · `stale` =
+erteilt, aber für einen anderen Host (Admin hat den Endpunkt gewechselt) – gilt nicht, Karte erneut zeigen.
+Ohne Fähigkeit `ai` → 403. Gespeichert als Protokoll (`ai_consent`), Nachweis bis zur Kontolöschung.
+
+**Was die Einwilligung sperrt:** Aufträge (jeder Schritt prüft `jobs.consent_ok`), Ideen von sich aus
+(`ai_saga.ideas_ok`) und das Gespräch im Ort „Saga“. **Unverändert** (wie bis 2.5, Fähigkeit `ai` + Hinweis bei jeder
+Nutzung): „Frag deine Seiten“ (`/api/ai/ask`), die Seiten-Hilfen und die KI im Chat auf Zuruf.
+
+### 11.3 Gespräch im Ort „Saga“ (K10)
+
+- `GET /api/ai/thread` → `{turns: [{n, role: "me"|"ai", zug, text, fields, read, job_id, created, expires}], history,
+  keep, consent}`. `keep` = 86400 (Verlauf aus: Züge laufen nach 24 h ab), `null` mit Verlauf (höchstens 200 Züge).
+- `POST /api/ai/thread {q, tasks?, calendar?}` → `text/event-stream` wie `/api/ai/ask` (`sources`, `status`, `delta`,
+  `done`), `done.turn` = Nummer des KI-Zugs, `done.read` = Kontext-Ausweis. Die letzten 6 Züge der letzten 24 h gehen
+  als Gespräch an das Modell. Ohne Einwilligung **403** `{error, consent: "needed"}` – nichts geht ans Modell.
+  Kontingent, Spur und Fehler wie bei `/api/ai/ask`. Keine Websuche (kommt später).
+- `DELETE /api/ai/thread` → `{deleted}` (Gespräch leeren).
+- Kein E2E-Chat: eigene Tabellen `ai_thread`/`ai_turn`, nie in `/api/chats`. Apps zeigen den Ort als eigenen Tab bzw.
+  Bereich „Saga“ (M1), Kopf „{persona.name} · KI“ mit Persona-Bild und KI-Marke (K11).
+
+### 11.4 Einhängepunkt für Plan-Karte und Rückmeldung (Web)
+
+`ai_turn` hat `zug` (Baustein-Kennung, heute `answer`/`no_match`), `fields` (JSON) und `job_id`. Ein Zug mit
+`zug: "plan"`/`"report"` und `job_id` ist für die Plan-Karte/Rückmeldung (K-B) vorgesehen. Im Web: Container
+`#sg-cards` und `HKSaga.mount(node)` (hängt eine Karte an den Verlauf), Ereignisse auf `document`: `saga:status`
+`{status}`, `saga:turn` `{turn, q}` nach jeder Antwort, `saga:consent` `{consent}`.
+
+### 11.5 Einstellungen der Person – `GET/PUT /api/ai/prefs`
+
+`{ideas: "off"|"today", sources: {pages, tasks, calendar, chat}, history, history_allowed, notify_content:
+"unlocked"|"never", salutation: "du"|"sie", dictation: "server"|"device", ideas_allowed, consent}`. `PUT` ändert nur
+genannte Felder; falsche Werte 400. `ideas: "today"` ohne Einwilligung 409, ohne Fähigkeit `ai_ideas` 403. Ohne
+Einwilligung liefert `GET` immer `ideas: "off"`. `history: false` löscht den gespeicherten Verlauf und lässt das Gespräch
+nach 24 h ablaufen (ebenso `PUT /api/ai/settings {history: false}`). `notify_content`, `salutation`, `dictation` werden
+gespeichert und von späteren Paketen gelesen.
+
+### 11.6 Meine Daten (M7, Art. 15/17/20, RT-35)
+
+- `GET /api/ai/mydata?format=json|md` → Datei (`Content-Disposition: attachment`): `{format: "saga-ai-export/1",
+  exported_at, account, persona, endpoint, consent: [...], prefs, jobs: [{…, steps, events, changes}], conversation,
+  history, counters: {requests, units}}` bzw. dieselben Inhalte als Markdown. Nur eigene Daten, höchstens 500 Aufträge.
+- `POST /api/ai/mydata/delete {"confirm": true}` → `{ok, deleted: {jobs, turns, history}}`: löscht Aufträge (mit
+  Schritten, Protokoll, Änderungen), Gespräch und Verlauf. Es bleiben: das Einwilligungs-Protokoll (Nachweis) und die
+  Tageszähler (nur Zahlen; 7 bzw. 90 Tage). Ohne `confirm: true` → 400.
+- Aufbewahrung (M11): Gespräch ohne Verlauf 24 h, Aufträge über `jobs.cleanup` (Klartext 30, Protokoll 90 Tage).
+  Kontolöschung räumt `ai_consent`, `ai_thread`, `ai_turn` ab.
+- Web: Einstellungen › Saga › „Meine Daten“ mit „Einwilligung widerrufen“, Export (JSON/Markdown), „Alles löschen“
+  (Rückfrage) und dem Hinweis „Was mein Admin sehen kann“. Die Apps zeichnen denselben Bereich (Runde 2).

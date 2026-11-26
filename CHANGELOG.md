@@ -273,6 +273,20 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   (Rechte, zuletzt benutzt, Trennen); Admin-Schalter „MCP-Clients ohne Token verbinden (OAuth)“ mit der Zahl der
   Verbindungen. Bestehende API-Tokens bleiben unverändert. Migration 41 (`api_token.grant_id`, `oauth_refresh.parent`), Testreihe
   `tests/mcp_oauth.py`, Doku `docs/API.md` und Handbuch B18 Abschnitt 5 (en/es: GUIDE/GUIA).
+- **Ort „Saga“, Kennenlernen und „Meine Daten“** (Bugs-DB 2269 K-I, Runde 1 Server + Web): In der Seitenleiste steht
+  unter „Heute“ der Eintrag **Saga** (nur mit Fähigkeit `ai`) – das Gespräch mit der KI („Marin · KI“) in eigener
+  Tabelle, nicht in der Chat-Liste und kein E2E-Chat; ohne Verlauf nach 24 h weg. Eine **Kennenlernen-Karte** (einmal
+  auf „Heute“ über „Weitermachen“, im Ort „Saga“ bis zur Antwort) holt die Einwilligung ein: drei Sätze, darunter
+  „Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben und Terminen gehen an {Host}.“ – den Hinweis bildet
+  der **Server** aus der Adresse des Modell-Endpunkts („im Heimnetz“ nur bei privater Adresse, bekannte Anbieter mit
+  Land; der Admin kann nur einen Zusatzsatz anfügen, der bei öffentlicher Adresse nie „lokal“ behaupten kann).
+  Aufträge, Ideen und das Gespräch brauchen die Einwilligung; ein Widerruf hält laufende Aufträge an, ein neuer
+  Endpunkt verlangt sie neu. „Frag deine Seiten“ bleibt wie bisher. **Einstellungen › Saga › Meine Daten:** widerrufen,
+  Verlauf und Aufträge exportieren (JSON/Markdown), alles löschen, „Was mein Admin sehen kann“. Erste Schritte (2031)
+  bekommen mit KI den Punkt „Marin kennenlernen“, ohne KI bleiben sie wie bisher. Neu `/saga`, `/api/ai/consent`,
+  `/api/ai/prefs`, `/api/ai/thread`, `/api/ai/mydata`; `/api/ai/status` mit `endpoint`, `consent`, `intro`
+  (APP-API-KI Abschnitt 10). Neue Tabellen `ai_consent`, `ai_thread`, `ai_turn` (ohne Migration). Testreihen
+  `tests/kollegin_einwilligung.py`, `tests/browser_kollegin_kennenlernen.js`.
 
 ### Behoben
 
