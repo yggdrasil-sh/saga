@@ -38,9 +38,14 @@
 > Saga bleibt Beta bis Version 3.0 – danach geht es nur noch um Stabilität
 > ([Weg bis 3.0](https://yggdrasil-sh.github.io/saga/#roadmap)).
 
-> **Neu in Saga 2.5:** **Anrufe über den eingebauten Knoten Gjallarhorn** – 1:1 und Gruppen (zum Release bis 4 Personen
-> bzw. Geräte, als *experimentell* gekennzeichnet), hinter jedem Reverse Proxy mit WebSocket-Unterstützung über die normale
-> Saga-Adresse: **eine Domain, nur Port 443**. Aus 1:1 wird eine Gruppe, Personen dazuholen, den Anruf aufs andere Gerät
+> **Kommt mit Saga 2.6 (schon auf `main`):** **Gjallarhorn ist ab Werk an** – große Gruppenanrufe über den eingebauten
+> Knoten mit bis zu **16 Geräten mit Video bzw. 50 nur mit Ton**, über einen zusätzlich gekoppelten Knoten mit UDP bis zu
+> **25 mit Video / 50 nur Ton**. Auch Anrufe zu zweit laufen dann über den Knoten (die Geräte sehen keine IP-Adressen).
+> Am Proxy bleibt es bei **einer Domain, nur Port 443** und „Websockets Support“. Update von 2.5: siehe
+> [Upgrade auf 2.6](docs/UPGRADE-2.6.md).
+
+> **Neu in Saga 2.5:** **Anrufe über den eingebauten Knoten Gjallarhorn** – 1:1 und Gruppen, hinter jedem Reverse Proxy
+> mit WebSocket-Unterstützung über die normale Saga-Adresse: **eine Domain, nur Port 443**. Aus 1:1 wird eine Gruppe, Personen dazuholen, den Anruf aufs andere Gerät
 > holen. Dazu der neue **Tiptap-Editor** mit gleichzeitigem Bearbeiten (Admin-Schalter), **moderne Chats** mit Reaktionen,
 > Bearbeiten und Sprachnachrichten (weiter Ende-zu-Ende-verschlüsselt), Unterseiten in der Elternseite, Saga-Siegel als
 > Seitensymbole, eine Titelbild-Galerie, neu gestaltete Widgets und Importe aus Notion und Trilium. Update von 2.3/2.4:
@@ -64,8 +69,9 @@
   @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
   Sicherheitsnummern, mehrere Geräte; Chats archivieren oder löschen (nur für mich oder für alle)
 - **Audio- und Videoanrufe:** im Direkt-Chat und als Gruppenanruf, mit Bildschirm teilen, Bild-im-Bild und Übergabe
-  an ein anderes eigenes Gerät – WebRTC zwischen den Geräten,
-  Ende-zu-Ende verschlüsselt und mit den Chat-Schlüsseln geprüft, kein zusätzlicher Port (optional TURN über 443)
+  an ein anderes eigenes Gerät – WebRTC über den eingebauten Knoten Gjallarhorn (ab 2.6 Standard, auch 1:1; sonst
+  direkt zwischen den Geräten), Ende-zu-Ende verschlüsselt und mit den Chat-Schlüsseln geprüft, kein zusätzlicher Port
+  (optional TURN über 443)
 - **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
   (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **KI-Assistent (optional):** Fragen an die eigenen Seiten, Zusammenfassen, Aufgaben vorschlagen, Text verbessern oder
@@ -121,7 +127,7 @@ docker compose pull && docker compose up -d
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
 automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.4 baut die Datenbank um (Schema-Stand 14; zurück auf
 2.3 nur über das automatische Backup) und schaltet Gravatar für alle Konten aus – was beim Update von 2.3 zu beachten
-ist, steht in der Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“. Für 2.5 (Schema-Stand 35, Reverse Proxy mit WebSocket) gibt es eine eigene [Upgrade-Anleitung](docs/UPGRADE-2.5.md). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. **Ein Kanal bis 3.0:** Bis Saga 3.0 gibt es nur
+ist, steht in der Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“. Für 2.5 (Schema-Stand 35, Reverse Proxy mit WebSocket) gibt es eine eigene [Upgrade-Anleitung](docs/UPGRADE-2.5.md), für 2.6 (Schema-Stand 40, Gjallarhorn ab Werk an) [UPGRADE-2.6.md](docs/UPGRADE-2.6.md). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. **Ein Kanal bis 3.0:** Bis Saga 3.0 gibt es nur
 den Branch `main`, und jeder Stand davon ist eine Beta. Mit `SAGA_VERSION=2` (Standard) holt das Update den neuesten
 Stand von `main` – Testversionen wie `2.5.1-rc.3` und Releases wie `2.5.0`. Festnageln geht mit `SAGA_VERSION=2.5.0`
 (genau dieses Release), `2.5` (nur Releases 2.5.x) oder `testing-<commit>` – aber nur, solange keine neuere Version

@@ -42,9 +42,14 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 > Saga seguirá en beta hasta la versión 3.0; después, todo gira en torno a la estabilidad
 > ([camino hacia la 3.0](https://yggdrasil-sh.github.io/saga/es/#roadmap)).
 
-> **Novedades de Saga 2.5:** **llamadas a través del nodo integrado Gjallarhorn**: 1:1 y en grupo (al lanzamiento hasta 4
-> personas o dispositivos, marcadas como *experimentales*), detrás de cualquier proxy inverso con WebSocket y por la
-> dirección normal de Saga: **un dominio, solo el puerto 443**. Convierte un 1:1 en grupo, añade personas, pasa la llamada
+> **Llega con Saga 2.6 (ya en `main`):** **Gjallarhorn viene activado de fábrica**: llamadas de grupo grandes a través del
+> nodo integrado con hasta **16 dispositivos con vídeo o 50 solo con audio**; a través de un nodo vinculado adicional con
+> UDP, hasta **25 con vídeo / 50 solo audio**. Las llamadas entre dos personas también pasan entonces por el nodo (los
+> dispositivos no ven las direcciones IP). En el proxy sigue bastando **un dominio, solo el puerto 443** y WebSocket.
+> Actualizar desde 2.5: ver [actualizar a 2.6](docs/en/UPGRADE-2.6.md) (en inglés).
+
+> **Novedades de Saga 2.5:** **llamadas a través del nodo integrado Gjallarhorn**: 1:1 y en grupo, detrás de cualquier
+> proxy inverso con WebSocket y por la dirección normal de Saga: **un dominio, solo el puerto 443**. Convierte un 1:1 en grupo, añade personas, pasa la llamada
 > a otro dispositivo. Además, el nuevo **editor Tiptap** con edición simultánea (interruptor de administración), **chats
 > modernos** con reacciones, edición y mensajes de voz (siguen cifrados de extremo a extremo), subpáginas dentro de la
 > página padre, sellos de Saga como iconos de página, una galería de portadas, widgets rediseñados e importación desde
@@ -67,8 +72,9 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   subida reanudable), confirmaciones de lectura, estado en línea, respuestas y enlaces @ a páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
   seguridad, varios dispositivos; archivar o eliminar chats (solo para mí o para todos)
 - **Llamadas de audio y vídeo:** en el chat directo y como llamada en grupo, con pantalla compartida, imagen en imagen
-  y traspaso a otro dispositivo propio – WebRTC entre los dispositivos, cifradas
-  de extremo a extremo y verificadas con las claves del chat, sin puerto adicional (TURN opcional por el 443)
+  y traspaso a otro dispositivo propio – WebRTC a través del nodo integrado Gjallarhorn (por defecto desde 2.6, también
+  1:1; si no, directamente entre los dispositivos), cifradas de extremo a extremo y verificadas con las claves del chat,
+  sin puerto adicional (TURN opcional por el 443)
 - **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Asistente de IA (opcional):** pregunta a tus páginas, resume, sugiere tareas, mejora o traduce texto, con el modelo
@@ -125,7 +131,7 @@ docker compose pull && docker compose up -d
 **Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
 de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.4 actualiza la base de datos (esquema 14; volver a 2.3
 solo con la copia automática) y desactiva Gravatar para todas las cuentas; qué tener en cuenta al actualizar desde la 2.3
-está en la guía, sección 11 «De 2.3 a 2.4». Para la 2.5 (esquema 35, proxy inverso con WebSocket) hay una [guía de actualización](docs/en/UPGRADE-2.5.md) (en inglés). Las novedades están en el
+está en la guía, sección 11 «De 2.3 a 2.4». Para la 2.5 (esquema 35, proxy inverso con WebSocket) hay una [guía de actualización](docs/en/UPGRADE-2.5.md) (en inglés), para la 2.6 (esquema 40, Gjallarhorn activado de fábrica) [UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md) (en inglés). Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). **Un solo canal hasta la 3.0:** hasta Saga 3.0
 solo existe la rama `main`, y cada versión que sale de ella es una beta. Con `SAGA_VERSION=2` (valor por defecto) la

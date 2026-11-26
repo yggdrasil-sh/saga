@@ -226,14 +226,15 @@ Ab 2.5 telefonieren die **Apps** (iOS, Android) auch hinter einem Reverse Proxy,
 Manager, Caddy, Traefik, nginx), über den **eingebauten Gjallarhorn-Knoten**: unter der normalen Saga-Adresse, nur
 Port 443, ohne geteilten Knoten und ohne weiteren Umbau am Proxy. Die App reicht ihre Medien (ICE-TCP, Inhalte
 Ende-zu-Ende-verschlüsselt) je Leitung als WebSocket an `wss://saga.example.org/api/sfu/ws`; saga-media gibt ihn
-unverändert an den Knoten weiter. Gjallarhorn bleibt in 2.5 experimentell.
+unverändert an den Knoten weiter. Ab 2.6 ist Gjallarhorn ab Werk an (in 2.5 war es experimentell und aus) – der Tunnel
+ist damit der Standardweg hinter einem solchen Proxy.
 
 - **Pflicht: der Proxy reicht WebSocket durch.** Nginx Proxy Manager: beim Proxy-Host „Websockets Support“ einschalten –
   den braucht Gjallarhorn ohnehin (Messung `/probe`, Ereigniskanal). Caddy und Traefik: nichts zu tun. nginx: im
   `location /` zusätzlich `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` und
   `proxy_set_header Connection $http_connection;` (wie NPM). Fehlt das, antwortet der Knoten mit `426`; Admin → Anrufe
   zeigt dann „Proxy reicht WebSocket nicht durch“ (Knopf „Jetzt prüfen“), die Apps melden dasselbe.
-- `BASE_URL` ist die https-Adresse mit DNS-Namen, Gjallarhorn ist an (Admin → Anrufe). Ohne `HORN_NAME` und ohne
+- `BASE_URL` ist die https-Adresse mit DNS-Namen, Gjallarhorn ist an (Admin → Anrufe, ab 2.6 ab Werk). Ohne `HORN_NAME` und ohne
   Zertifikatsdateien für den Knoten läuft der eingebaute Knoten dann im **Tunnel-Betrieb**: kein eigener Port, kein
   eigenes Zertifikat, Admin → Anrufe zeigt „Anrufe über die Saga-Adresse (Tunnel)“ mit Zählern. Mit eigenem Namen für
   den Knoten bzw. in der Betriebsart „Ein Port“ bleibt alles wie bisher; der Tunnel ist dort zusätzlich der letzte Weg
@@ -1407,21 +1408,26 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   deinen anderen Geräten als Präsentation (in beide Richtungen, ab 2.5) – nur auf dem teilenden Gerät selbst nicht.
 - **Gruppenanrufe (ab 2.4):** In Gruppen-, freien und Seiten-Chats beginnen 📞/🎥 einen **Gruppenanruf**. Alle Mitglieder
   mit Saga 2.4 klingeln (in Chats mit mehr als 8 Mitgliedern nur still „Gruppenanruf läuft – Beitreten“), man kann
-  jederzeit beitreten und gehen; der Anruf läuft, solange mindestens zwei dabei sind. Höchstens **4 Geräte mit Video**
-  bzw. **6 nur mit Ton** (eigene Zusatzgeräte zählen mit; der Admin kann die Grenzen unter Allgemein → „Anrufe“ nur
-  senken). Jede Person erscheint als Kachel, wer spricht, ist grün
+  jederzeit beitreten und gehen; der Anruf läuft, solange mindestens zwei dabei sind. Direkt zwischen den Geräten
+  (Mesh, ohne Knoten) höchstens **4 Geräte mit Video** bzw. **6 nur mit Ton** (eigene Zusatzgeräte zählen mit; der Admin
+  kann die Grenzen unter Allgemein → „Anrufe“ nur senken); über einen Knoten (ab 2.6 Standard, nächster Punkt) passen
+  deutlich mehr hinein. Jede Person erscheint als Kachel, wer spricht, ist grün
   umrandet; Bildschirm teilen geht wie im Direkt-Chat. Ende-zu-Ende verschlüsselt wie bisher (jede Verbindung einzeln,
   der Server sieht nichts). Wer noch eine ältere App hat, sieht „braucht Saga 2.4“; über Servergrenzen geht es nur, wenn
   alle beteiligten Saga-Server 2.4 haben.
-- **Über einen Knoten (ab 2.5, Gjallarhorn experimentell):** Ist Gjallarhorn an (Admin → Anrufe, ab Werk aus), laufen
-  ab 2.5 **alle** Anrufe über einen Knoten – auch die zu zweit (Einstellung „Alle Anrufe über Knoten (auch 1:1)“, ab
-  Werk an; eine vor 2.5 gespeicherte „aus“-Einstellung gilt einmal als an, danach bleibt eine bewusste Wahl). Die Geräte
+- **Über einen Knoten (Gjallarhorn, ab 2.6 Standard):** Gjallarhorn ist ab 2.6 **ab Werk an** (Admin → Anrufe →
+  „Große Gruppenanrufe über Gjallarhorn“; in 2.5 war es experimentell und aus). Ein in 2.5 gespeichertes „aus“ gilt beim
+  Update als an, solange der Admin den Schalter nicht ab 2.6 bewusst setzt. Ist Gjallarhorn an, laufen **alle** Anrufe
+  über einen Knoten – auch die zu zweit (Einstellung „Alle Anrufe über Knoten (auch 1:1)“, ab Werk an; eine vor 2.5
+  gespeicherte „aus“-Einstellung gilt einmal als an, danach bleibt eine bewusste Wahl). Ohne eigenen Knoten ist das der
+  **eingebaute Knoten** im Saga-Container; gekoppelte Knoten sind ein Zusatz für mehr Leistung. Die Geräte
   sehen sich dann gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme; Ende-zu-Ende verschlüsselt bleibt es.
   Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein in den letzten 30 Tagen genutztes Gerät des
   Gegenübers es nicht kann (z. B. ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar
   ist. Die Linux-App kann es (sie klingelt, das Gespräch läuft im Browser); länger nicht genutzte Geräte zählen nicht.
-  Gjallarhorn ist in 2.5 **experimentell** – getestet mit bis zu 4 Personen bzw. Geräten je Anruf; Web und Admin
-  zeigen dazu eine kleine Marke „Experimentell“. Probleme bitte über **Einstellungen → Hilfe → Diagnose senden** melden.
+  Wie viele in einen Anruf passen, steht unter [Grenzen und Messwerte](#grenzen-und-messwerte-gjallarhorn). Wer
+  weiter direkt (Mesh) telefonieren will, schaltet „Große Gruppenanrufe über Gjallarhorn“ aus und speichert. Probleme
+  bitte über **Einstellungen → Hilfe → Diagnose senden** melden.
 - **Aus einem 1:1 wird eine Konferenz (ab 2.5):** Im 1:1 über einen Knoten in der Teilnehmerliste „Person hinzufügen“
   wählen – es entsteht eine **neue Gruppe** mit euch beiden und den Hinzugefügten, der Anruf läuft dort **ohne
   Unterbrechung** weiter (beide sind Admin der Gruppe), die Neuen klingeln. Im 1:1 steht danach „In Gruppenanruf
@@ -1456,6 +1462,48 @@ den eigenen coturn), **TURN-Server** mit **gemeinsamem Geheimnis** (empfohlen: S
 dem TURN-REST-Verfahren, gültig 12 Stunden; der TURN-Server sieht nur einen Hash statt des Kontonamens) oder **festem
 Benutzer/Passwort**, **Nur über TURN verbinden** (die Geräte sehen dann die IP-Adresse des Gegenübers nicht) und die
 **Klingeldauer** (15–120 s). Geheimnisse werden verschlüsselt gespeichert; „TURN-Zugangsdaten löschen“ entfernt sie.
+
+#### Grenzen und Messwerte (Gjallarhorn)
+
+**Grenzen je Anruf** (ab 2.6): Das sind Obergrenzen – der Admin kann sie unter Admin → Anrufe nur senken. Welche gilt,
+steht beim Start des Anrufs fest und richtet sich nach dem Knoten, auf dem er beginnt; ist ein Knoten mit UDP bereit
+(unter 70 % Auslastung), startet ein neuer Anruf dort.
+
+| Weg | mit Video | nur Ton |
+|---|---|---|
+| Eingebauter Knoten (Tunnel/TCP über die Saga-Adresse) | 16 Geräte | 50 Geräte |
+| Knoten mit UDP (z. B. ein gekoppelter Knoten) | 25 Geräte | 50 Geräte |
+| Direkt zwischen den Geräten (Mesh, ohne Knoten) | 4 Geräte | 6 Geräte |
+
+Eigene Zusatzgeräte (Begleitgeräte) zählen mit. Im Anruf über einen Knoten hört jedes Gerät die bis zu drei gerade
+Sprechenden (Top-3-Ton); wer neu zu sprechen beginnt, ist nach etwa 0,6–1 s zu hören. Admin → Anrufe zeigt je Knoten
+„Geschätzte Kapazität: etwa N mit Video / M nur Ton gleichzeitig“ – gerechnet aus den gemessenen Kosten je Gerät
+(unten), den Kernen des Knotens (ab Knoten 2.6 mit der CPU-Quote des Containers), `HORN_MAX_LEGS` und dem Upload, falls
+angegeben. Liegt `HORN_MAX_LEGS` eines Knotens unter dem, was ein Anruf an der Grenze braucht (z. B. der alte Standard
+48), steht dort eine Warnung; Standard ab 2.6 ist 200.
+
+**Messwerte** (Messreihe 2263-9 vom 25.11.2026, Testrechner Intel i7-10875H mit 8 Kernen / 16 Threads, Median aus
+3 Läufen je Stufe; 4 Browser mit Kamera 480 × 270 bei 20 fps, die übrigen Geräte als Testgeräte; vor Saga ein nginx
+mit „Websockets Support“ und TLS; Rohdaten in `tools/perf/horn-2263.json`). „Frei“ heißt: alle Freigabe-Kriterien
+erfüllt – u. a. höchstens 1 Einfrierer je Minute, Bild-Latenz p95 bis 400 ms im Tunnel bzw. 250 ms mit UDP, Ton-Lücken
+und Verlust bis 1 %:
+
+| Weg | Video frei bis | Ton frei bis | Bild-Latenz p95 | Bildrate Sprecher / Kacheln | Speicher je Bein (Video / Ton) | Kosten je Gerät in Kernen (Video / Ton) | Upload je Gerät (Video / Ton) |
+|---|---|---|---|---|---|---|---|
+| Eingebauter Knoten (Tunnel) | 16 Geräte | 50 Geräte ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
+| Knoten mit UDP | 25 Geräte | 50 Geräte ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
+
+¹ Frei im Dauerzustand (Lauf über 240 s: Saga-Prozess im Mittel 8,2 % eines Kerns, Ton-Verdeckung höchstens 0,4 %).
+Kommen viele auf einmal dazu oder wechseln laufend Personen, steigt die Last im Saga-Prozess an, solange das anhält
+(erste Minute im Mittel 19 % eines Kerns; bei Kommen und Gehen alle 10 s über 300 s im Mittel 33 %) – der Ton der
+Browser blieb dabei einwandfrei.
+² Über TCP bzw. den Tunnel bekommen Kacheln höchstens 10 Bilder je Sekunde, der Sprecher die volle Rate.
+³ Knoten und saga-media zusammen (saga-media trägt den Tunnel); der Knoten allein 0,0094 / 0,0032.
+⁴ Über 60 s gemessen; den Dauerzustand nur beim eingebauten Knoten (¹). 100 nur mit Ton waren über UDP zu viel
+(Saga-Prozess, Signal-Rate) – deshalb 50.
+
+Speicher: Ein Knoten mit 200 Beinen (`HORN_MAX_LEGS`) braucht danach etwa 0,24–0,54 GB. Über TCP bzw. den Tunnel
+belegt jedes Gerät zwei Beine (Ton und Bild), mit UDP eines.
 
 #### TURN über Port 443 (coturn hinter dem Reverse Proxy, per SNI)
 
@@ -1575,8 +1623,8 @@ Gerätepaar baut eine eigene, DTLS-SRTP-verschlüsselte Verbindung auf, Signale 
 signiert, jedes neue Gerät wird gegen die signierte Geräteliste seiner Person geprüft (unbekannte lehnt Saga ab). Der
 Server leitet nur die Signale weiter (sternförmig über den Server, der den Anruf führt – auch zwischen Servern, die nicht
 direkt verbunden sind) und sieht weder SDP noch Medien. Deshalb die Grenze von 4 Geräten mit Video bzw. 6 nur mit Ton;
-für größere Runden bräuchte es einen Weiterleitungs-Server (SFU) mit zusätzlicher Inhaltsverschlüsselung – das ist noch
-nicht Teil von Saga. Schnittstelle für Apps: `docs/APP-API.md`, Abschnitte „Anrufe: saga-call v3“, „Anrufe: Bildschirm
+für größere Runden braucht es einen Weiterleitungs-Server (SFU) mit zusätzlicher Inhaltsverschlüsselung – das ist seit
+2.5 Gjallarhorn (oben „Über einen Knoten“, ab 2.6 Standard). Schnittstelle für Apps: `docs/APP-API.md`, Abschnitte „Anrufe: saga-call v3“, „Anrufe: Bildschirm
 v2“ und „Anrufe: Mehrgeräte und Gruppen“.
 
 #### Eingebauter Knoten hinter einem L4-Proxy (z. B. NetBird ab 0.67)
@@ -2309,6 +2357,10 @@ solltest:
    Funktionen; Gruppenanrufe zeigen dort „braucht Saga 2.4“, große Videos erscheinen als Anhang „Mit Saga 2.4 öffnen“.
    Verbundene Server mit 2.3 bleiben verbunden; Gruppenanrufe, Gelesen/Online und große Videos gehen nur zwischen
    Servern mit 2.4.
+
+**Von 2.5 auf 2.6:** eigene, kurze Anleitung [UPGRADE-2.6.md](UPGRADE-2.6.md) – Backup, Migrationen bis Schema-Stand
+40, Gjallarhorn ab Werk an (auch 1:1 über den eingebauten Knoten; abschalten unter Admin → Anrufe), Proxy unverändert,
+föderierte große Anrufe erst, wenn alle beteiligten Server 2.6 haben, Rückweg nur über das Backup.
 
 **Von 2.3/2.4 auf 2.5:** eigene Anleitung [UPGRADE-2.5.md](UPGRADE-2.5.md) – Backup und kein Rückweg nach den
 Migrationen (Schema-Stand 35), Reverse Proxy (eine Domain, Port 443, „Websockets Support“ in Nginx Proxy Manager),

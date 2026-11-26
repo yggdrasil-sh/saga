@@ -42,9 +42,14 @@ private space – no cloud, no subscription, on your own server.
 > Saga stays in beta until version 3.0 – after that, it’s all about stability
 > ([road to 3.0](https://yggdrasil-sh.github.io/saga/en/#roadmap)).
 
-> **New in Saga 2.5:** **calls through the built-in Gjallarhorn node** – 1:1 and groups (up to 4 people or devices at
-> release, marked *experimental*), behind any reverse proxy with WebSocket support over your normal Saga address: **one
-> domain, port 443 only**. Turn a 1:1 into a group, bring people in, move a call to another device. Plus the new
+> **Coming with Saga 2.6 (already on `main`):** **Gjallarhorn is on by default** – large group calls through the built-in
+> node with up to **16 devices with video or 50 audio only**, through an additionally paired node with UDP up to
+> **25 with video / 50 audio only**. Calls between two people then go through the node as well (devices don't see each
+> other's IP addresses). The proxy still needs just **one domain, port 443 only** and WebSocket support. Upgrading from
+> 2.5: see [upgrading to 2.6](docs/en/UPGRADE-2.6.md).
+
+> **New in Saga 2.5:** **calls through the built-in Gjallarhorn node** – 1:1 and groups, behind any reverse proxy with
+> WebSocket support over your normal Saga address: **one domain, port 443 only**. Turn a 1:1 into a group, bring people in, move a call to another device. Plus the new
 > **Tiptap editor** with live co-editing (admin switch), **modern chats** with reactions, edits and voice messages
 > (still end-to-end encrypted), subpages inside the parent page, Saga seals as page icons, a cover image gallery,
 > redesigned widgets and imports from Notion and Trilium. Upgrading from 2.3/2.4: see the [upgrade guide](docs/en/UPGRADE-2.5.md).
@@ -67,8 +72,9 @@ private space – no cloud, no subscription, on your own server.
   server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices;
   archive or delete chats (just for me or for everyone)
 - **Audio and video calls:** in direct chats and as group calls, with screen sharing, picture-in-picture and handover
-  to another of your devices – WebRTC between the devices, end-to-end encrypted
-  and verified with the chat keys, no extra port (optional TURN over 443)
+  to another of your devices – WebRTC through the built-in Gjallarhorn node (default from 2.6, 1:1 too; otherwise
+  directly between the devices), end-to-end encrypted and verified with the chat keys, no extra port (optional TURN
+  over 443)
 - **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
 - **AI assistant (optional):** ask your pages, summarize, suggest tasks, improve or translate text – with a model
@@ -123,7 +129,7 @@ docker compose pull && docker compose up -d
 **Update:** `git pull && docker compose pull && docker compose up -d` – Saga automatically creates a backup
 before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.4 upgrades the database (schema 14; no way back to 2.3
 except via the automatic backup) and turns Gravatar off for all accounts – what to watch out for when updating from 2.3
-is in the guide, section 11 “From 2.3 to 2.4”. For 2.5 (schema 35, reverse proxy with WebSocket) see the [upgrade guide](docs/en/UPGRADE-2.5.md). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
+is in the guide, section 11 “From 2.3 to 2.4”. For 2.5 (schema 35, reverse proxy with WebSocket) see the [upgrade guide](docs/en/UPGRADE-2.5.md), for 2.6 (schema 40, Gjallarhorn on by default) [UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
 [releases](https://github.com/yggdrasil-sh/saga/releases). **One channel until 3.0:** until Saga 3.0
 there is only the `main` branch, and everything on it is a beta. With `SAGA_VERSION=2` (the default) an update pulls
 the latest state of `main` – test versions such as `2.5.1-rc.3` and releases such as `2.5.0`. To pin a version, use
