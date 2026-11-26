@@ -192,6 +192,9 @@ def api_app_today(request: Request):
             items, sources, ppl = tasksrc.collect(c, uid, today, TZ)
         out.update(items=items[:20], more=max(0, len(items) - 20), sources=[{k: x[k] for k in ("db", "title", "icon") if k in x}
                                                                              for x in sources], people=ppl)
+    if request.query_params.get("line") == "1":     # 2.6 (K-D 2271): Tageszeile fuer Mittel/Gross, ohne line=1 unveraendert
+        from saga import ai_today
+        out["line"] = ai_today.widget(uid, request.query_params.get("tz") or None)
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 

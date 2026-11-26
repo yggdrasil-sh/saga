@@ -64,6 +64,7 @@ from saga import ai_task                      # 2.6 (K-A6 2266): Runner ai.task 
 from saga import ai_jobs                      # 2.6 (K-B 2267): Planer + Auftraege-API (saga/ai_plan.py, saga/ai_undo.py)
 from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einwilligung, Meine Daten
 from saga import ai_notify  # noqa: F401 - 2.6 (K-C 2270): Glocke/Push zu Auftraegen, Knoepfe (saga/ai_act.py)
+from saga import ai_today                     # 2.6 (K-D 2271): Tageszeile /api/ai/today, /api/ai/today/quiet
 from saga import widget_push                  # 2.6 (Bugs-DB 2188): stiller Widget-Push, /api/app/widgets
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
@@ -367,6 +368,7 @@ app.include_router(ai_say.router)           # 2.6 K-H (2268): GET/PUT /api/ai/pr
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai
 app.include_router(ai_jobs.router)          # 2.6 (K-B 2267): Auftraege der Kollegin /api/ai/jobs/...
 app.include_router(ai_saga.router)          # 2.6 (K-I 2269): /saga, /api/ai/consent|prefs|thread|mydata
+app.include_router(ai_today.router)         # 2.6 (K-D 2271): GET/PUT /api/ai/today, POST|DELETE /api/ai/today/quiet
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
 app.include_router(clientlog.router)        # 2.5: Fehlerberichte und "Diagnose senden" (Feature clientlog1)
 app.include_router(calldiag.router)         # vor calls.router: /api/calls/diag ist kein Anruf {cid}
