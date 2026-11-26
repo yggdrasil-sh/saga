@@ -696,5 +696,21 @@ Kalender fertig geladen ist und bei Ruhe/Schalter (auch von einem anderen Gerät
 neu, wenn `v` vom eigenen abweicht. Dazu stiller Widget-Push (`widget_push.mark(today=True)`) bei Aufgaben, Auftrags-Wechseln
 und Ruhe/Schalter.
 
-**Stand S1 (Vertrag):** Antwortform vollständig; der Server liefert vorerst nur eigene Aufgaben (ohne Termine und
-Aufgabenquellen) und vorläufige Texte. Bausteine, Kalender, Live und `aitoday1` folgen (S2/S3).
+### 13.5 Berechnung und Texte
+
+- **Quellen:** Termine nur aus dem Kalender-Speicher (gleicher Zeitraum wie Heute-Leiste und Widget: heute bis
+  übermorgen in Serverzeit, gefiltert auf den Tag der Person in `tz`); Aufgaben aus Eingang und Aufgabenquellen mit den
+  Rechten der Aufgabenliste (`assigned` nur eigene Zeilen, keine Quellen anderer Server); Aufträge in `wartet_ok` und
+  `wartet_dich`. Seiten kommen erst mit „Ideen“.
+- **Auswahl:** nächster Termin mit Uhrzeit, der noch nicht vorbei ist (ganztägige nur, wenn keiner mit Uhrzeit kommt);
+  wichtigste überfällige Aufgabe (Priorität, dann Fälligkeit); wichtigste heute fällige; ab 18:00 ohne weiteren Termin
+  heute der erste Termin von morgen (`tomorrow`). Höchstens drei Teile, sonst fällt der mit der niedrigsten Priorität weg.
+- **Uhrzeiten** wie im Kalender (`static/calendar.js`, `Intl.DateTimeFormat(…, {hour: '2-digit', minute: '2-digit'})`):
+  en „07:30 PM“ (mit schmalem Leerzeichen U+202F wie ICU), de/es/ru/th „19:30“.
+- **Wortlaut:** Zug `day` in `saga/say/<lang>.json` (Teile ohne Ich-Form und ohne Thai-Partikel; nur der Satz trägt die
+  Form der Persona), Systemtexte (`label`, `quiet`, `ask`, `info`) in `saga/i18n`. Die Vektoren erzeugt
+  `tools/today_vectors.py gen` aus genau diesem Code (`saga.ai_today.build`).
+- **`ai.today.changed`:** `v` ist in Konto-Sprache und -Zone gerechnet; nutzt ein Gerät eine andere Sprache oder Zone,
+  liefert das Neuladen eben 304 bzw. den eigenen Stand.
+- **Noch offen:** ein neu angelegter Auftrag (gleich in `wartet_ok`) meldet sich nicht über `job.state` – „Wartet auf
+  dich“ erscheint dann beim nächsten Abruf (Öffnen von „Heute“, Ziehen), nicht live.
