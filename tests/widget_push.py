@@ -318,14 +318,15 @@ def run(rel):
     with connect() as c:
         reg = json.loads(c.execute("SELECT v FROM user_kv WHERE uid='wp-a' AND k='app_widgets'").fetchone()[0])
     last = max(reg[str(d1)].get("s") or [0])
-    t1 = len(F.TAP)
+    t1, tp = len(F.TAP), time.time()
     for i in range(4):
         T.req("PATCH", f"/api/notes/{pg}", A, {"title": f"Kanarie-Widgettitel-4K {i}"})
         time.sleep(0.2)
     q = queue(sR)
     ok(f"vier Aenderungen kurz nacheinander: genau ein wartender Auftrag je Abo ({len(q)})", len(q) == 1 and q[0][1] == 0)
     ok(f"... geplant GAP nach dem letzten Push ({round(q[0][0] - last, 2) if q else None} s, GAP {GAP})",
-       q and abs(q[0][0] - (last + GAP)) < 0.01 and q[0][0] > time.time())
+       q and q[0][0] > time.time() and (abs(q[0][0] - (last + GAP)) < 0.01      # Pruefer pw2188: lief der Test langsam,
+                                        or q[0][0] > last + GAP and tp + widget_push.SETTLE - 0.01 <= q[0][0] <= tp + widget_push.SETTLE + 2))  # gilt now+SETTLE
     ok("... noch nichts gesendet (Drosselung)", not [p for p in tap_pushes(t1) if p.get("token") == TR])
     g = wait(lambda: [p for p in tap_pushes(t1) if p.get("token") == TR])
     time.sleep(3)
