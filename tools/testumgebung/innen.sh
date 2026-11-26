@@ -123,11 +123,13 @@ print(r[0] if r else '-')" 2>/dev/null | tail -1)
 fi
 
 TF=tests/$F; case $F in /*) TF=$F;; esac
+PGSHIM=tests/pgshim:                                     # sqlite3 -> PostgreSQL (Server-Reihen)
+case $RN in relay_dienst.py) PGSHIM= ;; esac             # 2516: Relais-Dienst im Prozess mit echtem SQLite (store.py)
 LIMIT=${UMG_LIMIT:-1500}
 echo "== test start $(date +%T)"
 case $F in
   *.js) PYTHONPATH=tests/pgshim:. timeout -k 20 $LIMIT node $TF ;;
-  *)    PYTHONPATH=tests/pgshim:.${UMG_PYX:+:$UMG_PYX} timeout -k 20 $LIMIT python -u $TF ;;
+  *)    PYTHONPATH=$PGSHIM.${UMG_PYX:+:$UMG_PYX} timeout -k 20 $LIMIT python -u $TF ;;
 esac
 rc=$?
 echo "== test rc=$rc $(date +%T)"

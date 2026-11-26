@@ -46,6 +46,7 @@ tools/testumgebung/umgebung.sh stop 2                           # Reste beenden 
   | `mcp_oauth.py`, `mcp_oauth_proben.py` | `SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000`; anonyme Anfragen mit dem Server-Standard (`SAGA_OAUTH_ANON_PER_IP` 30) |
   | `fakerelay.py` | `SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org` (Relais der Reihe im Namensraum) |
   | `widget_push.py` | wie `fakerelay.py`, dazu `SAGA_WIDGET_PUSH_GAP=6` |
+  | `relay_dienst.py` | keine; die Reihe läuft ohne `tests/pgshim` (der Relais-Dienst im Prozess braucht echtes SQLite) |
 
   Eigene Sonder-Server von Hand: dieselben Variablen in `UMG_SENV` (Server) **und** in der Umgebung des Aufrufs (Reihe) –
   die Reihen lesen sie selbst (z. B. `GAP`, `FR_PORT`, Grenzen).
