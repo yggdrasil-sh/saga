@@ -454,6 +454,10 @@ Anrede `/api/ai/status` neu laden.
   **403** `{error, consent: "needed"}` – nichts geht ans Modell. Höchstens 200 eigene Fragen je 24 h (429); der eigene
   Zug wird erst nach bestandener Kontingent-Prüfung gespeichert.
   Kontingent, Spur und Fehler wie bei `/api/ai/ask`. Keine Websuche (kommt später).
+  Anders als `/api/ai/ask` geht **jede** Nachricht ans Modell, auch ohne passende Seite und ohne früheren Zug (2538):
+  auf Gruß/Dank antwortet die Kollegin kurz in der Persona, Faktenfragen ohne Material mit „nichts gefunden“ (vom
+  Modell, Zug `answer`, zählt aufs Kontingent). `done.no_match` kommt im Gespräch nicht mehr; ältere Züge mit
+  `zug: "no_match"` bleiben lesbar.
 - `DELETE /api/ai/thread` → `{deleted}` (Gespräch leeren).
 - Kein E2E-Chat: eigene Tabellen `ai_thread`/`ai_turn`, nie in `/api/chats`. Apps zeigen den Ort als eigenen Tab bzw.
   Bereich „Saga“ (M1), Kopf „{persona.name} · KI“ mit Persona-Bild und KI-Marke (K11).

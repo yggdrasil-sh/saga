@@ -1209,7 +1209,9 @@ def system_prompt(task, fr):
         f"4. {task}\n")
 
 
-def ask_messages(q, ctx, extra, web=None):
+def ask_messages(q, ctx, extra, web=None, chat=None):
+    """chat (Gespraech im Ort "Saga", Bugs-DB 2538): Zusatz zum Auftrag (ai_saga.thread_task) - Gruss/Dank ohne Material
+    erlaubt, Fakten weiter nur aus dem Material. Ohne chat ("Frag deine Seiten") unveraendert."""
     ql = LANG_NAMES.get(q_lang(q))
     lang = ql or _lang_name()
     web = web or {}
@@ -1222,13 +1224,15 @@ def ask_messages(q, ctx, extra, web=None):
             "If excerpts contradict each other, mention both and prefer the more recently changed one. "
             "Be brief (at most about 200 words). Plain text only; for lists start each line with '- '; no tables, no headings. "
             "Answer in the language of the question" + (f" ({ql})" if ql else "") + "; if that is unclear, answer in "
-            + _lang_name() + ".")
+            + _lang_name() + "." + (" " + chat if chat else ""))
     data = "\n\n".join(x for x in (ctx, extra, web.get("material")) if x) or "(no matching pages)"
+    tail = ("facts only from the material above, with [n] after each statement; a greeting or thanks needs no material" if chat
+            else "only from the material above, with [n] after each statement")
     # Kleine lokale Modelle befolgen die letzte Zeile am zuverlaessigsten: Sprache und Quellenangabe dort wiederholen
     fr = ai_frame.Frame()
     return [{"role": "system", "content": system_prompt(task, fr)},
             {"role": "user", "content": f"{fr.wrap(data)}\n\nQuestion: {q}\n\n"
-                                        f"(Answer in {lang}, only from the material above, with [n] after each statement.)"}]
+                                        f"(Answer in {lang}, {tail}.)"}]
 
 
 # --- Websuche (2.1, saga/ai_web.py) ------------------------------------------------------------------------------

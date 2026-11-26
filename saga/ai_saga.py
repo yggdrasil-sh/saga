@@ -608,11 +608,37 @@ def conversation_data(uid):
     return "\n\n".join(out), len(prev)
 
 
+def thread_task(uid, q):
+    """Zusatz zum Auftrag im Gespraech (Bugs-DB 2538, Weg A): jede Nachricht geht ans Modell, auch ohne Treffer. Gruss,
+    Dank, "was kannst du?" -> kurz in der Persona (Form, Anrede) und anbieten, was geht; Fakten weiter nur aus dem
+    Material, sonst ein kurzer Satz "nichts gefunden" - nie erfundene Seiten/Quellen. EV-18: keine Gefuehle, kein Smalltalk."""
+    from saga import ai, ai_say, i18n
+    p = ai_say.persona_for(uid)
+    form = ai_say._FORM_EN[ai_say.FORMS.get(p.get("form"), "f")]
+    formal = p.get("address") == "sie"
+    lang = ai.q_lang(q) or i18n.get_lang()
+    try:
+        from saga import ai_plan                                   # spaet: ai_plan importiert ai_saga
+        job = i18n.t_lang(lang, "Als Auftrag") if ai_plan.jobs_on(uid) else None
+    except Exception:  # noqa: BLE001 - ohne Auftraege nur Seiten, Aufgaben, Termine anbieten
+        job = None
+    offer = ("answer from their pages, tasks and appointments" +
+             (f", and carry out changes they ask for when they switch on «{job}»" if job else ""))
+    return ("This is a conversation in the person's notes app, not a search box. If the message is only a greeting, thanks or "
+            "the question what you can do, reply without material in one or two short sentences and offer what you can do: "
+            f"{offer}. Any other question needs the material: if the material does not answer it, say in one short sentence "
+            "that you found nothing about it in their pages - never invent pages, sources, facts or [n] numbers. "
+            "Never claim feelings or experiences, no small talk, no questions about their day, no emoji. "
+            f"Grammatical form of yourself as speaker: {form}. "
+            f"Address the person {'formally (Sie/usted/вы)' if formal else 'informally (du/tú/ты)'}.")
+
+
 def thread_messages(uid, q, ctx_text, extra):
-    """Nachrichten fuer das Gespraech: wie ai.ask_messages, das bisherige Gespraech steht mit im Datenrahmen."""
+    """Nachrichten fuer das Gespraech: wie ai.ask_messages, das bisherige Gespraech steht mit im Datenrahmen; dazu
+    thread_task (Gruss ohne Material, Persona-Form und Anrede - Bugs-DB 2538)."""
     from saga import ai
     conv, n = conversation_data(uid)
-    return ai.ask_messages(q, ctx_text, "\n\n".join(x for x in (conv, extra) if x)), n
+    return ai.ask_messages(q, ctx_text, "\n\n".join(x for x in (conv, extra) if x), chat=thread_task(uid, q)), n
 
 
 def cleanup(now=None):
@@ -855,14 +881,9 @@ async def api_thread_ask(request: Request):
         cx = await asyncio.to_thread(ai_ctx.select, uid, q, way="ask", budget=budget,
                                      want={"pages": True, "tasks": with_tasks, "calendar": with_cal})
         quota = int(c.get("quota") or 0)
-        msgs, nprev = await asyncio.to_thread(thread_messages, uid, q, cx.text, cx.extra)   # vor dem neuen Zug
-        if not cx.origins and not cx.extra and not nprev:  # nichts gefunden, kein Gespraech: ohne Modell (wie Frag deine Seiten)
-            ai._release(uid)
-            await asyncio.to_thread(add_turn, uid, "me", q)
-            text = ai.no_match_text(q)
-            n = await asyncio.to_thread(add_turn, uid, "ai", text, zug="no_match", read=cx.read)
-            ql = await asyncio.to_thread(ai._quota_left, uid)
-            return ai._static(text, {"quota_left": ql, "no_match": True, "read": list(cx.read), "turn": n}, [])
+        # Bugs-DB 2538 (Weg A): auch ohne Treffer und ohne frueheren Zug ans Modell - ein "Hi" bekommt eine Antwort der
+        # Kollegin statt "nichts gefunden" (das bleibt bei "Frag deine Seiten"); Kontingent zaehlt wie bei jedem Zug
+        msgs, _nprev = await asyncio.to_thread(thread_messages, uid, q, cx.text, cx.extra)   # vor dem neuen Zug
         left = await asyncio.to_thread(ai._take_quota, uid, quota)
         if left == -1:
             ai._release(uid)

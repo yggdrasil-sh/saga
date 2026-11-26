@@ -324,6 +324,9 @@ def run():
     st, d = sse("/api/ai/thread", A, {"q": "Wann fliegt der Zitronenfalter?"})
     ok("RT-36/K19: Gespraech ohne Einwilligung -> 403 consent=needed, kein Modellaufruf",
        st == 403 and isinstance(d, dict) and d.get("consent") == "needed" and fcount() == n0, (st, d))
+    st, d = sse("/api/ai/thread", A, {"q": "Hi"})
+    ok("2538: auch ein Gruss ohne Treffer ohne Einwilligung -> 403, kein Modellaufruf, kein Zug",
+       st == 403 and d.get("consent") == "needed" and fcount() == n0 and not q("SELECT 1 FROM ai_turn WHERE uid=?", (A,)), (st, d))
     ok("jobs.consent_ok echt: ohne Einwilligung False", jobs.consent_ok(A) is False)
     st, d = req("POST", "/api/ai/consent", A, {"answer": "later"})
     ok("'Jetzt nicht' -> later (keine Einwilligung)", st == 200 and d["consent"]["state"] == "later" and not ai_saga.consent_ok(A), d)
@@ -483,6 +486,39 @@ def run():
        st == 403 and (req("GET", "/api/ai/prefs", B)[1] or {}).get("ideas") == "off" and (s_b.get("intro") or {}).get("question") is None
        and (s_b.get("intro") or {}).get("ideas_allowed") is False, (st, d, s_b.get("intro")))
     setai(caps={"ai_ideas": [], "ai_act": []})
+
+    # --- 2538 (Weg A): im Gespraech geht jede Nachricht ans Modell, auch ohne Treffer und ohne frueheren Zug -------------
+    # Ben: eingewilligt (oben), noch kein Zug im Gespraech, Anrede du; Anna: Anrede Sie (Einstellungen oben)
+    used0 = q("SELECT COALESCE(SUM(n), 0) FROM ai_usage WHERE uid=?", (B,))[0][0]
+    n0 = fcount()
+    ok("2538: Vorbedingung - Ben eingewilligt, noch kein Zug", ai_saga.consent_ok(B) and not q("SELECT 1 FROM ai_turn WHERE uid=?", (B,)))
+    st, ev = sse("/api/ai/thread", B, {"q": "Hi"})
+    dn = get(ev, "done") or {}
+    msgs = ((fake("GET", "/_last") or {}).get("body") or {}).get("messages") or []
+    sysm, um = (msgs[0]["content"], msgs[-1]["content"]) if len(msgs) == 2 else ("", "")
+    rows = q("SELECT role, zug, text FROM ai_turn WHERE uid=? ORDER BY n", (B,))
+    ok("2538: erste Nachricht 'Hi' ohne Treffer -> Modellaufruf, done ohne no_match, Zuege me + ai/answer mit Modelltext",
+       st == 200 and fcount() == n0 + 1 and "no_match" not in dn and dn.get("turn") == 2 and [r[0] for r in rows] == ["me", "ai"]
+       and rows[1][1] == "answer" and rows[1][2] == text_of(ev).strip() and "nichts gefunden" not in text_of(ev), (st, dn, rows))
+    ok("2538: Kontingent zaehlt auch fuer den Gruss (ai_usage +1, quota_left kleiner)",
+       q("SELECT COALESCE(SUM(n), 0) FROM ai_usage WHERE uid=?", (B,))[0][0] == used0 + 1 and dn.get("quota_left") == 50 - used0 - 1,
+       (used0, dn.get("quota_left")))
+    ok("2538: Auftrag im Gespraech - Gruss ohne Material erlaubt, Fakten nur aus dem Material, nichts erfinden, EV-18, "
+       "Anrede der Person (du); Daten leer, Rahmen und Regeln wie bisher",
+       "only a greeting, thanks or the question what you can do" in sysm and "never invent pages, sources" in sysm
+       and "Never claim feelings or experiences, no small talk" in sysm and "Address the person informally" in sysm
+       and "Do not output links" in sysm and "using only the material" in sysm and "(no matching pages)" in um
+       and "a greeting or thanks needs no material" in um and um.count("<<<SAGA_DATA") == 1, (sysm[-700:], um[-300:]))
+    st, ev = sse("/api/ai/thread", B, {"q": "Danke!"})
+    ok("2538: zweiter Zug (Dank) wie gehabt ans Modell", st == 200 and fcount() == n0 + 2 and "no_match" not in (get(ev, "done") or {})
+       and len(q("SELECT 1 FROM ai_turn WHERE uid=?", (B,))) == 4)
+    ta = ai_saga.thread_task(A, "Hello, what can you do?")
+    ok("2538: thread_task: Sie-Anrede aus den Einstellungen; Auftrags-Schalter in der Sprache der Frage nur, wenn Auftraege an",
+       "Address the person formally" in ta and (("«As a job»" in ta) == bool(ai_plan.jobs_on(A))) and "pages, tasks and appointments" in ta, ta)
+    n0 = fcount()
+    st, ev = sse("/api/ai/ask", A, {"q": "Xylophonquadrat Bergkristall?"})
+    ok("2538: 'Frag deine Seiten' ohne Treffer weiter ohne Modell (no_match, nichts gefunden)",
+       st == 200 and fcount() == n0 and (get(ev, "done") or {}).get("no_match") is True and "nichts gefunden" in text_of(ev))
 
     # --- RT-36: Widerruf waehrend eines laufenden Auftrags ------------------------------------------------------------
     far = time.time() + 3600

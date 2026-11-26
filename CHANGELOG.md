@@ -537,6 +537,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Gespräch folgt sofort der Einstellung. Stille Knöpfe auf der KI-Karte haben eine sichtbare Kante (≥ 3:1, vorher 1,2:1
   im Dunkeln). „Als Aufgabe anlegen“ aus einer Absage nimmt einen kurzen Titel statt der ganzen Bitte; die Bitte steht
   im Detail unter „Deine Bitte“ (2509).
+- **Gespräch im Ort „Saga“: ein „Hi“ bekommt eine Antwort** (Bugs-DB 2538): Die erste Nachricht ohne passende Seite
+  ging bisher nicht an das Modell, und es kam „Dazu habe ich in deinen Seiten nichts gefunden“. Jetzt geht im Gespräch
+  jede Nachricht an die Kollegin: Auf Gruß oder Dank antwortet sie kurz (mit Name, Form und Anrede der Persona) und sagt,
+  wobei sie helfen kann; Faktenfragen ohne passende Seite beantwortet sie mit „dazu finde ich nichts“, ohne etwas zu
+  erfinden. Jede Nachricht zählt dabei aufs Tageskontingent. „Frag deine Seiten“ bleibt wie bisher (ohne Treffer kein
+  Modellaufruf).
 
 ### Sicherheit
 
