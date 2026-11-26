@@ -3,7 +3,9 @@
 redirect_uri exakt (Gross/Klein, Port, Schraegstrich, Fragment, IDN, localhost-Varianten), Registrierung (gefaehrliche
 Adressen, CSP-Zeichen im Host), XSS ueber Client-Name/URIs auf Zustimmungs- und Fehlerseite, Rechteausweitung (scope,
 resource, Formular, Refresh), Origin null / Sec-Fetch-Site, Wettlauf zweier gleichzeitiger Refresh- bzw. Code-Anfragen,
-Gruppe verliert API-Recht, Admin-Widerruf, Konto loeschen, Metadaten mit fremdem Host. Wegwerf-Konten oa-*, raeumt auf.
+Gruppe verliert API-Recht, Admin-Widerruf, Konto loeschen, Metadaten mit fremdem Host. Nachpruefung der Auflagen: 30-s-Kulanz
+(parent, mehrere Rotationen, alter Token nie gueltig), Verdraengung nur unbenutzter Clients, ip_key, Bindungs-Cookie,
+Sperrreihenfolge oauth_grant -> api_token (N5). Wegwerf-Konten oa-*, raeumt auf.
 Server: SAGA_OAUTH_REG_PER_IP>=40. Aufruf (saga-test): PYTHONPATH=tests/pgshim:. python tests/mcp_oauth_proben.py"""
 import re
 import sys
@@ -266,6 +268,128 @@ def part_meta():
        st == 401 and f'resource_metadata="{BASE}/' in (hd.get("www-authenticate") or "") and "evil" not in (hd.get("www-authenticate") or ""), hd)
 
 
+def _tok(cid, jar=None):
+    d = grant(cid, RU, jar or jar_for(m.U))
+    return d.get("access_token", ""), d.get("refresh_token", "")
+
+
+def _refresh(cid, ref):
+    return m.token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+
+
+def part_grace2(cid):
+    """Nachpruefung M1 (30-s-Kulanz): mehrere Rotationen (parent), Angreifer mit altem Token, nie ein Token aus der Kulanz."""
+    acc1, r1 = _tok(cid)
+    st, d2, _, _ = _refresh(cid, r1)
+    st, d3, _, _ = _refresh(cid, d2.get("refresh_token", ""))
+    ok("Kulanz: zwei Rotationen R1->R2->R3", st == 200 and d3.get("refresh_token"), d3)
+    st, x, _, _ = _refresh(cid, d2.get("refresh_token", ""))
+    ok("Kulanz: R2 sofort noch einmal (Nachfolger R3 unbenutzt) -> invalid_grant ohne Token", st == 400 and "access_token" not in x, x)
+    ok("Kulanz: ... Verbindung lebt (Zugriffstoken zu R3 gilt)", m.mcp_ok(d3.get("access_token", "")))
+    st, x, _, _ = _refresh(cid, r1)
+    ok("Kulanz: R1 noch einmal, sein Nachfolger R2 schon benutzt -> Kette gesperrt", st == 400 and not m.mcp_ok(d3.get("access_token", "")), x)
+    st, x, _, _ = _refresh(cid, d3.get("refresh_token", ""))
+    ok("Kulanz: ... auch der neueste Refresh-Token R3 verweigert", st == 400 and "access_token" not in x, x)
+    # Angreifer mit gestohlenem altem Token innerhalb der Kulanz: bekommt nie einen gueltigen Token
+    acc1, r1 = _tok(cid)
+    st, d2, _, _ = _refresh(cid, r1)                          # die App rotiert
+    got = [_refresh(cid, r1) for _ in range(3)]               # Angreifer probiert den alten Token mehrmals
+    ok("Kulanz: Angreifer mit altem Token (3 Versuche in 30 s) -> nie ein Token", all(g[0] == 400 and "access_token" not in g[1] for g in got),
+       [g[0] for g in got])
+    ok("Kulanz: ... die App arbeitet mit R2 weiter", m.mcp_ok(d2.get("access_token", "")) and _refresh(cid, d2.get("refresh_token", ""))[0] == 200)
+    # Restrisiko (Entscheidung M1, nur Hinweis): Angreifer rotiert ZUERST, die App nutzt den alten Token < 30 s danach
+    acc1, r1 = _tok(cid)
+    st, da, _, _ = _refresh(cid, r1)                          # Angreifer
+    st, x, _, _ = _refresh(cid, r1)                           # App, kurz danach
+    print(f"INFO Kulanz-Restrisiko: Angreifer rotiert zuerst, App < 30 s danach -> App {st}, Token des Angreifers "
+          f"{'gilt weiter' if m.mcp_ok(da.get('access_token', '')) else 'gesperrt'} (spaeterer Versuch der App > 30 s sperrt)", flush=True)
+    # Kulanz-Antwort zaehlt nicht als Rotation: nach > 30 s sperrt derselbe alte Token die Kette
+    with db.connect() as c, c:
+        import hashlib
+        c.execute("UPDATE oauth_refresh SET used=? WHERE hash=?", (time.time() - 31, hashlib.sha256(r1.encode()).hexdigest()))
+    st, x, _, _ = _refresh(cid, r1)
+    ok("Kulanz: alter Token nach > 30 s -> Kette gesperrt (auch der Angreifer-Zweig)", st == 400 and not m.mcp_ok(da.get("access_token", "")), x)
+
+
+def part_evict(cid):
+    """Nachpruefung M2: die Verdraengung trifft nur nie benutzte Clients - nie einen Client mit Verbindung."""
+    from saga import oauth
+    used_id, unused_id = "sgc_" + "u" * 24, "sgc_" + "v" * 24
+    with db.connect() as c, c:
+        c.execute("INSERT INTO oauth_client (id, name, redirect_uris, created) VALUES (?,?,?,?)", (used_id, "Testclient benutzt alt", '["' + RU + '"]', 0.5))
+        c.execute("INSERT INTO oauth_grant (uid, client_id, scopes, resource, created, revoked) VALUES (?,?,?,?,?,?)",
+                  (m.U, used_id, '["mcp"]', BASE + "/mcp", time.time(), time.time()))       # getrennte Verbindung zaehlt als benutzt
+        c.execute("INSERT INTO oauth_client (id, name, redirect_uris, created) VALUES (?,?,?,?)", (unused_id, "Testclient unbenutzt alt", '["' + RU + '"]', 1.0))
+        unused = c.execute("SELECT COUNT(*) FROM oauth_client WHERE NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id)").fetchone()[0]
+        total = c.execute("SELECT COUNT(*) FROM oauth_client").fetchone()[0]
+    keep = (oauth.UNUSED_MAX, oauth.CLIENTS_MAX)
+    try:
+        oauth.UNUSED_MAX = unused
+        out, err = oauth.register_client({"client_name": "Testclient neu 1", "redirect_uris": [RU], "token_endpoint_auth_method": "none"})
+        oauth.UNUSED_MAX, oauth.CLIENTS_MAX = 10 ** 6, total + 1         # Gesamtgrenze voll
+        out2, err2 = oauth.register_client({"client_name": "Testclient neu 2", "redirect_uris": [RU], "token_endpoint_auth_method": "none"})
+    finally:
+        oauth.UNUSED_MAX, oauth.CLIENTS_MAX = keep
+    with db.connect() as c:
+        have = {r[0] for r in c.execute("SELECT id FROM oauth_client WHERE id IN (?,?,?)", (used_id, unused_id, cid)).fetchall()}
+    ok("Verdraengung: Client mit (getrennter) Verbindung und der Test-Client bleiben, aeltester unbenutzter weicht",
+       out and not err and out2 and not err2 and have == {used_id, cid}, (err, err2, have))
+    with db.connect() as c, c:
+        c.execute("DELETE FROM oauth_client WHERE id=?", (used_id,))
+    ok("ip_key: IPv4-gemappt (auch hex), Zone, Gross/Klein, /64", oauth.ip_key("::ffff:c633:6401") == "198.51.100.1"
+       and oauth.ip_key("2001:DB8:1:2::1") == oauth.ip_key("2001:db8:1:2:abcd::1%eth0") == "2001:db8:1:2::/64"
+       and oauth.ip_key("198.51.100.1") == "198.51.100.1" and oauth.ip_key("?") == "?")
+
+
+def part_cookie(cid):
+    """Nachpruefung N3: Bindungs-Cookie."""
+    ver, ch = m.pkce()
+    st, _, _, hd = req("GET", m.authorize_url(cid, ch, ru=RU), jar=jar_for(m.U))
+    sc = (hd.get("set-cookie") or "").lower()
+    ok("N3-Cookie: HttpOnly, SameSite=Lax, Path=/oauth, Max-Age=600", "saga_oab=" in sc and "httponly" in sc and "samesite=lax" in sc
+       and "path=/oauth" in sc and "max-age=600" in sc, sc)
+    fixed = "A" * 32
+    j = jar_for(m.U)
+    j.more["saga_oab"] = fixed
+    st, _, _, hd = req("GET", m.authorize_url(cid, ch, ru=RU), jar=j)
+    print(f"INFO N3-Cookie: mitgebrachter Wert wird {'uebernommen' if fixed in (hd.get('set-cookie') or '') else 'ersetzt'} "
+          "(Fixierung nur mit Cookie-Einschleusen, z. B. Nachbar-Subdomain)", flush=True)
+
+
+def _lock_probe(name, fn):
+    """Haelt oauth_grant G gesperrt (wie _revoke_grant/token_refresh), startet fn im Faden und aendert dann eine Zeile in
+    api_token von G - verklemmt sich nur, wenn fn api_token vor oauth_grant sperrt (N5)."""
+    acc, ref = _tok(m.CID)
+    with db.connect() as c:
+        tid, gid = c.execute("SELECT id, grant_id FROM api_token WHERE hash=?", (__import__("hashlib").sha256(acc.encode()).hexdigest(),)).fetchone()
+    with db.connect() as c, c:
+        c.execute("UPDATE api_token SET last_used=0 WHERE id=?", (tid,))
+    err = []
+
+    def run():
+        try:
+            fn(acc)
+        except Exception as ex:  # noqa: BLE001
+            err.append(repr(ex)[:200])
+    try:
+        with db.connect() as c, c:
+            c.execute("SELECT id FROM oauth_grant WHERE id=? FOR UPDATE", (gid,))
+            th = threading.Thread(target=run)
+            th.start()
+            time.sleep(0.8)
+            c.execute("UPDATE api_token SET name=name WHERE id=?", (tid,))
+    except Exception as ex:  # noqa: BLE001
+        err.append("haltende Transaktion: " + repr(ex)[:200])
+    th.join(20)
+    ok(f"N5-Sperrreihenfolge: {name} gegen gehaltene Verbindung ohne Verklemmen", not err, err)
+
+
+def part_locks():
+    from saga.userdata import revoke_user_logins
+    _lock_probe("apitok.lookup (zuletzt benutzt)", lambda acc: apitok.lookup(acc))
+    _lock_probe("Ueberall abmelden (revoke_user_logins)", lambda acc: revoke_user_logins(m.U))
+
+
 def main():
     m.cleanup()
     prev = dict(auth.settings(fresh=True).get("api") or {})
@@ -279,7 +403,12 @@ def main():
         part_scopes(cid)
         part_origin(cid)
         part_race(cid)
+        part_grace2(cid)
+        part_evict(cid)
+        part_cookie(cid)
         part_lifecycle(cid)
+        m.CID = cid
+        part_locks()
     finally:
         auth.save_setting("api", prev)
         m.cleanup()
