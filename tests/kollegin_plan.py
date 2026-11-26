@@ -594,6 +594,28 @@ def part_websaga(pages):
     ok("hkcal: 404 beim Laden -> Gone (CalError) -> Fail 404", issubclass(hkcal.Gone, hkcal.CalError)
        and api_calendar._cal_err(hkcal.Gone("x")).status == 404 and api_calendar._cal_err(hkcal.Conflict("x")).status == 409
        and api_calendar._cal_err(hkcal.CalError("x")).status == 400)
+    # pweb 4: Verbindung reisst nach dem Planen (halt) - die Zuege entstehen trotzdem, genau einmal
+    import threading
+    K.req("DELETE", "/api/ai/thread", cA)
+    halt = threading.Event()
+    real = ai_plan.plan
+
+    def plan_then_drop(*a, **kw):
+        r = real(*a, **kw)
+        halt.set()
+        return r
+    ai_plan.plan = plan_then_drop
+    try:
+        res = ai_jobs.plan_job(A, "Erinnere mich Freitag an die Grillkohle", stop=halt.is_set, into_thread=True)
+    finally:
+        ai_plan.plan = real
+    tn = ai_saga.turns(A)
+    pz = [x for x in tn if x["zug"] == "plan" and x["job_id"] == res.get("job")]
+    ok(f"pweb 4: Verbindung weg nach dem Planen -> Auftrag mit genau einem Plan-Zug + Bitte ({res.get('type')}, {[(x['role'], x['zug']) for x in tn]})",
+       halt.is_set() and res.get("type") == "plan" and len(pz) == 1 and len([x for x in tn if x["zug"] == "job"]) == 1)
+    K.req("GET", "/api/ai/thread", cA)
+    ok("pweb 4: Laden des Gespraechs legt nichts doppelt an", len(ai_saga.turns(A)) == len(tn))
+    jobs.cancel(res.get("job") or 0, A)
     K.req("DELETE", "/api/ai/thread", cA)
 
 

@@ -169,7 +169,8 @@ deine Zustimmung galt ja für die alte Adresse.
 Unter **Einstellungen › Saga** stellst du ein, ob Marin Ideen zeigt, ob das Gespräch gespeichert wird und was Marin
 lesen darf (Seiten, Aufgaben, Termine, Chat-Nachrichten beim Rufen im Chat). Darunter liegt **Meine Daten**:
 
-- **Einwilligung widerrufen** – Marin erledigt danach keine Aufträge mehr (laufende halten an und warten auf dich),
+- **Einwilligung widerrufen** – Marin erledigt danach keine Aufträge mehr (laufende halten an und warten auf dich; im
+  Bereich **Saga › Aufträge** kannst du sie weiter ansehen, abbrechen oder rückgängig machen),
   bringt keine Ideen, und das Gespräch im Bereich **Saga** ist aus. Fragen an anderen Stellen – „Frag deine Seiten“,
   die Hilfen auf einer Seite, die KI im Chat – gehen weiter an die KI, aber nur, wenn du sie stellst; dort steht immer
   „Was du hier fragst, liest die KI auf …“. Du kannst Marin jederzeit wieder kennenlernen.

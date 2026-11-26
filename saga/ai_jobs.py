@@ -274,6 +274,18 @@ def to_thread(uid, text, choice, recipe, res):
         print(f"ai_jobs: thread {type(ex).__name__}", flush=True)
 
 
+def plan_job(uid, text, *, note=None, choice=None, recipe=None, fields=None, source="saga", emit_status=None, stop=None,
+             into_thread=False):
+    """Planen (ai_plan.plan) und - aus dem Gespraech - die Zuege anlegen -> Ergebnis (dict). Die Zuege entstehen immer,
+    sobald es einen Auftrag gibt, auch wenn die Verbindung inzwischen gerissen ist (pweb 4: sonst ein verwaister Auftrag
+    ohne Zug im Verlauf); genau einmal je Bitte - nur hier, nie beim Laden des Gespraechs."""
+    res = dict(ai_plan.plan(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
+                            emit_status=emit_status, stop=stop))
+    if into_thread:
+        to_thread(uid, text, choice, recipe, res)
+    return res
+
+
 @router.post("/api/ai/jobs")
 async def api_jobs_create(request: Request):
     """{text, source?, context?: {note}, choice?, thread?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt, ohne
@@ -328,11 +340,8 @@ async def api_jobs_create(request: Request):
 
     def work():
         try:
-            res = ai_plan.plan(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
-                               emit_status=lambda d: put(("status", d)), stop=halt.is_set)
-            res = dict(res)
-            if into_thread and not halt.is_set():
-                to_thread(uid, text, choice, recipe, res)
+            res = plan_job(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
+                           emit_status=lambda d: put(("status", d)), stop=halt.is_set, into_thread=into_thread)
             put(("res", res))
         except Exception as ex:  # noqa: BLE001 - nie Inhalte loggen
             print(f"ai_jobs: {type(ex).__name__}: {ex}", flush=True)

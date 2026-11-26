@@ -5706,5 +5706,8 @@
  "Als Auftrag": "Как поручение",
  "Rückgängig: {what}": "Отменить: {what}",
  "Diesen Auftrag gibt es nicht mehr.": "Этого поручения больше нет.",
- "Oder gib mir einen Auftrag:": "Или дай мне поручение:"
+ "Oder gib mir einen Auftrag:": "Или дай мне поручение:",
+ "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Твои поручения приостановлены, потому что ты отозвал(а) согласие. Смотреть, отменять и откатывать их по-прежнему можно – новые поручения только после нового знакомства с {name}.",
+ "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Админ переключил ИИ – твои поручения ждут, пока ты снова не познакомишься с {name}.",
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Новые поручения можно дать, когда ты познакомишься с {name}."
 }

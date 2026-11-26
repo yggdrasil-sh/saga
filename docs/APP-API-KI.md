@@ -483,6 +483,11 @@ Seiten“ und die Hilfen für die offene Seite.
 - **Ein Freigabe-Muster:** Plan-Karte, Rückfrage, Absage und Rückmeldung sind im Web dieselben Bausteine wie im
   Detail (`static/ai-jobs.js`: `HKJobs.planCard`, `askCard`, `refuseCard`, `feedback`, `head`); `HKJobs.mount(el,
   {form: false, give})` zeigt Liste und Detail ohne eigene Eingabe. Apps zeichnen ebenso nur eine Plan-Karte.
+- **Ohne Einwilligung** (Widerruf, `stale`): Gespräch und „Als Auftrag“ sind gesperrt (nur die Kennenlernen-Karte), aber
+  vorhandene Aufträge bleiben über den Reiter „Aufträge“ erreichbar – Liste, Detail, Abbrechen und Rückgängig brauchen
+  keine Einwilligung; darüber steht „Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast …“. Apps
+  verhalten sich genauso. Die Züge zu einem Auftrag legt der Server auch an, wenn die Verbindung nach dem Planen reißt
+  (genau einmal, `ai_jobs.plan_job`).
 - **Begriffe:** „Auftrag“ (etwas, das die KI erledigt) und „Aufgabe“ (Eintrag der Aufgabenliste) sind verschieden:
   en **Job**/„Jobs“ vs. *Task*, es **Encargo**/„Encargos“ vs. *Tarea* (ru „Поручение“ vs. „Задача“). „Requests“ scheidet
   aus, weil „Anfragen/Tag“ (Kontingent) im Englischen schon „requests“ heißt. Systemtexte kommen fertig vom Server.

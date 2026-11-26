@@ -80,6 +80,8 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
     ph: document.getElementById('sg-ta').placeholder, lab: document.getElementById('sg-ta').getAttribute('aria-label') }));
   ok('Tastatur: Tab erreicht „Als Auftrag“, Leertaste schaltet an -> Knopf „Auftrag geben“, Platzhalter „Sag …, was du brauchst …“',
     reached && md.pressed === 'true' && md.send === 'Auftrag geben' && /^Sag .+, was du brauchst …$/.test(md.ph) && /^Auftrag an /.test(md.lab), md);
+  const an = await p.getByRole('button', { name: 'Als Auftrag', exact: true, pressed: true }).count();
+  ok('pweb 2: zugänglicher Name „Als Auftrag“ ohne den Haken (Zustand über aria-pressed)', an === 1, an);
 
   ok('Plan-Karte erscheint im Verlauf', await give('Kümmer dich um die Grillkohle bis Freitag'));
   const c = await p.evaluate((L) => {
@@ -156,6 +158,9 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   await give('Erinnere mich Freitag an die Grillkohle');
   await p.locator('#sg-feed .kj-plan .kj-no').last().click();
   ok('Lieber nicht -> „Abgebrochen – nichts ist passiert.“', await until(() => p.evaluate((L) => /Abgebrochen – nichts ist passiert\./.test((eval(L) || {}).textContent || ''), LAST('.sg-job'))));
+  const ln = await p.evaluate((L) => { const w = eval(L); return { id: +w.dataset.job, lead: w.querySelector('.kj-lead').textContent, note: (w.querySelector('.kj-note') || {}).textContent }; }, LAST('.sg-job'));
+  const lnT = (await api('GET', '/api/ai/jobs/' + ln.id)).d.title;
+  ok('pweb 3: nach „Lieber nicht“ Leitzeile = Titel, darunter der Grund (wie nach dem Neuladen)', ln.lead === lnT && ln.note === 'Abgebrochen – nichts ist passiert.', { ln, lnT });
   // Absage mit Alternative
   ok('Absage erscheint', await give('Bestell die Kohle in einem Onlineshop'));
   const rf = await p.evaluate((L) => { const k = eval(L); return k && { t: k.querySelector('.kj-lead').textContent, b: [...k.querySelectorAll('button')].map((x) => x.textContent) }; }, LAST('.kj-refuse'));

@@ -150,6 +150,41 @@ const WORDS = {
   ok('schmal: Einträge ≥ 44 px, kein waagrechter Überlauf', mob.h >= 44 && !mob.over, mob);
   await shot('saga-auftraege-schmal-dunkel');
   await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-auftraege-schmal-hell'); await p.emulateMedia({ colorScheme: 'dark' });
+  // pweb 1: nach dem Widerruf bleiben die Auftraege erreichbar (Liste, Detail, Abbrechen, Rueckgaengig), Gespraech gesperrt
+  await p.setViewportSize({ width: 1440, height: 900 });
+  const sv = (await sse({ recipe: 'aufgabe', fields: { text: 'Servietten kaufen' } })).data;
+  await api('POST', '/api/ai/jobs/' + sv.job + '/approve', { plan_v: sv.plan_v, plan_hash: sv.plan_hash });
+  await until(async () => (await api('GET', '/api/ai/jobs/' + sv.job)).d.state === 'erledigt', 15000);
+  const wd = await api('DELETE', '/api/ai/consent');
+  ok('Widerruf (Testvorbereitung)', wd.s === 200 && wd.d.consent.state === 'withdrawn', wd);
+  await p.goto(BASE + '/saga'); await sleep(1500);
+  const W1 = await until(() => p.evaluate(() => !document.getElementById('sg-tabs').hidden && ({ intro: !!document.querySelector('#sg-intro .sg-intro'),
+    form: !document.getElementById('sg-ask').hidden, feed: !document.getElementById('sg-feed').hidden,
+    tabs: [...document.querySelectorAll('#sg-tabs [role=tab]')].map((b) => b.textContent) })), 8000);
+  ok('pweb 1: nach Widerruf - Kennenlernen-Karte, Gespräch/„Als Auftrag“ gesperrt, Reiter „Aufträge“ sichtbar', W1 && W1.intro && !W1.form && !W1.feed && W1.tabs.join('|') === 'Gespräch|Aufträge', W1);
+  await p.click('#sg-tab-jobs');
+  const W2 = await until(() => p.evaluate(() => { const n = document.getElementById('sg-jobs-note'); return n && !n.hidden && document.querySelector('#sg-jobs .kj-item') && {
+    note: n.textContent, items: [...document.querySelectorAll('#sg-jobs .kj-ititle')].map((x) => x.textContent) }; }), 8000);
+  ok('pweb 1: Hinweis „angehalten, weil du die Einwilligung widerrufen hast“ + Liste', W2 && /angehalten, weil du die Einwilligung widerrufen hast/.test(W2.note)
+    && W2.items.indexOf('Servietten kaufen') >= 0 && W2.items.indexOf('Pavillon abholen') >= 0, W2);
+  await shot('saga-widerruf-auftraege-dunkel');
+  await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-widerruf-auftraege-hell'); await p.emulateMedia({ colorScheme: 'dark' });
+  await p.evaluate(() => [...document.querySelectorAll('#sg-jobs .kj-item')].find((i) => /Servietten kaufen/.test(i.textContent)).click());
+  await until(() => p.evaluate(() => !!document.querySelector('#sg-jobs .kj-detail:not([hidden]) .kj-undo')));
+  await p.click('#sg-jobs .kj-detail .kj-undo');
+  if (await until(() => p.evaluate(() => !!document.querySelector('.hk-ask-box')), 2000)) await p.click('.hk-ask-box .btn-destr');
+  ok('pweb 1: Rückgängig ohne Einwilligung', await until(async () => (await api('GET', '/api/ai/jobs/' + sv.job)).d.state === 'zurueckgenommen'));
+  await p.click('#sg-jobs .kj-back');
+  await until(() => p.evaluate(() => !!document.querySelector('#sg-jobs .kj-item')));
+  await p.evaluate(() => [...document.querySelectorAll('#sg-jobs .kj-item')].find((i) => /Pavillon abholen/.test(i.textContent)).click());
+  await until(() => p.evaluate(() => !!document.querySelector('#sg-jobs .kj-detail:not([hidden]) .kj-no, #sg-jobs .kj-detail:not([hidden]) .kj-cancel')));
+  await p.click('#sg-jobs .kj-detail .kj-no, #sg-jobs .kj-detail .kj-cancel');
+  ok('pweb 1: Abbrechen ohne Einwilligung', await until(async () => (await api('GET', '/api/ai/jobs/' + wait.job)).d.state === 'abgebrochen'));
+  await shot('saga-widerruf-detail-dunkel');
+  await p.click('#sg-tab-talk');
+  ok('pweb 1: Gespräch zeigt nur die Kennenlernen-Karte (keine Eingabe)', await p.evaluate(() => !document.getElementById('sg-talk').hidden && !!document.querySelector('#sg-intro .sg-intro') && document.getElementById('sg-ask').hidden));
+  { const st = await api('GET', '/api/ai/status');               // wieder einwilligen (Aufraeumen)
+    await api('POST', '/api/ai/consent', { answer: 'no_ideas', version: st.d.intro.version, host: st.d.intro.host }); }
   await api('POST', '/api/ai/jobs/' + wait.job + '/cancel', {});
   ok('keine Skriptfehler', !errs.length, errs);
   await br.close();

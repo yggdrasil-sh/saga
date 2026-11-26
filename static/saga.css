@@ -94,9 +94,12 @@ body.saga-page>main.sg:focus{outline:none}
 .sg-jobs{display:flex;flex-direction:column;flex:1 0 auto}
 .sg-jobs .kj-root{overflow:visible;padding:0}
 .sg-mode[aria-pressed=true]{background:var(--ai-tint,var(--sg-tint));border-color:var(--ai-edge,var(--sg-edge));color:var(--fg);font-weight:600}
-.sg-mode[aria-pressed=true]::before{content:"✓ "}
+.sg-mode[aria-pressed=true]::before{content:"✓ ";content:"✓ " / ""}   /* pweb 2: Haken nicht im zugaenglichen Namen (aria-pressed sagt es) */
 .sg-me-tag{display:block;font-size:.875rem;color:var(--muted);margin-bottom:.1rem}
 .sg-job{display:flex;flex-direction:column}
+.sg-jobs-note{margin:0 0 .8rem;padding:.55rem .75rem;border-left:3px solid var(--ai-edge,var(--sg-edge));background:var(--ai-tint,var(--sg-tint));
+  border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:.95rem}
+.sg-jobs-note[hidden]{display:none}
 .sg-feed .kj-card{max-width:44rem}
 .sg-feed .kj-card>.btn,.sg-feed .kj-card>.ai-report,.sg-feed .kj-card>.sg-report{align-self:flex-start}
 .sg-mode{border-color:var(--ai-edge,var(--sg-edge))}

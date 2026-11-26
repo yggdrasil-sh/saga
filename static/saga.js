@@ -384,7 +384,9 @@
       if (on && focusTab) b.focus();
     });
     if (k === 'jobs') {
-      if (!G.jobs) G.jobs = HKJobs.mount($('sg-jobs'), { form: false, give: function (text) { tab('talk', false); setMode('job'); $('sg-ta').value = text; submit(); } });
+      if (!G.jobs) G.jobs = HKJobs.mount($('sg-jobs'), { form: false, give: function (text) {
+        tab('talk', false); if (!consentOk()) return;      // ohne Einwilligung: nur die Kennenlernen-Karte, nichts ans Modell
+        setMode('job'); $('sg-ta').value = text; submit(); } });
       else G.jobs.refresh();
     }
     try { history.replaceState(null, '', k === 'jobs' ? '/saga?tab=jobs' : '/saga'); } catch (e) { /* egal */ }
@@ -507,6 +509,26 @@
     line.appendChild(tx); line.appendChild(inf.btn);
     b.appendChild(line); b.appendChild(inf.box); b.hidden = false;
   }
+  // pweb 1: ohne Einwilligung (Widerruf, Endpunkt gewechselt) bleiben vorhandene Auftraege erreichbar - Liste, Detail,
+  // Abbrechen, Rueckgaengig (der Server erlaubt das ohne Einwilligung); Gespraech und "Als Auftrag" bleiben gesperrt.
+  function jobsNote(text) {
+    var box = $('sg-jobs'), n = $('sg-jobs-note');
+    if (!n) { n = el('p', 'sg-jobs-note'); n.id = 'sg-jobs-note'; box.insertBefore(n, box.firstChild); }
+    n.textContent = text || ''; n.hidden = !text;
+  }
+  function pausedJobs() {
+    if (!jobsOn()) return;
+    api('GET', '/api/ai/jobs').then(function (d) {
+      var n = 0; Object.keys(d.counts || {}).forEach(function (k) { n += d.counts[k] || 0; });
+      if (!n || consentOk()) return;
+      var c = (S.st && S.st.consent) || {}, name = P().name;
+      jobsNote(c.state === 'withdrawn' ? T('Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.', { name: name })
+        : c.state === 'stale' ? T('Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.', { name: name })
+        : T('Neue Aufträge gibst du, sobald du {name} kennengelernt hast.', { name: name }));
+      $('sg-tabs').hidden = false;
+      if (/[?&]tab=jobs\b/.test(location.search)) tab('jobs', false);
+    }).catch(function () { /* keine Liste: nur die Karte */ });
+  }
   function page() {
     var st = S.st;
     var avBox = $('sg-av'); avBox.textContent = ''; avBox.appendChild(av(36));
@@ -523,9 +545,10 @@
         }, reload: function () { page(); },
         later: function () { location.href = '/dashboard'; } }));
       slot.hidden = false;
+      pausedJobs();
       return;
     }
-    slot.hidden = true; slot.textContent = '';
+    slot.hidden = true; slot.textContent = ''; jobsNote('');
     form.hidden = false;
     $('sg-tabs').hidden = !jobsOn();
     tab(jobsOn() && /[?&]tab=jobs\b/.test(location.search) ? 'jobs' : G.tab, false);

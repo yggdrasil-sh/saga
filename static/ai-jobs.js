@@ -174,7 +174,9 @@
     function cancel(err) {
       api('POST', '/api/ai/jobs/' + cur.job + '/cancel', {}).then(function (d) {
         card.textContent = ''; card.classList.add('kj-small');
-        card.appendChild(head(d.state_text)); card.appendChild(el('p', 'kj-lead', d.text || ''));
+        // pweb 3: wie die Zustandskarte nach dem Neuladen - Leitzeile = Titel, darunter der Grund
+        card.appendChild(head(d.state_text)); card.appendChild(el('p', 'kj-lead', cur.title || d.text || ''));
+        if (cur.title && d.text) card.appendChild(el('p', 'kj-note', d.text));
         if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(cur.job, true); }));
         focusIn('.kj-lead');
         say(opts.live, d.text || d.state_text);

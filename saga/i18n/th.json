@@ -5706,5 +5706,8 @@
  "Als Auftrag": "เป็นงานที่มอบหมาย",
  "Rückgängig: {what}": "เลิกทำ: {what}",
  "Diesen Auftrag gibt es nicht mehr.": "งานที่มอบหมายนี้ไม่มีอยู่แล้ว",
- "Oder gib mir einen Auftrag:": "หรือมอบหมายงานให้ฉัน:"
+ "Oder gib mir einen Auftrag:": "หรือมอบหมายงานให้ฉัน:",
+ "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "งานที่มอบหมายของคุณถูกหยุดไว้ เพราะคุณถอนความยินยอม ยังดู ยกเลิก และเลิกทำได้ – งานใหม่ได้เมื่อคุณทำความรู้จัก {name} อีกครั้ง",
+ "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "ผู้ดูแลเปลี่ยน AI แล้ว – งานที่มอบหมายของคุณจะรอจนกว่าคุณจะทำความรู้จัก {name} อีกครั้ง",
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "คุณมอบหมายงานใหม่ได้เมื่อทำความรู้จัก {name} แล้ว"
 }

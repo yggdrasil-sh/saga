@@ -5706,5 +5706,8 @@
  "Als Auftrag": "Als Auftrag",
  "Rückgängig: {what}": "Rückgängig: {what}",
  "Diesen Auftrag gibt es nicht mehr.": "Diesen Auftrag gibt es nicht mehr.",
- "Oder gib mir einen Auftrag:": "Oder gib mir einen Auftrag:"
+ "Oder gib mir einen Auftrag:": "Oder gib mir einen Auftrag:",
+ "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.",
+ "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.",
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "Neue Aufträge gibst du, sobald du {name} kennengelernt hast."
 }

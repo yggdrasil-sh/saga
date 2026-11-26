@@ -5706,5 +5706,8 @@
  "Als Auftrag": "As a job",
  "Rückgängig: {what}": "Undo: {what}",
  "Diesen Auftrag gibt es nicht mehr.": "This job no longer exists.",
- "Oder gib mir einen Auftrag:": "Or give me a job:"
+ "Oder gib mir einen Auftrag:": "Or give me a job:",
+ "Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast. Ansehen, abbrechen und rückgängig machen geht weiter – neue Aufträge erst, wenn du {name} wieder kennenlernst.": "Your jobs are paused because you withdrew your consent. You can still view, cancel and undo them – new jobs only once you meet {name} again.",
+ "Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.": "Your admin changed the AI – your jobs wait until you meet {name} again.",
+ "Neue Aufträge gibst du, sobald du {name} kennengelernt hast.": "You can give new jobs once you have met {name}."
 }
