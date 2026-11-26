@@ -522,7 +522,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Lebensdauer an Apple. Apple hält für ein iPhone oder iPad ohne Netz nur eine Mitteilung je App vor – der stille Push
   konnte so eine wartende echte Mitteilung verdrängen. Jetzt gehen alle stillen Hintergrund-Pushes nur sofort
   (`apns-expiration: 0`, eigener Weg und Push-Relais, wie schon der Widget-Push); sichtbare Mitteilungen und Anrufe
-  bleiben unverändert.
+  bleiben unverändert. Folge: War das Gerät offline, als eine Nachricht gelöscht wurde, kann die alte Mitteilung dazu
+  später noch erscheinen (ohne Nachrichtentext).
 
 ### Sicherheit
 
