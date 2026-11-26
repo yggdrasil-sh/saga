@@ -5602,7 +5602,6 @@
  "So verbindest du Claude": "So verbindest du Claude",
  "In Claude unter Einstellungen → Connectors „Eigenen Connector hinzufügen“ wählen und diese Adresse eintragen. Claude öffnet dann Saga; dort meldest du dich an und wählst, was Claude darf.": "In Claude unter Einstellungen → Connectors „Eigenen Connector hinzufügen“ wählen und diese Adresse eintragen. Claude öffnet dann Saga; dort meldest du dich an und wählst, was Claude darf.",
  "Adresse für Claude": "Adresse für Claude",
- "Widerruft nur die API-Tokens (Skripte, Automationen, KI-Werkzeuge); Webhooks dieser Tokens werden abgeschaltet.": "Widerruft nur die API-Tokens (Skripte, Automationen, KI-Werkzeuge); Webhooks dieser Tokens werden abgeschaltet.",
  "USA": "USA",
  "Frankreich": "Frankreich",
  "Deutschland": "Deutschland",
