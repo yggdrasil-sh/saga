@@ -245,11 +245,13 @@ HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use 
    not: the node then answers `426`, and Admin → Calls shows “the proxy does not pass WebSocket through” (the hint names
    the Nginx Proxy Manager switch; here it is “WebSockets”).
 2. **`.env`:** `BASE_URL=https://saga.example.com` and `TRUSTED_PROXIES` = the address Node64 uses to reach Saga
-   (container in the same Docker network: its address or the whole Docker network, e.g. `172.18.0.0/16`). Node64 sends
-   the real visitor address in `X-Forwarded-For` and drops forged headers from outside. Without the entry all visitors
-   share one address (the lockout after failed logins then hits everyone); the admin area shows a hint. For IPv6
-   visitors, “IPv6 and Docker” above also applies: run Node64 on the host network (`network_mode: host`) or with IPv6
-   in the Docker network.
+   (container in the same Docker network: its address or the whole Docker network, e.g. `172.18.0.0/16`; Node64 on the
+   host network: `TRUSTED_PROXIES=*` as above), plus `HOST_BIND=127.0.0.1` – otherwise port 8080 can be reached around
+   Node64 (without TLS, and over IPv6 with the Docker gateway's address, which Saga then trusts). Node64 sends the real
+   visitor address in `X-Forwarded-For` and drops forged headers from outside. Without the entry all visitors share one
+   address (the lockout after failed logins then hits everyone); the admin area shows a hint. For IPv6 visitors, “IPv6
+   and Docker” above also applies: run Node64 on the host network (`network_mode: host`) or with IPv6 in the Docker
+   network.
 3. **Health check** (optional, Healthchecks module): type HTTP on `http://<saga-host>:8080/healthz` – answer `ok` with
    status 200. The “create health check for this target” button on the proxy host only checks `/` (redirect to the
    login); `/healthz` is more precise.
@@ -257,10 +259,11 @@ HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use 
    (e.g. only `DE`, `EU`) if Saga is only used from there. Federated Saga servers and phones abroad must be allowed too.
 
 Do not publish the admin area (port 8081) – never as a proxy host, keep using an SSH tunnel (section 4). Buffering,
-timeouts and the upload limit can stay at their defaults (tested with Node64 1.7.13: live channel without delay, even
-after minutes of silence; the Android app's push connection still open after 31 idle minutes; 9 MB upload; a call
-through the tunnel). Node64 can also create the proxy host itself from Docker
-labels (extra metadata on the container): see the template in `docker-compose.yml` at the `saga` service.
+timeouts and the upload limit can stay at their defaults (tested with Node64 1.7.13 on Podman: live channel without
+delay, even after minutes of silence; the Android app's push connection still open after 31 idle minutes; 9 MB upload; a
+call through the tunnel; not tested: Docker instead of Podman, Let's Encrypt, country filters and blocklists,
+`node64.proxy.network`). Node64 can also create the proxy host itself from Docker labels (extra metadata on the
+container): see the template in `docker-compose.yml` at the `saga` service.
 
 Saga behind CGNAT/DS-Lite (no public IPv4 of your own)? ipv64.net's **CDN64** makes Node64 reachable without port
 forwarding – it needs an ipv64 account and is not tested with Saga. For more capacity in large group calls, add a

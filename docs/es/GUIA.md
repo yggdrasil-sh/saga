@@ -250,7 +250,9 @@ puerto 443**.
    páginas cargan, pero las llamadas no: el nodo responde entonces `426` y Admin → Llamadas muestra «el proxy no deja
    pasar WebSocket» (el aviso nombra el interruptor de Nginx Proxy Manager; aquí se llama «WebSockets»).
 2. **`.env`:** `BASE_URL=https://saga.example.com` y `TRUSTED_PROXIES` = la dirección desde la que Node64 llega a Saga
-   (contenedor en la misma red de Docker: su dirección o toda la red, p. ej. `172.18.0.0/16`). Node64 envía la dirección
+   (contenedor en la misma red de Docker: su dirección o toda la red, p. ej. `172.18.0.0/16`; Node64 en la red del host:
+   `TRUSTED_PROXIES=*` como arriba), además `HOST_BIND=127.0.0.1`; si no, se llega al puerto 8080 sin pasar por Node64
+   (sin TLS y, por IPv6, con la dirección de la pasarela de Docker, en la que Saga confía). Node64 envía la dirección
    real del visitante en `X-Forwarded-For` y descarta cabeceras falsificadas desde fuera. Sin esa entrada todos los
    visitantes comparten una dirección (el bloqueo tras intentos fallidos afecta entonces a todos); el área de
    administración muestra un aviso. Para visitantes IPv6 vale además «IPv6 y Docker» de arriba: Node64 en la red del
@@ -263,10 +265,11 @@ puerto 443**.
    en el extranjero también tienen que estar permitidos.
 
 No publiques el área de administración (puerto 8081): nunca como host de proxy, sigue usando un túnel SSH (sección 4).
-El búfer, los tiempos de espera y el límite de subida pueden quedarse como vienen (probado con Node64 1.7.13: canal en
-directo sin retraso, también tras minutos de silencio; la conexión push de la app de Android sigue abierta tras 31
-minutos de reposo; subida de 9 MB; una llamada por el túnel). Node64 también puede crear el host de proxy él
-mismo a partir de etiquetas de Docker (datos extra del contenedor): plantilla en `docker-compose.yml`, servicio `saga`.
+El búfer, los tiempos de espera y el límite de subida pueden quedarse como vienen (probado con Node64 1.7.13 en Podman:
+canal en directo sin retraso, también tras minutos de silencio; la conexión push de la app de Android sigue abierta tras
+31 minutos de reposo; subida de 9 MB; una llamada por el túnel; sin probar: Docker en lugar de Podman, Let's Encrypt,
+filtros por país y listas de bloqueo, `node64.proxy.network`). Node64 también puede crear el host de proxy él mismo a
+partir de etiquetas de Docker (datos extra del contenedor): plantilla en `docker-compose.yml`, servicio `saga`.
 
 ¿Saga detrás de CGNAT/DS-Lite (sin IPv4 pública propia)? **CDN64** de ipv64.net hace accesible Node64 sin abrir puertos;
 necesita una cuenta de ipv64 y no está probado con Saga. Para más capacidad en llamadas de grupo grandes se añade un
