@@ -89,21 +89,24 @@
       if (ln.a11y) row.setAttribute('aria-label', ln.a11y);
       var lab = el('span', 'hz-kurz-l', d.label || ''); lab.setAttribute('aria-hidden', 'true'); row.appendChild(lab);
       var parts = el('span', 'hz-kurz-parts');
-      (ln.parts || []).forEach(function (p, i) {
-        if (i) { var s = el('span', 'hz-kurz-sep', '·'); s.setAttribute('aria-hidden', 'true'); parts.appendChild(s); }
-        var t = p && p.target, b;
+      var list = ln.parts || [];
+      list.forEach(function (p, i) {                          // Trenner am Ende des Teils: bricht nie allein an den Zeilenanfang
+        var it = el('span', 'hz-kurz-pi'), t = p && p.target, b;
         if (t && TYPES[t.type]) { b = btn('hz-kurz-p', p.text); b.addEventListener('click', function () { go(t); }); }
         else b = el('span', 'hz-kurz-p is-plain', p && p.text);
         b.dataset.kind = (p && p.kind) || '';
-        parts.appendChild(b);
+        it.appendChild(b);
+        if (i < list.length - 1) { var s = el('span', 'hz-kurz-sep', '·'); s.setAttribute('aria-hidden', 'true'); it.appendChild(s); }
+        parts.appendChild(it);
       });
       row.appendChild(parts);
+      var ctl = el('span', 'hz-kurz-ctl');
       var x = btn('hz-kurz-x', '✕'); x.setAttribute('aria-label', T('Gerade nicht')); x.title = T('Gerade nicht');
       x.addEventListener('click', function () { act('POST', '/api/ai/today/quiet', undefined, 'undo'); });
       var mo = btn('hz-kurz-m', '⋯'); mo.setAttribute('aria-label', T('Mehr zur Tageszeile')); mo.title = T('Mehr zur Tageszeile');
       mo.setAttribute('aria-haspopup', 'menu'); mo.setAttribute('aria-expanded', 'false');
       mo.addEventListener('click', function () { menu(mo); });
-      row.appendChild(x); row.appendChild(mo);
+      ctl.appendChild(x); ctl.appendChild(mo); row.appendChild(ctl);
       return row;
     }
     function pillEl(q) {

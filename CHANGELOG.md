@@ -49,6 +49,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   es im Browser nie; ist ein Knopf veraltet, öffnet sich der Auftrag. Die Desktop-App meldet mit neutralem Titel. Neu in
   Einstellungen › Saga: „Mitteilungen von {Persona}“, „Inhalt in Mitteilungen“ (wenn entsperrt / nie) und „Ruhe bis
   7:00 · Wieder an“. (2270)
+- **Tageszeile „Kurz gesagt“ auf „Heute“ im Web** (2271 K-D): Unter der Lagezeile nennt eine Zeile bis zu drei Dinge
+  beim Namen (nächster Termin, überfällige bzw. heute fällige Aufgabe), darunter „Wartet auf dich“ mit Weg zu Saga ›
+  Aufträge. Tippen öffnet nur (hebt die Aufgabe hervor), hakt nie ab. ✕ = „Gerade nicht“ bis morgen früh auf allen
+  Geräten, an der Stelle die Pille „Ruhe bis morgen · Wieder an“; nach dem dritten ✕ einmal die Frage „Tageszeile
+  ausblenden?“. ⋯ mit „Tageszeile ausblenden“ und „Warum sehe ich das?“, Schalter in Einstellungen › Saga. Ohne KI-Marke,
+  ruhiger Tag ohne Element, ohne KI-Fähigkeit und bei älterem Server nichts; Live-Abgleich über `ai.today.changed`.
 - **Kontakte ins Adressbuch des Handys** (Bugs-DB 2027b, Doku): Anleitung (de/en/es) und `docs/APP-API.md` beschreiben
   „Zu Kontakten hinzufügen“ in den Apps – einzeln, ohne Kontakte-Berechtigung, ohne Abgleich, ohne Saga-Adresse.
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte

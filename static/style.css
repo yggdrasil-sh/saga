@@ -3323,8 +3323,10 @@ body.heute-page .rail-add .tsrc-target{max-width:6.2rem}
 .hz-kurz[hidden]{display:none}
 .hz-kurz-row{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .3rem;min-height:2.25rem}
 .hz-kurz-l{font-size:var(--fs-sm);font-weight:600;color:var(--muted);margin-right:.2rem;white-space:nowrap}
-.hz-kurz-parts{display:contents}
-.hz-kurz-sep{color:var(--muted)}
+.hz-kurz-parts{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .15rem;flex:0 1 auto;min-width:0}
+.hz-kurz-pi{display:inline-flex;align-items:center;gap:.15rem;max-width:100%;min-width:0}
+.hz-kurz-sep{color:var(--muted);padding:0 .1rem}
+.hz-kurz-ctl{display:inline-flex;align-items:center;flex:none;white-space:nowrap}
 .hz-kurz-p{display:inline-flex;align-items:center;min-height:32px;max-width:100%;padding:.15rem .45rem;border:1px solid transparent;
   border-radius:var(--r-sm);background:none;color:var(--fg);font:inherit;font-size:var(--fs-md);line-height:inherit;text-align:start;
   overflow-wrap:anywhere;cursor:pointer;transition:background .15s,border-color .15s}
@@ -3332,7 +3334,6 @@ body.heute-page .rail-add .tsrc-target{max-width:6.2rem}
 .hz-kurz-p:not(.is-plain):hover,.hz-kurz-p:focus-visible{background:var(--card-h);border-color:var(--border)}
 .hz-kurz-x,.hz-kurz-m,.hz-kurz-ix{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:0;border:0;
   border-radius:var(--r-sm);background:none;color:var(--muted);font:inherit;font-size:var(--fs-md);line-height:1;cursor:pointer}
-.hz-kurz-x{margin-left:.15rem}
 .hz-kurz-x:hover,.hz-kurz-m:hover,.hz-kurz-ix:hover,.hz-kurz-x:focus-visible,.hz-kurz-m:focus-visible,.hz-kurz-ix:focus-visible{background:var(--card-h);color:var(--fg)}
 .hz-kurz-pill{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.35rem;min-height:32px;padding:0 .3rem 0 .8rem;border:1px solid var(--border);
   border-radius:var(--r-pill);background:var(--card);color:var(--muted);font-size:var(--fs-base)}
