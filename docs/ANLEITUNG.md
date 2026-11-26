@@ -260,6 +260,41 @@ ist damit der Standardweg hinter einem solchen Proxy.
 - **Cloudflare (orangene Wolke):** reicht WebSocket durch, der Tunnel geht technisch. Dauerhafter Medienverkehr über
   Cloudflare kann aber gegen deren Nutzungsbedingungen verstoßen (vor allem im kostenlosen Tarif).
 
+### Saga hinter Node64 (ipv64.net)
+
+[Node64](https://node64.de) ist ein Homelab-Container von ipv64.net. Sein Reverse Proxy heißt **PROXY64**; dazu kommen
+Health-Checks (Erreichbarkeits-Prüfungen), Länderfilter und Blocklisten. Lokal läuft Node64 **ohne ipv64-Konto**. Saga
+steht dahinter wie hinter jedem anderen Proxy: Node64 beendet TLS (HTTPS), Saga spricht weiter nur HTTP auf Port 8080 –
+Webseite, Apps, Live-Kanal und Anrufe (Tunnel, oben) laufen über **eine Domain und nur Port 443**.
+
+1. **Proxy-Host anlegen** (PROXY64 → Proxy-Hosts): Domain `saga.example.com`, Ziel `http://<Saga-Host>:8080`
+   (bzw. der Name des Saga-Containers, wenn beide im selben Docker-Netz hängen), **WebSockets an** (bei neuen Hosts
+   ab Werk an), Zertifikat nach Wahl (Let's Encrypt, eigenes, für Tests selbst signiert). Ohne WebSockets
+   laden Seiten zwar, Anrufe aber nicht: Der Knoten antwortet dann `426`, Admin → Anrufe zeigt „Proxy reicht WebSocket
+   nicht durch“ (der Hinweis nennt den Schalter von Nginx Proxy Manager, gemeint ist hier „WebSockets“).
+2. **`.env`:** `BASE_URL=https://saga.example.com` und `TRUSTED_PROXIES` = Adresse, von der Node64 bei Saga ankommt
+   (Container im selben Docker-Netz: dessen Adresse oder das ganze Docker-Netz, z. B. `172.18.0.0/16`). Node64 schickt
+   die echte Besucher-Adresse in `X-Forwarded-For` und verwirft gefälschte Köpfe von außen. Ohne den Eintrag teilen sich
+   alle Besucher eine Adresse (Sperre nach Fehlversuchen gilt dann für alle); Admin zeigt dafür einen Hinweis. Für
+   IPv6-Besucher gilt außerdem „IPv6 und Docker“ oben: Node64 dann im Host-Netz (`network_mode: host`) oder mit IPv6 im
+   Docker-Netz betreiben.
+3. **Health-Check** (optional, Modul Healthchecks): Typ HTTP auf `http://<Saga-Host>:8080/healthz` – Antwort `ok` mit
+   Status 200. Der Knopf „Healthcheck für dieses Ziel anlegen“ am Proxy-Host prüft nur `/` (Umleitung zur Anmeldung);
+   `/healthz` ist genauer.
+4. **Tipp Schutz:** Unter PROXY64 → Sicherheit die ipv64-Blocklisten einschalten und am Proxy-Host einen Länderfilter
+   setzen (z. B. nur `DE`, `EU`), wenn Saga nur von dort genutzt wird. Föderierte Saga-Server und Handys im Ausland
+   müssen dann zugelassen sein.
+
+Nicht freigeben: den Admin-Bereich (Port 8081) – nie als Proxy-Host, weiter nur per SSH-Tunnel (Abschnitt 4).
+Puffern, Zeitlimits und Upload-Grenze kann man so lassen (geprüft mit Node64 1.7.13: Live-Kanal ohne Verzögerung, auch
+nach Minuten Ruhe; Push-Verbindung der Android-App nach 31 Minuten Ruhe noch offen; Upload 9 MB; Anruf über den
+Tunnel). Node64 kann den Proxy-Host auch selbst aus Docker-Labels
+(Zusatzangaben am Container) anlegen: Vorlage in der `docker-compose.yml` beim Dienst `saga`.
+
+Saga steht hinter CGNAT/DS-Lite (keine eigene öffentliche IPv4)? **CDN64** von ipv64.net macht Node64 ohne
+Portfreigabe erreichbar – das braucht ein ipv64-Konto und ist mit Saga nicht getestet. Mehr Leistung für große
+Gruppenanrufe bringt ein gekoppelter Knoten, siehe [Grenzen und Messwerte](#grenzen-und-messwerte-gjallarhorn).
+
 ### Ein Name, ein Port (443)
 
 Ab 2.5 kann Saga HTTPS **selbst** annehmen und den Port mit dem eingebauten Gjallarhorn-Knoten teilen: Webseite,

@@ -72,6 +72,15 @@ services:
       # (der Knoten nennt den Geraeten diesen Port als Kandidaten). Ohne UDP laufen Anrufe ueber TCP/TLS bzw. den Tunnel.
       # - "${HORN_BIND:-0.0.0.0}:8443:8443/udp"
       # Hinter einer TLS-Durchreiche auf dem Proxy-Host sysctl net.ipv4.tcp_notsent_lowat=16384 setzen (gjallarhorn/NODE.md)
+    # Optional Node64 (ipv64.net, Reverse Proxy PROXY64; ANLEITUNG Abschnitt 3 "Saga hinter Node64"): Node64 legt den
+    # Proxy-Host aus diesen Labels selbst an (WebSockets an), wenn dort PROXY64 -> Docker -> "Docker-Labels auswerten"
+    # an ist und Node64 die Docker-API sieht; das Zertifikat fuer solche Hosts dort ebenfalls waehlen (sonst nur ein
+    # schon vorhandenes passendes, z. B. Wildcard). Node64 erreicht Saga im selben Docker-Netz auf Port 8080 - dann
+    # HOST_BIND=127.0.0.1 und TRUSTED_PROXIES auf Node64 bzw. dieses Netz setzen. Domain anpassen:
+    # labels:
+    #   - node64.proxy.host=saga.example.com
+    #   - node64.proxy.port=8080
+    #   - node64.proxy.network=saga_default   # nur noetig, wenn Saga in mehreren Docker-Netzen haengt
     volumes:
       - saga-data:/data      # Dateien/Bilder der Seiten, Symbol-Cache
       - ./certs:/certs:ro          # optionale CA-Zertifikate (eigene LDAP-/SSO-/Kalender-Server)

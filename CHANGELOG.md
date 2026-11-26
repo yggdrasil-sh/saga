@@ -431,6 +431,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   senden sie nicht und ignorieren sie still, Vektoren `tests/call_signal_reserved.json`); Clients nehmen Knoten-Grenzen
   nur aus `limits.horn`/`limit`, nie fest; `join_block: "node"` kann `busy: true` tragen. `gjallarhorn/NODE.md` und
   `docs/HORN-E2E.md` §6 angeglichen. Code folgt (Knoten 2263-3, Server 2263-4, Clients 2263-5 bis -7).
+- **Saga hinter Node64** (ipv64.net, Bugs-DB 2026, ohne Codeänderung): Anleitung/Guide/Guía Abschnitt 3 „Saga hinter
+  Node64“ – Proxy-Host mit WebSockets auf Port 8080, `TRUSTED_PROXIES`, `/healthz` als Health-Check, Blocklisten und
+  Länderfilter als Tipp, Admin-Port 8081 nie freigeben; CDN64 (CGNAT/DS-Lite) nur als Hinweis, braucht ein ipv64-Konto
+  und ist ungetestet. `docker-compose.yml`: auskommentierte Labels `node64.proxy.*` am Dienst `saga`, aus denen Node64 den
+  Proxy-Host selbst anlegt. Geprüft mit Node64 1.7.13 im Labor (`tests/node64_labor.py`, `tests/browser_node64.js`):
+  Seite und Upload über Node64-TLS, `/healthz`, Live-Kanal ohne Pufferung, Push-Verbindung der Android-App 31 min in Ruhe
+  offen, Anruf über den Tunnel `/api/sfu/ws`, ohne WebSockets `426` mit Hinweis.
 
 ## [2.5.0] – 2026-11-24
 
