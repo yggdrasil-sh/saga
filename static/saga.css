@@ -82,6 +82,7 @@ body.saga-page>main.sg:focus{outline:none}
 /* Einstellungen > Saga */
 .hk-set-saga .sg-set-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.45rem 0}
 .hk-set-saga .sg-set-row small{flex-basis:100%;margin-left:1.6rem}
+.hk-set-saga .sg-set-row>span{flex:1 1 0;min-width:0}       /* schmal: langer Text bleibt neben dem Haken (Pruefer pki) */
 .hk-set-saga h4{margin:1.1rem 0 .3rem}
 .sg-md-acts{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
 .sg-admin{margin-top:.6rem}
