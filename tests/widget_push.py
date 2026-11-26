@@ -236,6 +236,16 @@ def run(rel):
                        ("https://ntfy.example.org/wp-" + secrets.token_hex(6), "ntfy", d1, time.time())).lastrowid
     ok(f"caps gespeichert: apns widgets, stream update+widgets, altes Abo ohne ({caps})", caps.get(sR) == "widgets" and caps.get(sS) == "update,widgets" and not caps.get(sO))
     wait(lambda: push_relay.state().get("state") == "ok", 15)
+    # Server-Prozess beim (neu gestarteten) Relais angemeldet? Testmitteilung bis zum 200 vom Relais (laeuft der Server schon
+    # laenger, kennt er ggf. noch ein frueheres Relais: 401 -> hold -> Neuanmeldung) - erst danach wird gemessen
+    def relay_ok():
+        with F.LOCK:
+            return [x for x in F.TAP if x[1] == "/v1/push" and x[4] == 200 and json.loads(x[3]).get("token") == TR]
+    for _ in range(4):
+        T.req("POST", f"/api/push/subscriptions/{sR}/test", None, {}, hdr=H1)
+        if F.wait(relay_ok, 20):
+            break
+    ok("Relais stellt fuer den Server zu (Testmitteilung 200)", relay_ok())
 
     # --- Meldung der Widgets -------------------------------------------------------------------------------------------------
     s, d = T.req("PUT", "/api/app/widgets", A, {"pages": [pg]})
