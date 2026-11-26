@@ -64,7 +64,8 @@ curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 --http1.1 \
 
 ## 4. Admin area after the update
 
-- **Calls:** Gjallarhorn is **experimental** in 2.5 and **off** by default. Turn on "Large group calls via
+- **Calls:** Gjallarhorn is **experimental** in 2.5 and **off** by default (on by default from 2.6, see
+  [UPGRADE-2.6.md](UPGRADE-2.6.md)). Turn on "Large group calls via
   Gjallarhorn", keep "Use built-in node for calls" on – behind NPM it runs in **tunnel mode** (no own port, no own
   certificate). "All calls via nodes (including 1:1)" is **on** by default; a stored "off" from before 2.5 counts as
   unset once – untick and save if you want direct 1:1 calls. Then "Check now" and **"Sync capabilities now"** (asks

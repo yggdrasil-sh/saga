@@ -155,6 +155,7 @@ Der Admin-Bereich läuft wie bisher auf `ADMIN_PORT` (Standard 8081, nur lokal �
 
 **Anrufe** (Reiter „Anrufe“, Abschnitt „Gjallarhorn – große Gruppenanrufe“). Gjallarhorn ist in 2.5
 **experimentell** und ab Werk **aus**; ohne Gjallarhorn telefoniert Saga wie in 2.4 direkt zwischen den Geräten.
+(Ab 2.6 ist Gjallarhorn ab Werk an – siehe [UPGRADE-2.6.md](UPGRADE-2.6.md).)
 
 1. **„Große Gruppenanrufe über Gjallarhorn“** einschalten und **Speichern**.
 2. **„Eingebauten Knoten für Anrufe nutzen“** an lassen (Standard an). Hinter NPM läuft der eingebaute Knoten dann
