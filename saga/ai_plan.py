@@ -738,10 +738,10 @@ def _candidates(uid, cx, note=None):
     if note is not None:
         from saga.sharing import access
         try:
-            nid = int(note)
+            nid = int(note) if not isinstance(note, bool) else 0
         except (TypeError, ValueError):
             nid = 0
-        if nid > 0:
+        if 0 < nid < 2 ** 63:                    # 2508: ausserhalb BIGINT nie an die Datenbank (sonst Fehler statt still draussen)
             with _db() as c:
                 _o, _r, err = access(c, uid, nid, "view")
                 r = c.execute("SELECT title FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone() if err is None else None
@@ -802,11 +802,30 @@ def _refuse(zug, reason, alt_text=None, uid=None, **extra):
     return out
 
 
+ALT_TITLE = 80
+_ALT_HELLO = re.compile(r"^(?:(?:hey|hallo|hi|hola|bitte|please|por favor)\s+)?([^\s,:]{2,40})\s*[,:]\s+(\S.*)$", re.I)
+_ALT_END = re.compile(r"(?:(?<=[!?;])|(?<=[^\W\d_]{3}\.))\s+(?=\S)")       # Satzende, nicht "z. B." oder "28.11."
+
+
 def _alt_text(q):
-    s = re.sub(r"\s+", " ", q or "").strip()
-    s = ai_frame.no_links(s, "")
-    s = _MENTION.sub("", s).strip()
-    return s[:200] if s and not _bad_text(s[:200]) else ""
+    """Absage -> Text der Aufgabe fuer "Als Aufgabe anlegen" (Bugs-DB 2509): ein kurzer Titel statt der ganzen Bitte -
+    erste Zeile, erster Satz, an einer Wortgrenze gekuerzt (…); die Befehlsform bleibt, nur die Anrede der KI vorne
+    ("Marin, …") faellt weg. Die volle Bitte bleibt die Bitte des Auftrags (plan.request, Detail request) - Aufgaben haben
+    kein Beschreibungsfeld."""
+    raw = _MENTION.sub("", ai_frame.no_links(str(q or ""), ""))
+    s = next((re.sub(r"\s+", " ", ln).strip() for ln in raw.splitlines() if ln.strip()), "")
+    m = _ALT_HELLO.match(s)
+    if m and m.group(1).lower() in {"saga", str(ai.persona_name() or "").lower()}:
+        s = m.group(2)[:1].upper() + m.group(2)[1:]
+    first = _ALT_END.split(s, maxsplit=1)[0]
+    if len(first) >= 8:
+        s = first
+    s = s.rstrip(" .;,:")
+    if len(s) > ALT_TITLE:
+        cut = s[:ALT_TITLE - 1]
+        sp = cut.rfind(" ")
+        s = (cut[:sp] if sp >= ALT_TITLE // 2 else cut).rstrip(" ,;:–-") + "…"
+    return s if s and not _bad_text(s) else ""
 
 
 def _ask_model(uid, c, msgs, schema, emit_status, stop):
@@ -1012,7 +1031,8 @@ def read_list(plan):
 
 def plan_view(job_id, uid):
     """Plan eines Auftrags fuer die Plan-Karte -> {job, plan_v, plan_hash, title, steps[], read[], read_text, wording[],
-    classes[], say} oder {} (fremd/weg)."""
+    classes[], say, recipe, edited} oder {} (fremd/weg). edited (Bugs-DB 2515, Vertrag mit den Apps): immer da - true,
+    solange der Plan seit dem Vorschlag geaendert ("Aendern") und noch nicht neu freigegeben ist (Zustand wartet_ok)."""
     with _db() as c:
         r = c.execute("SELECT plan, plan_v, plan_hash, title, state FROM job WHERE id=? AND uid=? AND kind=?", (job_id, uid, KIND)).fetchone()
         rows = c.execute("SELECT n, tool, klass, undo_class, args, state FROM job_step WHERE job_id=? ORDER BY n", (job_id,)).fetchall() if r else []
@@ -1029,7 +1049,7 @@ def plan_view(job_id, uid):
     return {"job": job_id, "plan_v": r[1], "plan_hash": r[2], "title": r[3], "state": r[4], "steps": steps, "read": rl,
             "read_text": (t("Ich lese dafür:") + " " + ", ".join(x["label"] for x in rl)) if rl else "",
             "wording": [s["wording"] for s in steps], "classes": [s["undo_class"] for s in steps],
-            "say": say("plan"), "recipe": pj.get("recipe")}
+            "say": say("plan"), "recipe": pj.get("recipe"), "edited": bool(pj.get("edited")) and r[4] == "wartet_ok"}
 
 
 # --- Aendern (PUT /plan) ------------------------------------------------------------------------------------------

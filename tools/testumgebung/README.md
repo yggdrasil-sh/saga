@@ -26,6 +26,12 @@ tools/testumgebung/umgebung.sh stop 2                           # Reste beenden 
   Ein zweiter Lauf auf einem belegten Slot bricht mit „Slot … ist belegt“ ab (Sperre `/run/lock/saga-umgebung-um<slot>.lock`,
   auch über verschiedene `UMG`-Ordner hinweg; dazu je `$UMG/run/<slot>` und je DB, damit auch ein Lauf mit anderem `UMG_NS`
   wie `tools/handbuch-stack.sh` dem Slot nichts löscht); parallel also verschiedene Slots nehmen. Die Sperre fällt mit dem Lauf.
+- **Nicht parallel in derselben DB** (Bugs-DB 2509): Reihen, die Server-Einstellungen umstellen und am Ende
+  zurücksetzen, stören sich gegenseitig, wenn sie gleichzeitig gegen dieselbe DB bzw. denselben Server laufen – z. B.
+  `sprachen.py` (Standardsprache, `chat_v3`, Anrufe im Admin-Formular „Allgemein“) neben
+  `browser_kollegin_kennenlernen.js` (KI-Einstellung, Persona, „Erste Schritte“; Server-Einstellungen sind 5 s
+  zwischengespeichert), ebenso die `kollegin_*.py`-Reihen untereinander (KI-Einstellung `ai`). Über `umgebung.sh lauf`
+  hat jeder Slot eine eigene DB – dort parallel auf **verschiedenen Slots**; von Hand gegen eine gemeinsame DB nacheinander.
 - In allen Arten läuft **Radicale** (CalDAV) im Namensraum auf `127.0.0.1:5232` (Konto `test`, nur Test-Passwort wie in
   den Reihen), `HK_TEST_CALDAV` ist gesetzt; dann sind fehlende Kalender in `mcp.py`/`mcp_nach.py` ein Fehler, ohne
   `HK_TEST_CALDAV` nur `SKIP`. Aus mit `UMG_CALDAV=0`. Braucht Radicale im System-Python (`/usr/bin/python3 -m radicale`; anderes mit

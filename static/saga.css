@@ -1,9 +1,9 @@
 /* Ort "Saga" (2.6, Bugs-DB 2269 K-I): Kennenlernen-Karte, Gespraech, Leiste B6, Einstellungen > Saga.
    Farben nach UX §6: Kartenflaeche --ai-tint (hell #f7f0df, dunkel #1e2530), Kante --ai-edge (hell #a07c2c, dunkel
    #8f7440). Kommen die Tokens spaeter in tokens.css (gemeinsam mit der Plan-Karte), gelten sie hier automatisch. */
-:root{--sg-tint:#1e2530;--sg-edge:#8f7440}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--sg-tint:#f7f0df;--sg-edge:#a07c2c}}
-:root:where([data-theme=light]){--sg-tint:#f7f0df;--sg-edge:#a07c2c}
+:root{--sg-tint:#1e2530;--sg-edge:#8f7440;--sg-btn-edge:#a3864f;--sg-quiet-edge:#717d90}
+@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--sg-tint:#f7f0df;--sg-edge:#a07c2c;--sg-btn-edge:#8c6c22;--sg-quiet-edge:#857b69}}
+:root:where([data-theme=light]){--sg-tint:#f7f0df;--sg-edge:#a07c2c;--sg-btn-edge:#8c6c22;--sg-quiet-edge:#857b69}
 
 .sg-card{background:var(--ai-tint,var(--sg-tint));border:1px solid var(--ai-edge,var(--sg-edge));border-radius:var(--r-md);
   padding:1rem 1.1rem;color:var(--fg);font-size:1rem;line-height:1.5}
@@ -104,9 +104,18 @@ body.saga-page>main.sg:focus{outline:none}
 .sg-feed .kj-card>.btn,.sg-feed .kj-card>.ai-report,.sg-feed .kj-card>.sg-report{align-self:flex-start}
 .sg-mode{border-color:var(--ai-edge,var(--sg-edge))}
 .kj-change-one{justify-content:flex-start}
+/* 2508: Auftrag zu einer Seite (aus dem KI-Bereich der Seite) - Zeile ueber dem Eingabefeld, mit × wieder weg */
+.sg-note{display:flex;align-items:center;gap:.3rem;margin:0;font-size:.9rem;color:var(--muted)}
+.sg-note[hidden]{display:none}
+.sg-note-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-note-x{min-width:2rem;min-height:2rem}
 /* Bugs-DB 2503: Zweitknoepfe auf der KI-Flaeche mit sichtbarer Kante (>= 3:1 gegen --ai-tint, auch im Hellen) */
 .sg-card .btn:not(.btn-primary):not(.btn-quiet):not(.linkbtn),.kj-card .btn:not(.btn-primary):not(.btn-quiet):not(.kj-go){
-  background:var(--card);border-color:var(--ai-edge,var(--sg-edge));color:var(--fg)}
+  background:var(--card);border-color:var(--sg-btn-edge);color:var(--fg)}
+/* Bugs-DB 2515: auch die stillen Knoepfe ("Ansehen", "Lieber nicht", "Alte Fassung ansehen") - Kante >= 3:1 gegen die
+   KI-Flaeche (vorher --border: 1,2:1 dunkel), Text >= 4,5:1; Kanten der Zweitknoepfe mit Reserve (dunkel 4,5:1 statt 3,5:1) */
+.sg-card .btn-quiet:not(.linkbtn),.kj-card .btn-quiet{border-color:var(--sg-quiet-edge)}
+.sg-card .btn-quiet:not(.linkbtn):hover,.kj-card .btn-quiet:hover{border-color:var(--sg-btn-edge);color:var(--fg)}
 @media (max-width:760px){.sg-tab{min-height:2.75rem;flex:1 1 0}.sg-mode{min-height:2.75rem}
   .sg-ask-bar{flex-wrap:wrap}.sg-status:not(:empty){flex:1 0 100%}}   /* schmal: Ansage eine Zeile, Knoepfe darunter */
 

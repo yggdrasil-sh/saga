@@ -8,10 +8,16 @@
 // der Seiten hat keinen Reiter „Aufträge“ mehr (HKAI.open('jobs') führt zum Ort „Saga“).
 // Bilder (SHOTS=<ordner>): saga-plan-hell/dunkel, saga-rueckmeldung-hell/dunkel, saga-rueckfrage-dunkel, saga-absage-dunkel,
 // saga-plan-schmal-dunkel/hell, saga-verlauf-neu-dunkel.
+// Chat 18 (Bugs-DB 2515/2508): „geändert – bitte neu freigeben“ auch nach dem Neuladen (edited vom Server); 409 stale ->
+// neuer Plan mit Hinweis (nicht still); 409 state -> jetziger Stand statt aktivem „Passt, los“; Rückmeldung ohne
+// Live-Ereignis nach live.hello; Kontrast der Knöpfe auf der KI-Karte (dunkel/hell, Kante >= 3:1, Text >= 4,5:1);
+// „Verlauf an/aus“ folgt Einstellungen › Saga; KI-Bereich einer Seite -> „… soll sich kümmern …“ -> Ort „Saga“ mit
+// context.note. Bilder dazu: saga-409-stale-dunkel, ki-seite-auftrag-dunkel, saga-seite-auftrag-dunkel.
 // Voraussetzung: KI an mit Fake-Modell fake-plan (tests/fakeai.py), Stufe „Pläne“, Konto mit Seite „Sommerfest“.
-//   SAGA_BASE=http://127.0.0.1:8900 SAGA_USER=kp-web SAGA_PASS=... [SHOTS=/tmp/x] node tests/browser_kollegin_plan.js
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+//   SAGA_BASE=http://127.0.0.1:8900 SAGA_USER=kp-web SAGA_PASS=... [SHOTS=/tmp/x] [BR=firefox] node tests/browser_kollegin_plan.js
+const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const E = process.env, BASE = E.SAGA_BASE || 'http://127.0.0.1:8099', USER = E.SAGA_USER, PASS = E.SAGA_PASS, SHOTS = E.SHOTS || '';
+const FF = E.BR === 'firefox', SFX = FF ? '-firefox' : '';
 if (!USER || !PASS) { console.error('SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const R = []; const ok = (n, c, x) => { R.push([n, !!c]); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' ' + JSON.stringify(x === undefined ? '' : x))); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,7 +25,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
 const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
 
 (async () => {
-  const br = await chromium.launch(E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
+  const br = await (FF ? PW.firefox : PW.chromium).launch(!FF && E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
   const ctx = await br.newContext({ viewport: { width: 1440, height: 900 }, locale: 'de-DE', colorScheme: 'dark' });
   const p = await ctx.newPage(); const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
@@ -51,8 +57,22 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   async function shot(name) {
     if (!SHOTS) return;
     await sleep(600);
-    await p.screenshot({ path: SHOTS + '/' + name + '.png' });
+    await p.screenshot({ path: SHOTS + '/' + name + SFX + '.png' });
   }
+  // 2515: Kontrast aller Knöpfe einer KI-Karte - Kante gegen die Kartenfläche (>= 3:1, WCAG 1.4.11), Text gegen seinen
+  // Hintergrund (Knopf oder Karte, >= 4,5:1). Primärknopf: Fläche gegen Karte.
+  const contrast = (sel) => p.evaluate((sel) => {
+    const rgb = (c) => { const m = String(c).match(/[\d.]+/g).map(Number); return { v: /^color\(/.test(c) ? m.slice(0, 3).map((x) => x * 255) : m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; };
+    const lum = (c) => { const v = rgb(c).v.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    const cr = (a, b) => { const x = lum(a), y = lum(b); return Math.round((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) * 100) / 100; };
+    const bgOf = (n) => { for (; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (rgb(c).a > 0.5) return c; } return 'rgb(255,255,255)'; };
+    return [...document.querySelectorAll(sel)].filter((b) => b.offsetParent).map((b) => {
+      const cs = getComputedStyle(b), card = bgOf(b.closest('.kj-card, .sg-card') || b.parentElement), own = rgb(cs.backgroundColor).a > 0.5 ? cs.backgroundColor : card;
+      const edge = parseFloat(cs.borderTopWidth) > 0 && rgb(cs.borderTopColor).a > 0.5 ? cs.borderTopColor : own;
+      return { t: b.textContent.trim(), edge: cr(edge, card), text: cr(cs.color, own) };
+    });
+  }, sel);
+  const lowC = (xs) => xs.filter((x) => x.edge < 3 || x.text < 4.5);
   const st = await api('GET', '/api/ai/status');
   ok('KI an, Aufträge an (status.jobs)', st.d.enabled && st.d.jobs === true, st.d);
   // Der KI-Bereich der Seiten hat keinen Reiter „Aufträge“ mehr - HKAI.open('jobs') führt zum Ort „Saga“
@@ -109,6 +129,11 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   ok('Ein Freigabe-Muster: genau eine Plan-Karte für den Auftrag, keine zweite (#sg-cards leer)', one.plans === 1 && one.cards === 0, one);
   ok('Ansage über role=status: „Plan bereit – wartet auf dein OK“', one.statusLine === 'Plan bereit – wartet auf dein OK', one.statusLine);
   await shot('saga-plan-dunkel');
+  { const cd = await contrast('#sg-feed .kj-plan .btn');
+    ok('2515: Knöpfe der Plan-Karte dunkel: Kante >= 3:1, Text >= 4,5:1 (' + JSON.stringify(cd) + ')', cd.length >= 3 && !lowC(cd).length, lowC(cd));
+    await p.emulateMedia({ colorScheme: 'light' }); await sleep(200);
+    const cl = await contrast('#sg-feed .kj-plan .btn'); await p.emulateMedia({ colorScheme: 'dark' });
+    ok('2515: Knöpfe der Plan-Karte hell: Kante >= 3:1, Text >= 4,5:1', cl.length >= 3 && !lowC(cl).length, cl); }
   await p.focus('.kj-plan .kj-go'); await p.keyboard.press('Enter'); await sleep(500);
   ok('Enter auf „Passt, los“ gibt nicht frei', (await api('GET', '/api/ai/jobs/' + jid)).d.state === 'wartet_ok');
   // Aendern
@@ -118,6 +143,9 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   await p.click('.kj-save');
   ok('nach dem Speichern: „geändert – bitte neu freigeben“', await until(() => p.evaluate(() => /geändert – bitte neu freigeben/.test((document.querySelector('.kj-plan .kj-note') || {}).textContent || ''))));
   ok('neuer plan_v auf dem Server', (await api('GET', '/api/ai/jobs/' + jid)).d.plan.plan_v === 2);
+  await openSaga();
+  ok('2515: nach dem Neuladen steht „geändert – bitte neu freigeben“ weiter an der Plan-Karte (edited vom Server)', await until(() => p.evaluate((id) =>
+    /geändert – bitte neu freigeben/.test((document.querySelector(`#sg-feed .sg-job[data-job="${id}"] .kj-plan .kj-note`) || {}).textContent || ''), jid)));
   await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-plan-hell'); await p.emulateMedia({ colorScheme: 'dark' });
   // Passt, los -> Rueckmeldung im Verlauf
   await p.click('.kj-plan .kj-go');
@@ -132,6 +160,8 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   ok('Zeile unter dem Feld meldet den neuen Stand („Erledigt“, nicht mehr „Läuft“)', fb && fb.status === 'Erledigt', fb && fb.status);
   ok('Verweis auf den Ort „Aufträge“: Knopf „Ansehen“', fb && fb.view);
   await shot('saga-rueckmeldung-dunkel');
+  { const cd = await contrast(`#sg-feed .sg-job[data-job="${jid}"] .kj-report .btn`);
+    ok('2515: Knöpfe der Rückmeldung dunkel (Rückgängig, Ansehen): Kante >= 3:1, Text >= 4,5:1 (' + JSON.stringify(cd) + ')', cd.length >= 2 && !lowC(cd).length, lowC(cd)); }
   await p.emulateMedia({ colorScheme: 'light' }); await sleep(300); await shot('saga-rueckmeldung-hell'); await p.emulateMedia({ colorScheme: 'dark' });
   const list1 = JSON.stringify((await api('GET', '/api/tasks')).d);
   ok('Aufgabe genau einmal angelegt', (list1.match(/3 Säcke/g) || []).length === 1, list1.slice(0, 300));
@@ -186,6 +216,71 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   await jobMode(false); await p.fill('#sg-ta', 'Was steht zum Sommerfest an?'); await p.press('#sg-ta', 'Enter');
   await until(() => p.evaluate(() => { const c = [...document.querySelectorAll('#sg-feed .sg-ai')].pop(); return c && !c.classList.contains('sg-live'); }), 15000);
   ok('Umschalter aus: Frage geht ins Gespräch, kein neuer Auftrag', JSON.stringify((await api('GET', '/api/ai/jobs')).d.counts) === JSON.stringify(nj));
+  // --- 2515: Konflikte beim Freigeben und Abgleich ohne Live-Ereignis (Ereignis-Quelle gesperrt) ----------------------
+  await p.route('**/api/events**', (r) => r.abort());
+  await openSaga();
+  const jobOf = () => p.evaluate((L) => +eval(L).closest('.sg-job').dataset.job, LAST('.kj-plan'));
+  const W = (id) => `#sg-feed .sg-job[data-job="${id}"]`;
+  await give('Erinnere mich Freitag an den Pavillon');
+  const j2 = await jobOf(), pl2 = (await api('GET', '/api/ai/jobs/' + j2)).d.plan;
+  await api('PUT', '/api/ai/jobs/' + j2 + '/plan', { plan_v: pl2.plan_v, edits: [{ n: 0, args: { text: 'Pavillon abholen (anderes Gerät)' } }] });
+  await p.click(W(j2) + ' .kj-go');
+  const s409 = await until(() => p.evaluate((sel) => { const k = document.querySelector(sel + ' .kj-plan');
+    return k && /anderes Gerät/.test(k.textContent) && { note: (k.querySelector('.kj-note') || {}).textContent, err: (k.querySelector('.kj-err:not([hidden])') || {}).textContent,
+      go: !!k.querySelector('.kj-go:not([disabled])'), focus: k.contains(document.activeElement), status: document.getElementById('sg-status').textContent }; }, W(j2)));
+  ok('2515: 409 stale -> neuer Plan mit „geändert – bitte neu freigeben“ + Meldung (nicht still), Fokus in der Karte', s409
+    && /geändert – bitte neu freigeben/.test(s409.note || '') && /geändert/.test(s409.err || '') && s409.go && s409.focus, s409);
+  await shot('saga-409-stale-dunkel');
+  const pl3 = (await api('GET', '/api/ai/jobs/' + j2)).d.plan;
+  await api('POST', '/api/ai/jobs/' + j2 + '/approve', { plan_v: pl3.plan_v, plan_hash: pl3.plan_hash });   // anderes Gerät gibt frei
+  await p.click(W(j2) + ' .kj-go');
+  const sst = await until(() => p.evaluate((sel) => { const w = document.querySelector(sel);
+    return w && !w.querySelector('.kj-go') && w.querySelector('.kj-state') && { state: w.querySelector('.kj-state').textContent, ds: w.dataset.state }; }, W(j2)));
+  ok('2515: 409 state (anderswo freigegeben) -> keine Plan-Karte mit „Passt, los“, jetziger Stand', sst && ['Läuft', 'Erledigt'].indexOf(sst.state) >= 0, sst);
+  await give('Erinnere mich Samstag an die Lampions');
+  const j3 = await jobOf(), pl4 = (await api('GET', '/api/ai/jobs/' + j3)).d.plan;
+  await api('POST', '/api/ai/jobs/' + j3 + '/approve', { plan_v: pl4.plan_v, plan_hash: pl4.plan_hash });
+  await until(async () => (await api('GET', '/api/ai/jobs/' + j3)).d.state === 'erledigt', 15000); await sleep(800);
+  const still = await p.evaluate((sel) => !!document.querySelector(sel + ' .kj-plan .kj-go'), W(j3));
+  await p.unroute('**/api/events**');
+  await p.evaluate(() => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: false } } })));
+  const fb3 = await until(() => p.evaluate((sel) => !!document.querySelector(sel + ' .kj-report'), W(j3)), 8000);
+  ok('2515: Rückmeldung ohne Live-Ereignis – nach dem (Wieder-)Verbinden (live.hello) neu geholt', still && fb3, { still, fb3 });
+  // --- 2515: „Verlauf an/aus“ folgt Einstellungen › Saga ----------------------------------------------------------------
+  await openSaga();
+  const keep0 = await p.evaluate(() => document.getElementById('sg-keep').textContent);
+  await p.evaluate(() => window.HKSettings && HKSettings.open('saga'));
+  const hasBox = await until(() => p.evaluate(() => [...document.querySelectorAll('.sg-set-row')].some((r) => /Verlauf speichern/.test(r.textContent))), 6000);
+  if (hasBox) {
+    await p.evaluate(() => { const r = [...document.querySelectorAll('.sg-set-row')].find((x) => /Verlauf speichern/.test(x.textContent)); r.querySelector('input[type=checkbox]').click(); });
+    const keep1 = await until(() => p.evaluate((k0) => { const t = document.getElementById('sg-keep').textContent; return t !== k0 && t; }, keep0), 6000);
+    ok('2515: „Verlauf an/aus“ im Gespräch wechselt nach der Einstellung (ohne Neuladen)', keep1 && /Verlauf (an|aus)/.test(keep1) && keep1.slice(0, 11) !== keep0.slice(0, 11), { keep0, keep1 });
+    await p.evaluate(() => { const r = [...document.querySelectorAll('.sg-set-row')].find((x) => /Verlauf speichern/.test(x.textContent)); r.querySelector('input[type=checkbox]').click(); });
+    await sleep(800);
+  } else ok('2515: Einstellungen › Saga mit „Verlauf speichern“ (Admin: Verlauf erlaubt)', false, keep0);
+  await p.keyboard.press('Escape'); await sleep(300);
+  // --- 2508: KI-Bereich einer Seite -> „… soll sich kümmern …“ -> Ort „Saga“ mit context.note --------------------------
+  const pg = (await api('POST', '/api/notes', { title: 'Pavillon-Liste' })).d;
+  await p.goto(BASE + '/notes#' + pg.id);
+  await until(() => p.evaluate((id) => !!(window.HKAI && HKAI.state() && window.HKPages && HKPages.k && HKPages.k.cur() && HKPages.k.cur().id === id), pg.id), 10000);
+  await p.evaluate(() => HKAI.open('page'));
+  const jb = await until(() => p.evaluate(() => { const b = document.querySelector('#ai-panel .ai-act-job'); return b && b.offsetParent && b.textContent; }), 6000);
+  ok('2508: KI-Bereich „Diese Seite“: Einstieg „… soll sich kümmern …“', jb && /soll sich kümmern …$/.test(jb), jb);
+  await shot('ki-seite-auftrag-dunkel');
+  const posted = [];
+  p.on('request', (r) => { if (r.method() === 'POST' && /\/api\/ai\/jobs$/.test(r.url())) posted.push(r.postData()); });
+  await Promise.all([p.waitForNavigation(), p.click('#ai-panel .ai-act-job')]);
+  const sg = await until(() => p.evaluate(() => { const n = document.getElementById('sg-note');
+    return n && !n.hidden && { t: n.textContent, mode: document.getElementById('sg-mode').getAttribute('aria-pressed'), focus: document.activeElement.id, url: location.pathname + location.search }; }), 8000);
+  ok('2508: Ort „Saga“: „Zur Seite „Pavillon-Liste““, „Als Auftrag“ an, Fokus im Eingabefeld', sg && /Zur Seite „Pavillon-Liste“/.test(sg.t) && sg.mode === 'true' && sg.focus === 'sg-ta' && sg.url === '/saga', sg);
+  await shot('saga-seite-auftrag-dunkel');
+  await give('Kümmer dich um die Grillkohle bis Freitag');
+  const ctxOk = posted.some((x) => { try { return (JSON.parse(x).context || {}).note === pg.id; } catch (e) { return false; } });
+  const rd = await p.evaluate((L) => (eval(L).querySelector('.kj-read') || {}).textContent || '', LAST('.kj-plan'));
+  ok('2508: Auftrag geht mit context.note an den Server, der Plan liest die Seite', ctxOk && /Pavillon-Liste/.test(rd), { posted, rd });
+  await p.locator('#sg-feed .kj-plan .kj-no').last().click(); await sleep(300);
+  await p.click('#sg-note .sg-note-x');
+  ok('2508: × nimmt die Seite wieder weg', await p.evaluate(() => document.getElementById('sg-note').hidden));
   // Handy: Knoepfe untereinander, Primaerknopf volle Breite, kein Ueberlauf
   await p.setViewportSize({ width: 390, height: 844 });
   await give('Erinnere mich Freitag an die Grillkohle');

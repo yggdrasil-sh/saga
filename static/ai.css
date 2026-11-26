@@ -97,6 +97,7 @@
 .ai-act-ic{width:1.1rem;text-align:center;color:var(--accent);flex:none}
 .ai-tr{grid-column:1/-1;display:flex;gap:.4rem}
 .ai-tr .ai-act{flex:1}
+.ai-act-job{grid-column:1/-1;border-color:var(--ai-edge,#8f7440)}          /* 2508: Auftrag zur Seite -> Ort "Saga" */
 .ai-target{width:auto;max-width:9.5rem;font-size:var(--fs-base);padding:.3rem .4rem}
 .ai-sel{margin:0;font-size:var(--fs-sm);color:var(--muted)}
 .ai-sel.on{color:var(--fg)}

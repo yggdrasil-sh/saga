@@ -153,7 +153,38 @@
         cur = d; editing = false; inputs = {}; paint(); focusIn('.kj-lead');
         say(opts.live, T('geändert – bitte neu freigeben'));
         if (opts.onEdit) opts.onEdit(cur.job);
-      }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
+      }).catch(function (e) {
+        if (e.status === 409) { editing = false; inputs = {}; resync(e, err); return; }
+        err.hidden = false; err.textContent = e.message;
+      });
+    }
+    // Bugs-DB 2515: 409 nach "Passt, los"/"Speichern"/"Lieber nicht" - Stand neu holen. stale (Plan anderswo geaendert):
+    // den neuen Plan zeigen, aber nie still - "geaendert – bitte neu freigeben" (plan.edited) bleibt stehen, die Meldung
+    // darunter auch. state (anderswo freigegeben/abgebrochen): keine Plan-Karte mit aktivem "Passt, los" stehen lassen,
+    // sondern den jetzigen Stand (opts.onState, sonst Zustandskarte an Ort und Stelle).
+    function resync(e, err) {
+      var code = e.data && e.data.code, msg = e.message;
+      return load(cur.job).then(function (d) {
+        if (!d) { err.hidden = false; err.textContent = msg; return; }
+        if (d.state === 'wartet_ok' && d.plan && d.plan.steps) {
+          cur = d.plan;
+          if (code === 'stale' && !cur.edited) cur = Object.assign({}, cur, { edited: true });   // der Plan ist nicht mehr der gesehene
+          paint();
+          var e2 = card.querySelector('.kj-err'); if (e2 && msg) { e2.hidden = false; e2.textContent = msg; }
+          focusIn('.kj-lead');
+          say(opts.live, T('geändert – bitte neu freigeben'));
+          return;
+        }
+        if (opts.onState) { opts.onState(d, card); return; }
+        card.textContent = ''; card.classList.add('kj-small');
+        card.appendChild(head(d.state_text));
+        var lead = el('p', 'kj-lead', d.title || ''); card.appendChild(lead);
+        if (d.reason_text) card.appendChild(el('p', 'kj-note', d.reason_text));
+        if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(cur.job, true); }));
+        focusIn('.kj-lead');
+        say(opts.live, d.state_text);
+        if (opts.onDone) opts.onDone(d.state, cur.job, card);
+      });
     }
     function approve(err, go) {
       if (!navigator.onLine) { err.hidden = false; err.textContent = T('Offline – gespeicherter Stand. Freigeben geht, sobald du wieder verbunden bist.'); return; }
@@ -168,7 +199,7 @@
         if (opts.onDone) opts.onDone('laeuft', cur.job, card);
       }).catch(function (e) {
         go.disabled = false; err.hidden = false; err.textContent = e.message;
-        if (e.status === 409) load(cur.job).then(function (d) { if (d && d.plan && d.state === 'wartet_ok') { cur = d.plan; paint(); } });
+        if (e.status === 409) resync(e, err);
       });
     }
     function cancel(err) {
@@ -181,7 +212,7 @@
         focusIn('.kj-lead');
         say(opts.live, d.text || d.state_text);
         if (opts.onDone) opts.onDone('abgebrochen', cur.job, card);
-      }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
+      }).catch(function (e) { if (e.status === 409) { resync(e, err); return; } err.hidden = false; err.textContent = e.message; });
     }
     paint();
     return card;
@@ -208,7 +239,8 @@
       var ch = (d.changes || []).filter(function (c) { return c.id === ln.change; })[0] || {};
       if (ln.undone) li.appendChild(el('span', 'kj-cls', T('Zurückgenommen')));
       else if (ln.can_undo) li.appendChild(undoBtn(d.id, ln.change, ch.undo_class, li, opts, ln.text));
-      else if (ch.why === 'changed') li.appendChild(changedNote(ch.version_url));
+      else if (ch.why === 'changed') li.appendChild(changedNote(ch.version_url, ch.why_text));
+      else if (ch.why_text) li.appendChild(el('span', 'kj-cls kj-why', ch.why_text));   // 2515: gone/no_undo/done in Klartext
       if (li.childNodes.length) ul.appendChild(li);
     });
     if (ul.childNodes.length) card.appendChild(ul);
@@ -217,10 +249,10 @@
     card.dataset.job = d.id;
     return card;
   }
-  function changedNote(url) {
+  function changedNote(url, text) {                // "Alte Fassung ansehen" nur mit Weg (2515: Aufgaben/Termine haben keinen)
     var w = el('div', 'kj-changed');
-    w.appendChild(el('span', null, T('Das wurde seitdem geändert.')));
-    if (url) {
+    w.appendChild(el('span', null, text || T('Das wurde seitdem geändert.')));
+    if (typeof url === 'string' && url) {
       var b = btn(T('Alte Fassung ansehen'), 'btn-quiet kj-old', function () {
         api('GET', url).then(function (v) {
           var pre = el('div', 'kj-oldtext'); pre.setAttribute('role', 'region'); pre.setAttribute('aria-label', T('Alte Fassung'));
@@ -245,7 +277,7 @@
           if (opts.onChange) opts.onChange(job);
         }).catch(function (e) {
           b.disabled = false;
-          if (e.status === 409 && e.data && e.data.code === 'changed') b.replaceWith(changedNote(e.data.version_url));
+          if (e.status === 409 && e.data && e.data.code === 'changed') b.replaceWith(changedNote(e.data.version_url, e.data.why_text));
           else HK.toast(e.message);
         });
       };
@@ -399,6 +431,10 @@
             + (d.approved.device ? ' · ' + d.approved.device : '')));
           detailEl.appendChild(sp);
         }
+        if (d.request && d.request !== d.title) {     // 2509: die Bitte im Wortlaut (Aufgaben haben kein Beschreibungsfeld)
+          var bq = el('section', 'kj-sec kj-request'); bq.appendChild(el('h4', null, T('Deine Bitte')));
+          bq.appendChild(el('p', null, d.request)); detailEl.appendChild(bq);
+        }
         if (d.plan && d.plan.read && d.plan.read.length) {
           var rs = el('section', 'kj-sec'); rs.appendChild(el('h4', null, T('Was ich gelesen habe')));
           rs.appendChild(el('p', null, d.plan.read.map(function (r) { return r.label; }).join(', '))); detailEl.appendChild(rs);
@@ -427,20 +463,30 @@
         if (b) try { b.focus(); } catch (e) { /* egal */ }
       });
     }
+    function landed(id, x) {                         // Rueckmeldung an Ort und Stelle (Ergebnis zuerst)
+      delete watch[id];
+      var old = stage.querySelector('[data-job="' + id + '"]');
+      var fb = feedback(x, { onOpen: open, onChange: refresh });
+      if (old) old.replaceWith(fb); else { stage.textContent = ''; stage.appendChild(fb); }
+      say(live, x.report ? x.report.text : x.state_text);
+    }
     document.addEventListener('hk-live', function (e) {
-      var d = e.detail && e.detail.type === 'ai.job.changed' ? e.detail.data || e.detail : null;
-      if (!d || !root.isConnected) return;
+      var t = e.detail && e.detail.type;
+      if (!root.isConnected) return;
+      // 2515: nicht nur am Live-Ereignis haengen - nach (Wieder-)Verbinden der Ereignis-Quelle (live.hello) bzw. resync
+      // den Stand einmal neu holen (Ereignisse dazwischen kamen nicht an)
+      if (t === 'live.hello' || t === 'resync') {
+        refresh();
+        if (openId != null && !detailEl.querySelector('.kj-editbox')) open(openId);
+        Object.keys(watch).forEach(function (id) { load(id).then(function (x) { if (x && x.state !== 'laeuft' && watch[id]) landed(id, x); }); });
+        return;
+      }
+      var d = t === 'ai.job.changed' ? e.detail.data || e.detail : null;
+      if (!d) return;
       refresh();
-      if (openId === d.id) open(d.id);
-      if (watch[d.id] && d.state !== 'laeuft') {            // Rueckmeldung an Ort und Stelle (Ergebnis zuerst)
-        delete watch[d.id];
-        load(d.id).then(function (x) {
-          if (!x) return;
-          var old = stage.querySelector('[data-job="' + d.id + '"]');
-          var fb = feedback(x, { onOpen: open, onChange: refresh });
-          if (old) old.replaceWith(fb); else { stage.textContent = ''; stage.appendChild(fb); }
-          say(live, x.report ? x.report.text : x.state_text);
-        });
+      if (openId === d.id && !detailEl.querySelector('.kj-editbox')) open(d.id);
+      if (watch[d.id] && d.state !== 'laeuft') {
+        load(d.id).then(function (x) { if (x && watch[d.id]) landed(d.id, x); });
       }
     });
     refresh();

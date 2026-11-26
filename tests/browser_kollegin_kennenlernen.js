@@ -12,7 +12,8 @@
 // Richtet sich selbst ein: tests/kollegin_einwilligung.py --browser-setup/--browser-teardown, Fake-Modell tests/fakeai.py.
 // Env: SAGA_BASE, BASE_URL (Saga-Domain), HK_FAKEAI_PORT (Standard 8925), PY (python), SHOTS=/ordner (Bilder hell/dunkel,
 // Desktop/schmal), NUR_BILDER=1 (nur Bilder vom Stand ohne K-I: Heute/Chats/Einstellungen - fuer "vorher").
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const PWL = require(process.env.PLAYWRIGHT || 'playwright');   // BR=firefox: Firefox statt Chromium (Chat 18)
+const FF = process.env.BR === 'firefox', chromium = FF ? PWL.firefox : PWL.chromium;
 const { execFileSync, spawn } = require('child_process');
 const path = require('path');
 const E = process.env; const BASE = E.SAGA_BASE || 'http://127.0.0.1:8920';
@@ -38,7 +39,7 @@ async function login(br, u, pw, opts) {
   await Promise.all([p.waitForNavigation(), p.press('input[name=password]', 'Enter')]);
   return { ctx, p };
 }
-async function shot(p, name) { if (E.SHOTS) { await p.waitForTimeout(250); await p.screenshot({ path: E.SHOTS + '/' + name + '.png' }); } }
+async function shot(p, name) { if (E.SHOTS) { await p.waitForTimeout(250); await p.screenshot({ path: E.SHOTS + '/' + name + (FF ? '-firefox' : '') + '.png' }); } }
 const VIEWS = [['desktop', { width: 1440, height: 900 }], ['schmal', { width: 390, height: 844 }]];
 
 async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten als Bilder
@@ -57,7 +58,7 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
   await new Promise(r => setTimeout(r, 800));
   const cfg = py('--browser-setup');
   await new Promise(r => setTimeout(r, 5600));     // Einstellungen im Server 5 s zwischengespeichert
-  const br = await chromium.launch(E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
+  const br = await chromium.launch(!FF && E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
   try {
     if (E.NUR_BILDER) { await vorher(br, cfg); return; }
     // ================= KI an, noch keine Einwilligung =================
@@ -98,6 +99,18 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     { const L = await login(br, cfg.a, cfg.pw, { theme: 'light' }); await L.p.goto(BASE + '/dashboard');
       await until(() => L.p.evaluate(() => { const s = document.getElementById('hz-saga-intro'); return s && !s.hidden; }), 6000);
       await L.p.click('#hz-saga-intro .sg-info-b'); await shot(L.p, 'nachher2-kennenlernen-details-desktop-hell'); await L.ctx.close(); }
+    { // 2515: Anrede „Sie“ - die ganze Karte (Sätze, Ideen-Frage, ⓘ-Details) gesiezt, nicht nur die drei Sätze
+      await api(p, 'PUT', '/api/ai/prefs', { salutation: 'sie' });
+      const L = await login(br, cfg.a, cfg.pw, { theme: 'dark' }); await L.p.goto(BASE + '/dashboard');
+      await until(() => L.p.evaluate(() => { const s = document.getElementById('hz-saga-intro'); return s && !s.hidden && s.querySelector('.sg-info-b'); }), 6000);
+      await L.p.click('#hz-saga-intro .sg-info-b');
+      const sie = await L.p.evaluate(() => ({ lines: [].map.call(document.querySelectorAll('#hz-saga-intro .sg-intro-l'), (x) => x.textContent).join(' '),
+        q: (document.querySelector('#hz-saga-intro .sg-intro-q') || {}).textContent || '', det: (document.querySelector('#hz-saga-intro .sg-info-box') || {}).textContent || '' }));
+      ok('2515: Anrede „Sie“: Sätze, Ideen-Frage und ⓘ-Details gesiezt', /Sie sehen dürfen/.test(sie.lines) && /Soll ich Ihnen/.test(sie.q)
+        && /Was Sie .* schreiben/.test(sie.det) && /Widerrufen können Sie/.test(sie.det) && !/\b(du|dir|dein)\b/.test((sie.q + sie.det).replace('„Frag deine Seiten“', '')), sie);
+      await shot(L.p, 'nachher-kennenlernen-sie-details-dunkel'); await L.ctx.close();
+      await api(p, 'PUT', '/api/ai/prefs', { salutation: null });
+    }
     await p.click('#hz-saga-intro .sg-info-b');
     for (const th of ['dark', 'light']) for (const [vn, vp] of VIEWS) {
       const L = await login(br, cfg.a, cfg.pw, { viewport: vp, theme: th });

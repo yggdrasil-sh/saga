@@ -176,6 +176,36 @@ def version_url(job_id, cid):
     return f"/api/ai/jobs/{int(job_id)}/changes/{int(cid)}/before"
 
 
+def has_old(b):
+    """Gibt es zu dieser Aenderung eine alte Fassung zum Ansehen (before_view)? Nur Seiten mit gespeichertem Inhalt und
+    Zeilen - neue Seiten/Aufgaben/Termine und abgehakte Aufgaben haben keine (Bugs-DB 2515)."""
+    b = b if isinstance(b, dict) else {}
+    return (b.get("op") == "note" and b.get("body") is not None) or b.get("op") == "props"
+
+
+def old_url(job_id, cid, b):
+    """version_url nur, wenn es die alte Fassung gibt - sonst None (Apps zeigen "Alte Fassung ansehen" nur mit Weg)."""
+    return version_url(job_id, cid) if has_old(b) else None
+
+
+WHY = ("changed", "gone", "no_undo", "done")
+
+
+def why_text(why, target=""):
+    """Klartext zu changes[].why (Systemtext, Bugs-DB 2515) - Web und Apps zeigen ihn unveraendert; None ohne Grund."""
+    kind = str(target or "").partition(":")[0]
+    if why == "changed":
+        return t("Das wurde seitdem geändert.")
+    if why == "gone":
+        return t("Die Aufgabe gibt es nicht mehr.") if kind == "task" else t("Die Seite gibt es nicht mehr.") if kind in ("note", "row") \
+            else t("Das gibt es nicht mehr.")
+    if why == "no_undo":
+        return t("Das lässt sich nicht mehr zurücknehmen.")
+    if why == "done":
+        return t("Schon erledigt – die Aufgabe gibt es nicht mehr.") if kind == "task" else t("Schon wie vorher – nichts zurückzunehmen.")
+    return None
+
+
 def _state(c, cid):
     return c.execute("SELECT target, before, rev_after, undone_at, job_id FROM job_change WHERE id=?", (cid,)).fetchone()
 
@@ -230,7 +260,7 @@ def conflicts(job_id, uid):
                                                    "ORDER BY id", (job_id,)).fetchall():
             why = check_one(c, uid, (target, b, rev_after))
             if why in ("changed", "gone", "no_undo"):
-                out.append({"id": cid, "target": target, "why": why, "version_url": version_url(job_id, cid)})
+                out.append({"id": cid, "target": target, "why": why, "why_text": why_text(why, target), "version_url": old_url(job_id, cid, b)})
     return out
 
 
@@ -245,7 +275,7 @@ def compensate(c, job, change):
     if why in ("skip", "done"):
         return
     if why:
-        raise jobs.UndoConflict(target, version_url(job["id"], change["id"]), why)
+        raise jobs.UndoConflict(target, old_url(job["id"], change["id"], b), why)
     kind, _, v = target.partition(":")
     op, uid = b.get("op"), job["uid"]
     if op == "note":
@@ -256,7 +286,7 @@ def compensate(c, job, change):
         from saga.pages import note_trash
         res = note_trash(uid, int(v))
         if getattr(res, "status_code", 200) != 200:
-            raise jobs.UndoConflict(target, version_url(job["id"], change["id"]), "no_access")
+            raise jobs.UndoConflict(target, None, "no_access")      # neue Seite: keine alte Fassung (2515)
     elif op == "task_delete":
         c.execute("DELETE FROM task WHERE id=? AND uid=?", (int(v), uid))
     elif op == "task_open":
@@ -280,12 +310,12 @@ def _restore_note(uid, nid, b, rev_after, target, job_id, cid):
     with _db() as c, c:
         r = c.execute("SELECT uid, rev, updated_by FROM note WHERE id=? AND deleted_at IS NULL FOR UPDATE", (nid,)).fetchone()
         if not r or str(r[1]) != str(rev_after):
-            raise jobs.UndoConflict(target, version_url(job_id, cid), "changed")
+            raise jobs.UndoConflict(target, old_url(job_id, cid, b), "changed")
         _insert_version(c, r[0], nid, (b.get("title"), b.get("body"), b.get("format")), time.time(), uid)
         vid = c.execute("SELECT MAX(id) FROM note_version WHERE uid=? AND note_id=?", (r[0], nid)).fetchone()[0]
     res = page_tools.version_restore(uid, nid, vid)
     if getattr(res, "status_code", 200) != 200:
-        raise jobs.UndoConflict(target, version_url(job_id, cid), "no_access")
+        raise jobs.UndoConflict(target, old_url(job_id, cid, b), "no_access")
 
 
 def _restore_props(uid, rid, b, target, job_id, cid):
@@ -304,7 +334,7 @@ def _restore_props(uid, rid, b, target, job_id, cid):
     except _Reply as rp:
         res = rp.resp
     if getattr(res, "status_code", 200) != 200:
-        raise jobs.UndoConflict(target, version_url(job_id, cid), "changed" if getattr(res, "status_code", 0) == 409 else "no_access")
+        raise jobs.UndoConflict(target, old_url(job_id, cid, b), "changed" if getattr(res, "status_code", 0) == 409 else "no_access")
 
 
 def undo_one(job_id, uid, cid):
@@ -337,7 +367,7 @@ def undo_one(job_id, uid, cid):
                 jobs._live(c, job_id)
     except jobs.UndoConflict as ex:
         return 409, {"error": t("Das wurde seitdem geändert."), "code": "changed", "target": ex.target, "why": ex.why,
-                     "version_url": ex.version_url}
+                     "why_text": why_text(ex.why, ex.target), "version_url": ex.version_url}
     if gone:
         return 200, {"ok": True, "already": True, "text": t("Schon erledigt – den Termin gibt es nicht mehr.")}
     return 200, {"ok": True}

@@ -324,20 +324,30 @@ Pfaden unter `/api/ai/jobs` `403`, nie `2xx` (RT-42) – auch auf Pfaden, die es
 | Endpunkt | Zweck |
 |---|---|
 | `POST /api/ai/jobs` (SSE) `{text, context?: {note}, choice?, source?, thread?}` | Auftrag geben. Ereignisse: `status {phase, text}` (zuerst), dann genau eines von `plan`, `ask {question, choices[]}`, `refuse {zug, case, text, alternative?}`, `error {status, error}`. `thread: true` = aus dem Gespräch im Ort „Saga“ (Abschnitt 11.7): Bitte und Ergebnis stehen als Züge im Verlauf, das Ereignis trägt zusätzlich `turn` |
-| `POST /api/ai/jobs` `{recipe: "aufgabe", fields: {text}}` | Rezept direkt, ohne Modell (Knopf „Als Aufgabe anlegen“ aus `refuse.alternative`). Nur die Kennung eines eingeschalteten Rezepts – ein Rezept-Objekt ist 400 |
+| `POST /api/ai/jobs` `{recipe: "aufgabe", fields: {text}, text?}` | Rezept direkt, ohne Modell (Knopf „Als Aufgabe anlegen“ aus `refuse.alternative`). Nur die Kennung eines eingeschalteten Rezepts – ein Rezept-Objekt ist 400. `alternative.fields.text` ist ein kurzer Titel (erste Zeile/erster Satz, höchstens 80 Zeichen, Befehlsform bleibt – 2509); die ganze Bitte als `text` mitschicken, sie steht dann im Detail als `request` (Aufgaben haben kein Beschreibungsfeld) |
 | `GET /api/ai/jobs[?group=wartet_auf_dich|laeuft|fertig|nicht_geklappt]` | Liste: `{groups: [{key, label, items: [{id, title, state, state_text, sub, group, line, created, updated, plan_v}]}], counts}` – immer die 4 Gruppen in dieser Reihenfolge, „Fertig“ = letzte 30 Tage |
-| `GET /api/ai/jobs/{id}` | Detail: `state`/`state_text` (genaues Wort), `reason_text`, `plan` (wie Ereignis `plan`), `approved {at, device}`, `changes[]`, `report` (bei Erledigt/Zurückgenommen), `events[] {at, kind, text}` (Protokoll), `actions[]` |
+| `GET /api/ai/jobs/{id}` | Detail: `state`/`state_text` (genaues Wort), `reason_text`, `plan` (wie Ereignis `plan`), `edited` (wie `plan.edited`), `request` (die Bitte im Wortlaut), `approved {at, device}`, `changes[]`, `report` (bei Erledigt/Zurückgenommen), `events[] {at, kind, text}` (Protokoll), `actions[]` |
 | `PUT /api/ai/jobs/{id}/plan` `{plan_v, edits: [{n, args}]}` | „Ändern“: nur die Felder aus `steps[].edit`. Antwort = neuer Plan (`plan_v`+1, neuer `plan_hash`, `edited: true`); die alte Freigabe gilt nicht mehr. 409 = veraltet, 400 = Text mit Adresse/Erwähnung oder festes Feld |
 | `POST /api/ai/jobs/{id}/approve` `{plan_v, plan_hash}` | „Passt, los“ → `{state: "laeuft", say}`. 409 `code: stale` (Plan geändert) bzw. `code: state` (schon freigegeben/abgebrochen). Zweimal gleichzeitig = genau eine Freigabe |
 | `POST /api/ai/jobs/{id}/cancel` | „Lieber nicht“ / „Auftrag abbrechen“ → `{state: "abgebrochen", text}` |
-| `POST /api/ai/jobs/{id}/undo` `{change?}` | Rückgängig – ganz oder eine Änderung. 409 `{code: "changed", version_url}` = das Ziel wurde seitdem geändert (nie still überschreiben). Einen Termin, den es nicht mehr gibt (von Hand gelöscht), zählt der Server als zurückgenommen: `200 {ok, already: true, text: "Schon erledigt – …"}` statt 409 |
+| `POST /api/ai/jobs/{id}/undo` `{change?}` | Rückgängig – ganz oder eine Änderung. 409 `{code: "changed", why, why_text, version_url}` = das Ziel wurde seitdem geändert (nie still überschreiben); `version_url` ist `null`, wenn es keine alte Fassung gibt (Aufgaben, Termine, neue Seiten). Einen Termin, den es nicht mehr gibt (von Hand gelöscht), zählt der Server als zurückgenommen: `200 {ok, already: true, text: "Schon erledigt – …"}` statt 409 |
 | `GET /api/ai/jobs/{id}/changes/{c}/before` | „Alte Fassung holen“: `{target, title, text}` (Klartext 30 Tage nach Ende) |
 
 **Plan** (Ereignis `plan` und `detail.plan`): `{job, plan_v, plan_hash, title, state, steps[], read[], read_text, wording[],
-classes[], say, recipe}`; je Schritt `{n, tool, klass (read|own), kind_text, undo_class (undo|delete_only|final, bei read
+classes[], say, recipe, edited}`; je Schritt `{n, tool, klass (read|own), kind_text, undo_class (undo|delete_only|final, bei read
 null), class_text, text, wording, edit[], fields{}}`. `text`, `kind_text`, `class_text`, `read_text` („Ich lese dafür: …“)
 sind Systemtext in der Sprache der Anfrage – Apps zeigen sie unverändert. `wording` ist der wörtliche Text eines Schritts
 (KI-Markdown-Teilmenge, Abschnitt 4). Der Plan ist ein Vertrag: Freigabe nur mit genau diesem `plan_v` + `plan_hash`.
+
+**`edited` (Bugs-DB 2515, Vertrag mit den Apps):** Ereignis `plan`, `detail.plan`, `detail` (oben) und die Antwort auf `PUT
+…/plan` enthalten **immer** `edited: true|false` – `true`, solange der Plan seit dem Vorschlag geändert wurde („Ändern“)
+und noch nicht neu freigegeben ist (Zustand `wartet_ok`); nach der Freigabe und bei frischen Plänen `false`. Die
+Plan-Karte zeigt bei `true` „geändert – bitte neu freigeben“ – auch nach dem Neuladen und auf einem anderen Gerät.
+Nach **409 `stale`** (Freigabe/Ändern auf altem `plan_v`) das Detail neu laden und den neuen Plan mit diesem Hinweis
+zeigen, nie still zum neuen Plan wechseln; nach **409 `state`** (anderswo schon freigegeben/abgebrochen) keine
+Plan-Karte mit aktivem „Passt, los“ stehen lassen, sondern den jetzigen Stand (Rückmeldung bzw. Zustandswort). Die
+Rückmeldung nicht nur am Live-Ereignis festmachen: beim (Wieder-)Verbinden der Ereignis-Quelle und beim Öffnen den
+Auftrag einmal neu holen (Ereignisse dazwischen gehen verloren).
 
 **Zustände** (K2): `wartet_ok` „Wartet auf dein OK“, `laeuft` „Läuft“, `wartet_dich` „Wartet auf dich“, `erledigt`
 „Erledigt“, `fehlgeschlagen` „Hat nicht geklappt“, `abgebrochen` „Abgebrochen“, `zurueckgenommen` „Zurückgenommen“; nach
@@ -346,8 +356,15 @@ außen 4 Gruppen. Wörter immer aus `state_text`/`label` (Systemtext), nie selbs
 **Rückmeldung** (`detail.report`): `{text, lines: [{change, text, label, undone, can_undo}]}` – Ergebnis zuerst, je Änderung
 eine Zeile mit Knopf „Rückgängig“ (≥ 44 pt). `text` nennt die Änderungen schon; damit das Ergebnis nicht zweimal steht,
 zeigt das Web neben „Rückgängig“ nur `label` (den Gegenstand) bzw. bei einer einzigen Änderung nur den Knopf (Name für
-Screenreader: „Rückgängig: {lines[].text}“). Bei `undo_class` `delete_only` vor dem Löschen nachfragen. `changes[].why`
-`changed` + `version_url` → „Das wurde seitdem geändert.“ + „Alte Fassung ansehen“.
+Screenreader: „Rückgängig: {lines[].text}“). Bei `undo_class` `delete_only` vor dem Löschen nachfragen.
+
+**`changes[]`** `{id, step, target, label, undo_class, class_text, undone, can_undo, why, why_text, version_url}` (2515):
+`why` sagt, warum `can_undo` `false` ist (nur bei „Erledigt“): `changed` (seitdem geändert), `gone` (gibt es nicht mehr),
+`no_undo` (lässt sich nicht zurücknehmen), `done` (schon wie vorher, z. B. die Aufgabe von Hand gelöscht) – sonst `null`;
+`why_text` ist der Satz dazu (Systemtext, unverändert zeigen). **„Alte Fassung ansehen“ nur zeigen, wenn `version_url`
+ein Text ist** – den gibt es nur für geänderte Seiten und Zeilen (`target` `note:`/`row:` mit gespeichertem Vorher-Stand);
+für Aufgaben, Termine und neu angelegte Seiten ist er `null` (vorher zeigte der Knopf dort ins Leere). Dasselbe gilt für
+`version_url` in den 409-Antworten von `…/undo`.
 
 **Live:** `ai.job.changed {id, state, sub, plan_v}` an die Besitzerin (nur Kennungen) – Liste/Detail neu laden.
 
@@ -421,6 +438,12 @@ Websuche – nicht die Sätze des Gesprächs aus `intro.details`; ältere Server
 jetzigen Endpunkt ab → **409** `{error, version, host}`: Status neu laden, Karte neu zeigen. `host` (auch `/api/ai/status`
 `host`) nie mit Zugangsdaten (`user:pw@` fällt weg).
 
+**Anrede (2515):** Alle Teile von `intro` – `lines`, `bar`, `question` und `details` – folgen der Anrede der Person
+(`/api/ai/prefs` `salutation`, sonst Standard des Admins): bei „Sie“ die gesiezten Bausteine `intro.bar`,
+`intro.question`, `intro.e2e`, `intro.what`, `intro.home`, `intro.withdraw` (`saga/say/<lang>.json`, nur de/es/ru – en/th
+haben keine Formunterscheidung, dort bleibt der Systemtext). Apps zeigen die Texte unverändert; nach dem Ändern der
+Anrede `/api/ai/status` neu laden.
+
 ### 11.3 Gespräch im Ort „Saga“ (K10)
 
 - `GET /api/ai/thread` → `{turns: [{n, role: "me"|"ai", zug, text, fields, read, job_id, created, expires}], history,
@@ -490,6 +513,14 @@ Seiten“ und die Hilfen für die offene Seite.
   keine Einwilligung; darüber steht „Deine Aufträge sind angehalten, weil du die Einwilligung widerrufen hast …“. Apps
   verhalten sich genauso. Die Züge zu einem Auftrag legt der Server auch an, wenn die Verbindung nach dem Planen reißt
   (genau einmal, `ai_jobs.plan_job`).
+- **Auftrag zu einer offenen Seite (2508):** Im KI-Bereich einer Seite (Reiter „Diese Seite“) führt „{name} soll sich
+  kümmern …“ (nur mit `status.jobs`, nur Seiten dieses Servers) in den Ort „Saga“ (`/saga?note=<id>`): Gespräch mit
+  „Als Auftrag“ an, über dem Eingabefeld „Zur Seite „…““ mit ×. Jeder Auftrag von dort geht als `POST /api/ai/jobs`
+  `{text, thread: true, context: {note: <id>}}`. Der Server nimmt die Seite nur, wenn die Person sie lesen darf
+  (`sharing.access … view`); sonst bleibt sie still draußen (kein Fehler, nichts von ihr im Plan oder Material), ebenso
+  gelöschte Seiten. **Apps (später, K-G):** derselbe Weg – aus der Seitenansicht in den Ort „Saga“ springen, Seite als
+  Kontext merken (Titel aus `GET /api/notes/<id>`) und beim Auftrag `context.note` mitschicken; das Ereignis `plan`
+  nennt die Seite in `read`/`read_text` („Ich lese dafür: …“).
 - **Begriffe:** „Auftrag“ (etwas, das die KI erledigt) und „Aufgabe“ (Eintrag der Aufgabenliste) sind verschieden:
   en **Job**/„Jobs“ vs. *Task*, es **Encargo**/„Encargos“ vs. *Tarea* (ru „Поручение“ vs. „Задача“). „Requests“ scheidet
   aus, weil „Anfragen/Tag“ (Kontingent) im Englischen schon „requests“ heißt. Systemtexte kommen fertig vom Server.

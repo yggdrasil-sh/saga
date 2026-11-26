@@ -184,14 +184,18 @@ def detail(uid, job_id):
         if not isinstance(b, dict) or b.get("op") == "none":
             continue
         why = checks.get(cid)
+        w = why if why in ai_undo.WHY else None           # 2515: auch "done" (schon wie vorher, z. B. Aufgabe von Hand geloescht)
         changes.append({"id": cid, "step": n, "target": target, "label": ai_undo.label(target, after, labels),
                         "undo_class": undo_cls.get(n), "class_text": ai_plan.klass_text(undo_cls.get(n), "own"),
                         "undone": undone is not None, "can_undo": r[2] == "erledigt" and undone is None and why is None,
-                        "why": why if why in ("changed", "gone", "no_undo") else None,
-                        "version_url": ai_undo.version_url(job_id, cid) if why == "changed" and b.get("op") in ("note", "props") else None})
+                        "why": w, "why_text": ai_undo.why_text(w, target),
+                        # nur mit alter Fassung (Seite/Zeile) - Aufgaben/Termine/neue Seiten haben keine: null statt kaputtem Weg
+                        "version_url": ai_undo.old_url(job_id, cid, b) if w == "changed" else None})
     out = {"id": r[0], "title": r[1], "state": r[2], "state_text": state_text(r[2]), "group": jobs.group_of(r[2]),
            "group_text": group_text(jobs.group_of(r[2])), "sub": r[3], "reason": r[4], "reason_text": reason_text(r[2], r[3], r[4]),
            "created": r[5], "updated": r[6], "ended_at": r[7], "plan": ai_plan.plan_view(job_id, uid), "changes": changes}
+    out["edited"] = bool((out["plan"] or {}).get("edited"))      # 2515: wie plan.edited (Vertrag mit den Apps)
+    out["request"] = str(pj.get("request") or "")                # 2509: die Bitte im Wortlaut (z. B. hinter "Als Aufgabe anlegen")
     appr = next((d for at, k, d in reversed(evs) if k == "approve"), None)
     at = next((at for at, k, d in reversed(evs) if k == "state" and isinstance(d, dict) and d.get("frm") == "wartet_ok"
                and d.get("to") == "laeuft"), None)
@@ -504,7 +508,7 @@ async def api_jobs_undo(jid: str, request: Request):
         bad = ai_undo.conflicts(i, uid)
         if bad:
             return 409, {"error": t("Das wurde seitdem geändert."), "code": "changed", "changes": bad,
-                         "version_url": next((x["version_url"] for x in bad if x["why"] == "changed"), None)}
+                         "version_url": next((x["version_url"] for x in bad if x["why"] == "changed" and x["version_url"]), None)}
         if not jobs.undo(i, uid):
             return 409, {"error": t("Das lässt sich gerade nicht zurücknehmen."), "code": "state", "state": r[0]}
         return 202, None

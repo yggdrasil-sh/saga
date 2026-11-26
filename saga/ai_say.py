@@ -196,6 +196,20 @@ def persona_for(uid=None, conn=None):
             "address": own["salutation"] or a["salutation"]}
 
 
+def formal(key, lang, persona=None, **vals):
+    """Gesiezte Fassung eines Satzes der Kennenlernen-Karte/Leiste (Bausteine intro.bar, intro.question, intro.e2e,
+    intro.what, intro.home, intro.withdraw - Bugs-DB 2515) -> str oder None. Nur mit Anrede "sie" und nur in Sprachen
+    mit Formunterscheidung (de/es/ru; en/th: leerer Eintrag) - sonst None, und der Aufrufer nimmt den Systemtext (du)."""
+    x = _Ctx("intro", {}, lang, persona)
+    v = CAT[x.lang].get(key)
+    if not x.formal or not isinstance(v, dict) or not any(k == "sie" or k.endswith(".sie") for k in v):
+        return None
+    try:
+        return x.T(key, **vals)
+    except _Missing:
+        return None
+
+
 def label(persona=None, lang="en"):
     """M1/K11: wer spricht - "{Name} · KI". Ohne eigenen Namen der Standardname ("Saga KI") ohne doppelte Marke."""
     lang = lang_of(lang)

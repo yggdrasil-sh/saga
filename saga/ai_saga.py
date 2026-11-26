@@ -366,23 +366,35 @@ def intro(uid, conn=None, cfg=None):
     lines = [t("Ich bin {name}, die KI eures Servers.", name=name),
              t("Ich sehe nur, was du sehen darfst. Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben und Terminen gehen an {where}.", where=where),  # noqa: E501
              t("Ich ändere nichts und schreibe niemandem ohne dein OK.")]
+    lang, persona = None, None
     try:                                         # K-H (2268): derselbe Text als Baustein "intro" - mit Anrede du/Sie der Person
         from saga import ai_say, i18n
         lang = i18n.get_lang()
-        txt = ai_say.say("intro", {"name": name, "host": where}, lang, ai_say.persona_for(uid, conn))
+        persona = ai_say.persona_for(uid, conn)
+        txt = ai_say.say("intro", {"name": name, "host": where}, lang, persona)
         parts = ai_say.sentences(txt, lang)
         if len(parts) == 3 and where in parts[1]:
             lines = parts
     except Exception:  # noqa: BLE001 - Baustein fehlt/kaputt: die Saetze oben (Systemtext) bleiben
         pass
-    details = [t("Nicht Ende-zu-Ende verschlüsselt: Was du {name} schreibst, liest die KI auf {host} im Klartext.", name=name,
-                 host=h["host"] if h else ""),
-               t("Was genau rausgeht: deine Frage, die letzten Sätze dieses Gesprächs und Ausschnitte aus Seiten, Aufgaben und Terminen, die zur Frage passen – nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Chats und Seiten von anderen Servern liest sie nicht."),  # noqa: E501
-               _net_line(h)]
-    details.append(t("Widerrufen kannst du jederzeit unter Einstellungen › Saga › Meine Daten. Dann erledigt {name} keine Aufträge mehr, bringt keine Ideen, und das Gespräch hier ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an die KI – aber nur, wenn du sie stellst.", name=name))  # noqa: E501
-    out = {"version": CONSENT_V, "host": h["host"] if h else "", "lines": lines, "details": details, "ideas_allowed": ideas_cap,
-           "question": t("Soll ich dir ab und zu Ideen zeigen – nur auf „Heute“, nie als Mitteilung?") if ideas_cap else None,
-           "bar": t("Was du hier schreibst, liest die KI auf {where}", where=where)}
+
+    def form(key, du, **vals):                   # 2515: alle Teile der Karte in der Anrede der Person (Sie: Baustein)
+        if persona is None:
+            return du
+        try:
+            from saga import ai_say
+            return ai_say.formal(key, lang, persona, **vals) or du
+        except Exception:  # noqa: BLE001 - Baustein kaputt: Systemtext (du)
+            return du
+    host = h["host"] if h else ""
+    details = [form("intro.e2e", t("Nicht Ende-zu-Ende verschlüsselt: Was du {name} schreibst, liest die KI auf {host} im Klartext.", name=name,
+                                   host=host), name=name, host=host),
+               form("intro.what", t("Was genau rausgeht: deine Frage, die letzten Sätze dieses Gesprächs und Ausschnitte aus Seiten, Aufgaben und Terminen, die zur Frage passen – nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Chats und Seiten von anderen Servern liest sie nicht.")),  # noqa: E501
+               form("intro.home", _net_line(h)) if h and h["net"] == "home" else _net_line(h)]
+    details.append(form("intro.withdraw", t("Widerrufen kannst du jederzeit unter Einstellungen › Saga › Meine Daten. Dann erledigt {name} keine Aufträge mehr, bringt keine Ideen, und das Gespräch hier ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an die KI – aber nur, wenn du sie stellst.", name=name), name=name))  # noqa: E501
+    out = {"version": CONSENT_V, "host": host, "lines": lines, "details": details, "ideas_allowed": ideas_cap,
+           "question": form("intro.question", t("Soll ich dir ab und zu Ideen zeigen – nur auf „Heute“, nie als Mitteilung?")) if ideas_cap else None,
+           "bar": form("intro.bar", t("Was du hier schreibst, liest die KI auf {where}", where=where), where=where)}
     if h and h.get("note"):
         out["note"] = h["note"]
     return out

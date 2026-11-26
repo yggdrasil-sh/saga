@@ -288,6 +288,25 @@ def part_model(pages):
     r2 = plan(A, "", recipe="aufgabe", fields=r["alternative"]["fields"])
     ok("„Als Aufgabe anlegen“: Plan ohne Modellaufruf", r2["type"] == "plan" and count().get("n") == n0 and r2["steps"][0]["tool"] == "create_task")
     jobs.cancel(r2["job"], A)
+    long_q = ("Bestell bitte die Grillkohle für das Sommerfest in einem Onlineshop, am besten zwei Säcke Buchenholzkohle. "
+              "Und frag danach Ben, ob er sie am Freitag abholt.")
+    r = plan(A, long_q)
+    alt = ((r.get("alternative") or {}).get("fields") or {}).get("text") or ""
+    ok(f"2509: Absage -> kurzer Titel (erster Satz, <= 80, Befehlsform, …) statt der ganzen Bitte ({alt})", r["type"] == "refuse"
+       and alt.startswith("Bestell bitte die Grillkohle") and len(alt) <= ai_plan.ALT_TITLE and alt.endswith("…") and "Ben" not in alt, alt)
+    r2 = plan(A, long_q, recipe="aufgabe", fields={"text": alt})
+    s, dt = K.req("GET", f"/api/ai/jobs/{r2.get('job') or 0}", cA)
+    ok(f"2509: Aufgabe heisst wie der Titel, die ganze Bitte steht im Detail (request) ({dt.get('title')})",
+       r2["type"] == "plan" and dt.get("title") == alt and dt.get("request") == long_q, dt.get("request"))
+    jobs.cancel(r2.get("job") or 0, A)
+    cases = {"Bestell die Kohle in einem Onlineshop.": "Bestell die Kohle in einem Onlineshop",
+             "Saga, bestell die Kohle. Danach Ben fragen.": "Bestell die Kohle",
+             "Saga: kauf z. B. Kohle bis 28.11. bei Ben": "Kauf z. B. Kohle bis 28.11. bei Ben",
+             "Ruf Ben an!\nUnd dann noch Clara wegen des Salats.": "Ruf Ben an!",
+             "Schick @ben die Liste https://x.example": "Schick die Liste",
+             "Recuérdame comprar carbón. ¿Vale?": "Recuérdame comprar carbón"}
+    got = {q_: ai_plan._alt_text(q_) for q_ in cases}
+    ok(f"2509: _alt_text Faelle ({got})", got == cases, got)
     r = plan(A, "", recipe={"id": "x", "steps": []})
     ok("RT-21: Rezept-Objekt vom Client -> 400", r["type"] == "error" and r["status"] == 400)
     dup = K.page(cA, "Sommerfest", "Zweite Seite Sommerfest mit Grillkohle.")
@@ -343,11 +362,19 @@ def part_contract(pages):
     jid = p.get("job")
     ok("SSE plan: job, plan_v, plan_hash, steps, read, wording, classes", jid and p.get("plan_v") == 1 and len(p.get("plan_hash") or "") == 64
        and p.get("steps") and "read" in p and "wording" in p and p.get("classes") == ["delete_only"])
+    s, d0 = K.req("GET", f"/api/ai/jobs/{jid}", cA)
+    ok(f"2515: frischer Plan -> edited false (SSE, Detail, detail.plan) ({p.get('edited')}, {d0.get('edited')})",
+       p.get("edited") is False and d0.get("edited") is False and (d0.get("plan") or {}).get("edited") is False)
+    ok(f"2508: context.note (eigene Seite) steht in read ({p.get('read')})", any(x["ref"] == f"note:{pages['fest']}" for x in p.get("read") or []))
     s, d = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": 1, "plan_hash": "0" * 64})
     ok(f"approve mit falschem plan_hash -> 409 stale ({s}, {d})", s == 409 and d.get("code") == "stale")
     s, d = K.req("PUT", f"/api/ai/jobs/{jid}/plan", cA, {"plan_v": 1, "edits": [{"n": 0, "args": {"text": "Grillkohle (2 Säcke) kaufen"}}]})
     ok(f"Ändern -> plan_v 2, neuer Hash ({s})", s == 200 and d.get("plan_v") == 2 and d.get("plan_hash") != p["plan_hash"]
        and "2 Säcke" in d["steps"][0]["text"])
+    s, dd = K.req("GET", f"/api/ai/jobs/{jid}", cA)
+    ok(f"2515: nach Ändern edited auch nach dem Neuladen (Detail + detail.plan + plan_view) ({d.get('edited')}, {dd.get('edited')})",
+       d.get("edited") is True and dd.get("edited") is True and (dd.get("plan") or {}).get("edited") is True
+       and ai_plan.plan_view(jid, A).get("edited") is True)
     s, d2 = K.req("PUT", f"/api/ai/jobs/{jid}/plan", cA, {"plan_v": 2, "edits": [{"n": 0, "args": {"text": "siehe https://x.example"}}]})
     ok(f"Ändern mit Adresse -> 400 ({s})", s == 400)
     s, d2 = K.req("PUT", f"/api/ai/jobs/{jid}/plan", cA, {"plan_v": 2, "edits": [{"n": 0, "args": {"id": 5}}]})
@@ -359,6 +386,9 @@ def part_contract(pages):
     ok("vor dem OK nichts geschrieben", not pg("SELECT 1 FROM task WHERE uid=? AND text LIKE '%Grillkohle%'", (A,)))
     s, d3 = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": 2, "plan_hash": d["plan_hash"]})
     ok(f"Passt, los -> laeuft ({s}, {d3})", s == 200 and d3.get("state") == "laeuft" and d3.get("say"))
+    s, dl = K.req("GET", f"/api/ai/jobs/{jid}", cA)
+    ok(f"2515: nach der Freigabe edited false ({dl.get('edited')}, {(dl.get('plan') or {}).get('edited')})",
+       dl.get("edited") is False and (dl.get("plan") or {}).get("edited") is False)
     s, _ = K.req("POST", f"/api/ai/jobs/{jid}/approve", cA, {"plan_v": 2, "plan_hash": d["plan_hash"]})
     ok("zweite Freigabe -> 409", s == 409)
     st_ = run_jobs(jid)
@@ -444,6 +474,56 @@ def part_row(pages):
     s, d = K.req("POST", f"/api/ai/jobs/{r['job']}/undo", K.ck(A), {})
     props = api_v1.page_read(full, row)[1].get("properties") or {}
     ok(f"update_row zurueckgenommen ({s}, {d}, {props})", s == 200 and "offen" in props.values() and "Ben" not in props.values())
+
+
+def part_task_why(pages):
+    """2515: Aufgaben haben keine alte Fassung - changes[].why/why_text gefuellt, version_url null (statt eines Wegs, der
+    ins Leere fuehrt); Seiten behalten ihn (part_contract). Dazu 2508: context.note nur mit Leserecht."""
+    cA = K.ck(A)
+    r = plan(A, "Erinnere mich Freitag an die Grillkohle")
+    ok(f"2515: Plan Aufgabe ({r.get('type')})", r.get("type") == "plan", r)
+    jid = r.get("job") or 0
+    jobs.approve(jid, A, r["plan_v"], r["plan_hash"])
+    st = run_jobs(jid)
+    tg = [x[0] for x in pg("SELECT target FROM job_change WHERE job_id=? ORDER BY id", (jid,)) if str(x[0]).startswith("task:")]
+    tid = int(tg[0].split(":")[1]) if tg else 0
+    s0, _ = K.req("PATCH", f"/api/tasks/{tid}", cA, {"text": "Grillkohle (von Hand geändert)"})
+
+    def change():
+        _s, det = K.req("GET", f"/api/ai/jobs/{jid}", cA)
+        return det, next((c for c in det.get("changes") or [] if c["target"] == f"task:{tid}"), {})
+    det, ch = change()
+    ok(f"2515: Aufgabe von Hand geaendert -> why changed + why_text, version_url null, kein Rueckgaengig ({st}, {s0}, {ch})",
+       st == "erledigt" and s0 == 200 and ch.get("why") == "changed" and ch.get("why_text") == "Das wurde seitdem geändert."
+       and "version_url" in ch and ch["version_url"] is None and ch.get("can_undo") is False and "undo" not in det.get("actions", []), ch)
+    s, d = K.req("POST", f"/api/ai/jobs/{jid}/undo", cA, {"change": ch.get("id") or 0})
+    ok(f"2515: Rueckgaengig je Aenderung -> 409 changed, version_url null, why_text ({s}, {d})",
+       s == 409 and d.get("code") == "changed" and d.get("version_url") is None and d.get("why") == "changed" and d.get("why_text"))
+    s, d = K.req("POST", f"/api/ai/jobs/{jid}/undo", cA, {})
+    ok(f"2515: Rueckgaengig ganz -> 409, kein Weg zur alten Fassung ({s}, {d})", s == 409 and d.get("version_url") is None
+       and d.get("changes") and all(x.get("version_url") is None and x.get("why_text") for x in d["changes"]))
+    K.req("DELETE", f"/api/tasks/{tid}", cA)
+    det, ch = change()
+    ok(f"2515: Aufgabe von Hand geloescht -> why done, Satz dazu ({ch})", ch.get("why") == "done"
+       and ch.get("why_text") == "Schon erledigt – die Aufgabe gibt es nicht mehr." and ch.get("version_url") is None and ch.get("can_undo") is False, ch)
+    # 2508: context.note - nur Seiten, die die Person lesen darf (fremde private Seite bleibt still draussen)
+    st_, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Kümmer dich um die Grillkohle bis Freitag", "context": {"note": pages["b_priv"]}})
+    pv = K.get(ev, "plan") or {}
+    _sys, user, _p, _a = K.last()
+    ok(f"2508: context.note fremde private Seite -> nicht gelesen, nicht im Material ({[x['ref'] for x in pv.get('read') or []]})",
+       st_ == 200 and pv.get("job") and not any(x["ref"] == f"note:{pages['b_priv']}" for x in pv.get("read") or []) and CANARY_B not in user)
+    jobs.cancel(pv.get("job") or 0, A)
+    st_, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Kümmer dich um die Grillkohle bis Freitag", "context": {"note": pages["b_view"]}})
+    pv = K.get(ev, "plan") or {}
+    ok(f"2508: context.note lesend geteilte Seite -> darf gelesen werden ({[x['ref'] for x in pv.get('read') or []]})",
+       st_ == 200 and any(x["ref"] == f"note:{pages['b_view']}" for x in pv.get("read") or []))
+    jobs.cancel(pv.get("job") or 0, A)
+    for bad in ("x", -5, {"a": 1}, 10 ** 30, True):
+        st_, ev, _ = K.sse("/api/ai/jobs", cA, {"text": "Kümmer dich um die Grillkohle bis Freitag", "context": {"note": bad}})
+        pv = K.get(ev, "plan") or {}
+        ok(f"2508: context.note ungueltig ({bad!r}) -> kein Fehler, nichts gelesen ({st_})", st_ == 200 and pv.get("job")
+           and not any(x["ref"] in (f"note:{bad}",) for x in pv.get("read") or []))
+        jobs.cancel(pv.get("job") or 0, A)
 
 
 def part_api(pages):
@@ -727,6 +807,7 @@ def main():
         part_selftest()
         part_contract(pages)
         part_row(pages)
+        part_task_why(pages)
         part_api(pages)
         part_websaga(pages)
         part_admin()

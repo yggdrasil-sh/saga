@@ -475,6 +475,12 @@
     tr.appendChild(act(T('Übersetzen nach'), '⇄', function () { runPage('translate'); }, true)); tr.appendChild(target);
     g.appendChild(tr);
     g.appendChild(act(T('Werte vorschlagen …'), '⇢', assignForm));
+    // 2508: Auftrag zu dieser Seite - springt in den Ort "Saga" (Gespraech, "Als Auftrag" an, context.note = diese Seite)
+    if (A.st && A.st.jobs && typeof c.id === 'number' && c.id > 0) {
+      var jb = act(T('{name} soll sich kümmern …', { name: P().name }), '✦', function () { location.href = '/saga?note=' + c.id; });
+      jb.classList.add('ai-act-job'); jb.title = T('Auftrag zu dieser Seite geben – du siehst zuerst den Plan.');
+      g.appendChild(jb);
+    }
     w.appendChild(g); w.appendChild(selLine); w.appendChild(resBox);
     body.appendChild(w);
     selInfo();

@@ -447,6 +447,26 @@ def run():
     ok("PUT /api/ai/prefs: falsche Werte 400, gueltige werden gespeichert",
        st == 400 and st2 == 400 and st3 == 200 and d3.get("salutation") == "sie" and d3["sources"]["calendar"] is False
        and d3.get("notify_content") == "never", (st, st2, d3))
+    # Bugs-DB 2515: alle Teile der Kennenlernen-Karte in der gewaehlten Anrede (nicht nur intro.lines)
+    _s, sa = req("GET", "/api/ai/status", A)
+    it_s = sa.get("intro") or {}
+    det_s = " ".join(it_s.get("details") or [])
+    ok("2515 Anrede Sie: lines, bar, question und details gesiezt (de)",
+       "Sie" in " ".join(it_s.get("lines") or []) and it_s.get("bar", "").startswith("Was Sie hier schreiben, liest die KI auf ")
+       and "Ihnen" in (it_s.get("question") or "") and "Was Sie " in det_s and "Ihre Frage" in det_s and "Ihrem Heimnetz" in det_s
+       and "Widerrufen können Sie" in det_s and not re.search(r"\b(du|dir|dein\w*)\b", " ".join([it_s.get("bar", ""), it_s.get("question") or "", det_s]).replace("„Frag deine Seiten“", "")),
+       it_s)
+    _s, se = req("GET", "/api/ai/status", A, hdr={"Accept-Language": "es"})
+    ite = se.get("intro") or {}
+    ok("2515 Anrede Sie: es (usted) in bar/question/details",
+       ite.get("bar", "").startswith("Lo que usted escribe") and (ite.get("question") or "").startswith("¿Le muestro")
+       and "Puede retirarlo" in " ".join(ite.get("details") or []) and "su red doméstica" in " ".join(ite.get("details") or []), ite)
+    _s, sn = req("GET", "/api/ai/status", A, hdr={"Accept-Language": "en"})
+    ok("2515 Anrede Sie: en ohne Formunterscheidung (Systemtext)", (sn.get("intro") or {}).get("bar", "").startswith("What you write here"),
+       sn.get("intro"))
+    _s, sb = req("GET", "/api/ai/status", B)
+    ok("2515: andere Person (du) bleibt beim Du", (sb.get("intro") or {}).get("bar", "").startswith("Was du hier schreibst")
+       and "Widerrufen kannst du" in " ".join((sb.get("intro") or {}).get("details") or []), sb.get("intro"))
     req("PUT", "/api/ai/prefs", A, {"lively": "sachlich"})
     st4, d4 = req("PUT", "/api/ai/prefs", A, {"dictation": "device"})
     raw = json.loads(q("SELECT v FROM user_kv WHERE uid=? AND k='ai_prefs'", (A,))[0][0])

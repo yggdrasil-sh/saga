@@ -8,7 +8,7 @@
 // Bilder (SHOTS=<ordner>): saga-auftraege-hell/dunkel/schmal, saga-detail-dunkel, saga-konflikt-dunkel, saga-auftraege-leer-dunkel.
 // Voraussetzung wie tests/browser_kollegin_plan.js (fake-plan, Stufe „Pläne“, Seite „Sommerfest“, frisches Konto).
 //   SAGA_BASE=http://127.0.0.1:8900 SAGA_USER=kp-web2 SAGA_PASS=... [SHOTS=/tmp/x] node tests/browser_kollegin_auftraege.js
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const PW = require(process.env.PLAYWRIGHT || 'playwright');   // BR=firefox: Firefox statt Chromium (Chat 18)
 const E = process.env, BASE = E.SAGA_BASE || 'http://127.0.0.1:8099', USER = E.SAGA_USER, PASS = E.SAGA_PASS, SHOTS = E.SHOTS || '';
 if (!USER || !PASS) { console.error('SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const R = []; const ok = (n, c, x) => { R.push([n, !!c]); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' ' + JSON.stringify(x === undefined ? '' : x))); };
@@ -20,7 +20,8 @@ const WORDS = {
   th: ['ต้องการคุณ', 'กำลังทำ', 'เสร็จสิ้น', 'ไม่สำเร็จ'] };
 
 (async () => {
-  const br = await chromium.launch(E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
+  const FF = E.BR === 'firefox';
+  const br = await (FF ? PW.firefox : PW.chromium).launch(!FF && E.PW_CHANNEL ? { channel: E.PW_CHANNEL } : {});
   const ctx = await br.newContext({ viewport: { width: 1440, height: 900 }, locale: 'de-DE', colorScheme: 'dark' });
   const p = await ctx.newPage(); const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
@@ -44,7 +45,7 @@ const WORDS = {
     await p.goto(BASE + '/saga?tab=jobs');
     return until(() => p.evaluate(() => !document.getElementById('sg-jobs').hidden && !!document.querySelector('#sg-jobs .kj-root .kj-list') && !document.querySelector('#sg-jobs .kj-list:empty')));
   }
-  async function shot(name) { if (SHOTS) { await sleep(300); await p.screenshot({ path: SHOTS + '/' + name + '.png' }); } }
+  async function shot(name) { if (SHOTS) { await sleep(300); await p.screenshot({ path: SHOTS + '/' + name + (E.BR === 'firefox' ? '-firefox' : '') + '.png' }); } }
 
   // leerer Zustand
   ok('Ort „Aufträge“ öffnet', await openJobs());

@@ -10,6 +10,13 @@
 
  "intro": {"": "Soy {name}, la IA de vuestro servidor. Solo veo lo que tú puedes ver; tu pregunta y los fragmentos adecuados de tus páginas, tareas y citas van a {where}. No cambio nada ni escribo a nadie sin tu OK.",
            "sie": "Soy {name}, la IA de este servidor. Solo veo lo que usted puede ver; su pregunta y los fragmentos adecuados de sus páginas, tareas y citas van a {where}. No cambio nada ni escribo a nadie sin su OK."},
+ "_intro.form": "Tarjeta de presentación y barra (2515): solo la forma de usted; la forma de tú es texto del sistema (saga/i18n).",
+ "intro.bar": {"sie": "Lo que usted escribe aquí lo lee la IA en {where}"},
+ "intro.question": {"sie": "¿Le muestro alguna idea de vez en cuando – solo en «Hoy», nunca como notificación?"},
+ "intro.e2e": {"sie": "Sin cifrado de extremo a extremo: lo que usted escribe a {name} lo lee en texto claro la IA en {host}."},
+ "intro.what": {"sie": "Qué se envía exactamente: su pregunta, las últimas frases de esta conversación y fragmentos de páginas, tareas y citas que encajan con la pregunta – solo lo que usted puede ver y solo de las fuentes que ha activado. No lee chats ni páginas de otros servidores."},
+ "intro.home": {"sie": "La dirección está en su red doméstica."},
+ "intro.withdraw": {"sie": "Puede retirarlo cuando quiera en Ajustes › Saga › Mis datos. Entonces {name} ya no hace encargos, no trae ideas y esta conversación queda desactivada. Las preguntas en otros sitios, como «Pregunta a tus páginas», siguen yendo a la IA, pero solo cuando las hace usted."},
 
  "greet.morning": {"": "Buenos días, {person}.", "sie": "Buenos días, {person}."},
  "greet.day": "Hola, {person}.",

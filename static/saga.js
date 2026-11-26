@@ -268,7 +268,7 @@
     feed.appendChild(node); return node;
   };
 
-  var G = { run: null, turns: [], mode: 'ask', tab: 'talk', jobs: null };
+  var G = { run: null, turns: [], mode: 'ask', tab: 'talk', jobs: null, note: null };
 
   // --- Auftraege im Gespraech (web-saga, UX R3/R4; Bausteine aus static/ai-jobs.js) ---------------------------------
   function jobsOn() { return !!(S.st && S.st.jobs && window.HKJobs); }
@@ -300,7 +300,14 @@
   }
   function planCardFor(plan, w) {
     return HKJobs.planCard(plan, { live: live(), onOpen: openJob, onEdit: function () { if (G.jobs) G.jobs.refresh(); },
-      onDone: function (state) { if (w) w.dataset.state = state; if (G.jobs) G.jobs.refresh(); } });
+      onDone: function (state) { if (w) w.dataset.state = state; if (G.jobs) G.jobs.refresh(); },
+      // 2515: 409 state (anderswo freigegeben/abgebrochen) - der Baustein im jetzigen Stand statt der Plan-Karte
+      onState: function (d) {
+        if (!w) return;
+        var n = jobNode(d, w); w.textContent = ''; w.appendChild(n); w.dataset.state = d.state; focusSoft(n);
+        live().textContent = d.state_text;
+        if (G.jobs) G.jobs.refresh();
+      } });
   }
   function refreshJob(w) {
     var id = w.dataset.job; if (!id) return Promise.resolve();
@@ -341,6 +348,7 @@
     var ta = $('sg-ta'); if (!extra) ta.value = '';
     busy(true);
     var body = Object.assign({ text: text, thread: true }, extra || {}), out = null;
+    if (G.note && !body.recipe && !body.context) body.context = { note: G.note.id };   // 2508: Auftrag zu einer offenen Seite
     G.run = HKJobs.post(body, function (ev, d) {
       if (ev === 'status') { if (d && d.text) dots.textContent = d.text; return; }
       var node;
@@ -372,6 +380,30 @@
     $('sg-send').textContent = job ? T('Auftrag geben') : T('Senden');
     ta.placeholder = job ? T('Sag {name}, was du brauchst …', { name: P().name }) : T('Schreib {name} …', { name: P().name });
     ta.setAttribute('aria-label', job ? T('Auftrag an {name}', { name: P().name }) : T('Nachricht an {name}', { name: P().name }));
+    noteLine();
+  }
+  // 2508: aus dem KI-Bereich einer Seite ("{name} soll sich kümmern …" -> /saga?note=<id>): Auftraege im Gespraech gehen mit
+  // context.note an den Server (der prueft das Leserecht). Zeile ueber dem Eingabefeld, mit × wieder weg.
+  function noteLine() {
+    var f = $('sg-ask'), ln = $('sg-note');
+    if (!f) return;
+    if (!G.note || G.mode !== 'job') { if (ln) ln.hidden = true; return; }
+    if (!ln) { ln = el('p', 'sg-note'); ln.id = 'sg-note'; f.insertBefore(ln, f.firstChild); }
+    ln.textContent = ''; ln.hidden = false;
+    ln.appendChild(el('span', 'sg-note-t', T('Zur Seite „{title}“', { title: G.note.title || T('Unbenannt') })));
+    var x = el('button', 'icon-btn sg-note-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Ohne diese Seite'));
+    x.addEventListener('click', function () { G.note = null; noteLine(); try { $('sg-ta').focus(); } catch (e) { /* egal */ } });
+    ln.appendChild(x);
+  }
+  var NOTE_Q = /[?&]note=(\d{1,18})\b/.exec(location.search);      // vor dem ersten replaceState merken (auch ueber das Kennenlernen)
+  function noteFromUrl() {
+    var m = NOTE_Q; NOTE_Q = null;
+    if (!m || !jobsOn()) return;
+    api('GET', '/api/notes/' + m[1]).then(function (n) {
+      G.note = { id: +m[1], title: (n && n.title) || '' };
+      tab('talk', false); setMode('job');
+      var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+    }).catch(function () { HK.toast(T('Diese Seite kannst du nicht öffnen.')); });
   }
   function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }
   function openJob(id) { tab('jobs', false); if (G.jobs) G.jobs.open(id, true); }
@@ -406,8 +438,22 @@
         tab(nx, true);
       });
     });
+    document.addEventListener('visibilitychange', function () {   // 2515: wieder sichtbar - laufende/wartende Auftraege abgleichen
+      if (document.hidden) return;
+      [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job]'), function (w) {
+        if (['laeuft', 'wartet_ok', 'wartet_dich'].indexOf(w.dataset.state) >= 0 && !w.querySelector('.kj-editbox')) refreshJob(w);
+      });
+    });
     document.addEventListener('hk-live', function (e) {   // ai.job.changed: Baustein im Verlauf auf den neuen Stand
-      var d = e.detail && e.detail.type === 'ai.job.changed' ? (e.detail.data || {}) : null;
+      var t = e.detail && e.detail.type;
+      if (t === 'live.hello' || t === 'resync') {        // 2515: nach (Wieder-)Verbinden einmal neu holen - Ereignisse dazwischen fehlen
+        [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job]'), function (w) {
+          if (['abgebrochen', 'fehlgeschlagen', 'weg'].indexOf(w.dataset.state) >= 0 || w.querySelector('.kj-editbox')) return;
+          refreshJob(w);
+        });
+        return;
+      }
+      var d = t === 'ai.job.changed' ? (e.detail.data || {}) : null;
       if (!d || !d.id) return;
       [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job="' + d.id + '"]'), function (w) {
         if (w.dataset.state === d.state && d.state !== 'erledigt') return;
@@ -552,6 +598,7 @@
     form.hidden = false;
     $('sg-tabs').hidden = !jobsOn();
     tab(jobsOn() && /[?&]tab=jobs\b/.test(location.search) ? 'jobs' : G.tab, false);
+    noteFromUrl();
     api('GET', '/api/ai/thread').then(function (d) {
       G.turns = d.turns || []; renderFeed(); keepLine(d);
     }).catch(function (e) { HK.toast(e.message); });
@@ -565,6 +612,11 @@
     tabsInit();
     $('sg-stop').addEventListener('click', function () { if (G.run) G.run.abort(); });
     moreMenu();
+    // 2515: "Verlauf an/aus" unter dem Gespraech folgt der Einstellung (Einstellungen › Saga auf derselben Seite)
+    document.addEventListener('saga:prefs', function () {
+      if (!consentOk() || $('sg-ask').hidden) return;
+      api('GET', '/api/ai/thread').then(keepLine).catch(function () { /* naechstes Laden */ });
+    });
     S.load().then(page).catch(function (e) { HK.toast(e.message); });
   }
 
@@ -608,7 +660,9 @@
       var lab = el('label', 'hk-row sg-set-row'); lab.appendChild(el('span', null, T('Ideen von {name}', { name: name }))); lab.appendChild(sel);
       box.appendChild(lab);
     }
-    if (d.history_allowed) box.appendChild(row(T('Verlauf speichern'), check(d.history, function (v, i) { put({ history: v }, i); }),
+    if (d.history_allowed) box.appendChild(row(T('Verlauf speichern'), check(d.history, function (v, i) {
+      put({ history: v }, i).then(function (r) { emit('saga:prefs', { prefs: r }); }).catch(function () { /* Hinweis kam schon */ });   // 2515
+    }),
       T('Aus: Das Gespräch verschwindet nach 24 Stunden. Ausschalten löscht den gespeicherten Verlauf.')));
     var srcH = el('h4', null, T('Was {name} lesen darf', { name: name })); box.appendChild(srcH);
     var SRC = [['pages', T('Seiten (eigene und für dich geteilte)')], ['tasks', T('Aufgaben')], ['calendar', T('Termine')],

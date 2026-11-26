@@ -306,6 +306,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   `/api/ai/prefs`, `/api/ai/thread`, `/api/ai/mydata`; `/api/ai/status` mit `endpoint`, `consent`, `intro`
   (APP-API-KI Abschnitt 11). Neue Tabellen `ai_consent`, `ai_thread`, `ai_turn` (ohne Migration). Testreihen
   `tests/kollegin_einwilligung.py`, `tests/browser_kollegin_kennenlernen.js`.
+- **Auftrag zu einer offenen Seite** (Bugs-DB 2508): Im KI-Bereich einer Seite (Reiter „Diese Seite“) führt
+  „{Name} soll sich kümmern …“ in den Ort „Saga“ – das Gespräch steht auf „Als Auftrag“, über dem Eingabefeld „Zur Seite
+  „…““ (mit × wieder weg); der Auftrag geht mit dieser Seite als Kontext an den Server, der nur Seiten nimmt, die die
+  Person lesen darf. Schnittstelle für die Apps: docs/APP-API-KI.md Abschnitt 11.7.
 
 ### Behoben
 - **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
@@ -524,6 +528,15 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   (`apns-expiration: 0`, eigener Weg und Push-Relais, wie schon der Widget-Push); sichtbare Mitteilungen und Anrufe
   bleiben unverändert. Folge: War das Gerät offline, als eine Nachricht gelöscht wurde, kann die alte Mitteilung dazu
   später noch erscheinen (ohne Nachrichtentext).
+- **Kollegin (Reste vor W3):** „geändert – bitte neu freigeben“ steht auch nach dem Neuladen und auf anderen Geräten
+  (`edited` in Plan und Detail, Bugs-DB 2515); nach einem Konflikt beim Freigeben wechselt die Plan-Karte nicht mehr
+  still zum neuen Plan, und ist der Auftrag anderswo schon freigegeben, steht statt „Passt, los“ der jetzige Stand; die
+  Rückmeldung kommt auch nach einer unterbrochenen Live-Verbindung. „Alte Fassung ansehen“ erscheint nur noch, wo es
+  eine gibt (nicht bei Aufgaben/Terminen), und jede nicht zurücknehmbare Änderung sagt warum (`why_text`). Bei Anrede
+  „Sie“ sind auch Leiste, Ideen-Frage und ⓘ-Details der Kennenlernen-Karte gesiezt (de/es/ru). „Verlauf an/aus“ im
+  Gespräch folgt sofort der Einstellung. Stille Knöpfe auf der KI-Karte haben eine sichtbare Kante (≥ 3:1, vorher 1,2:1
+  im Dunkeln). „Als Aufgabe anlegen“ aus einer Absage nimmt einen kurzen Titel statt der ganzen Bitte; die Bitte steht
+  im Detail unter „Deine Bitte“ (2509).
 
 ### Sicherheit
 
