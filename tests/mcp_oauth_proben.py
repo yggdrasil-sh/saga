@@ -204,9 +204,10 @@ def part_race(cid):
     out = _parallel(4, lambda: m.token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref}))
     sts = [o[0] for o in out]
     wins = [o[1] for o in out if o[0] == 200]
-    ok(f"Probe: 4 gleichzeitige Refresh mit demselben Token -> hoechstens einer 200 ({sts})", len(wins) <= 1, sts)
+    ok(f"Probe: 4 gleichzeitige Refresh mit demselben Token -> genau einer 200, Rest 400 ({sts})", len(wins) == 1 and sorted(sts) == [200, 400, 400, 400], sts)
     alive = [m.mcp_ok(w["access_token"]) for w in wins]
-    ok(f"Probe: danach Kette gesperrt (Wiederverwendung erkannt), auch das Token des Gewinners ({alive})", not any(alive), alive)
+    # M1 (Entscheidung 26.11.): innerhalb von 30 s und mit unbenutztem Nachfolger keine Sperre - der Gewinner arbeitet weiter
+    ok(f"Probe: danach lebt die Verbindung (30-s-Kulanz), Token des Gewinners gilt ({alive})", alive == [True], alive)
     # Code gleichzeitig zweimal einloesen
     m.JAR = jar
     ver, ch = m.pkce()

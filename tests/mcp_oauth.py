@@ -40,6 +40,7 @@ SIGN = TimestampSigner(os.environ["SESSION_SECRET"])
 U, PW = "oa-test-a", "Oa-Pass-" + secrets.token_hex(6)
 U2 = "oa-test-b"
 U3 = "oa-test-sso"                          # SSO-Konto (source oidc): Bestaetigung = frische Anmeldung
+U4 = "oa-test-totp"                         # Passwort aus 6 Ziffern + Authenticator-App (N4)
 RU = "http://127.0.0.1:9/cb"                 # Loopback-Client (RFC 8252), wird nie aufgerufen
 RU2 = "https://client.example/cb?x=1"
 res = []
@@ -52,24 +53,32 @@ def ok(n, c, info=""):
 
 
 class Jar:
-    """Sitzungs-Cookie "saga" mitfuehren (Set-Cookie der Antworten)."""
+    """Sitzungs-Cookie "saga" und den Bindungs-Cookie der offenen Anfrage (saga_oab, N3) mitfuehren."""
 
     def __init__(self, cookie=None):
         self.c = cookie
+        self.more = {}
 
     def take(self, hs):
         for k, v in hs:
-            if k.lower() == "set-cookie" and v.startswith("saga="):
-                val = v.split(";", 1)[0][5:]
-                self.c = val or None
+            if k.lower() == "set-cookie":
+                name, _, val = v.split(";", 1)[0].partition("=")
+                if name == "saga":
+                    self.c = val or None
+                elif name:
+                    self.more[name] = val
+
+    def header(self):
+        parts = (["saga=" + self.c] if self.c else []) + [f"{k}={v}" for k, v in self.more.items() if v]
+        return "; ".join(parts)
 
 
 def req(m, path, body=None, headers=None, jar=None, form=None, bearer=None):
     u = urllib.parse.urlparse(B)
     cn = http.client.HTTPConnection(u.hostname, u.port, timeout=20)
     h = {"Host": HOST}
-    if jar and jar.c:
-        h["Cookie"] = "saga=" + jar.c
+    if jar and jar.header():
+        h["Cookie"] = jar.header()
     if bearer:
         h["Authorization"] = "Bearer " + bearer
     data = None
@@ -121,17 +130,167 @@ def part_fresh(cid):
         ok(f"{name} -> {want}", st == 200 and got == want, (st, got, page[:200]))
 
 
+def part_grace(cid):
+    """M1 (Entscheidung 26.11.): derselbe Refresh-Token innerhalb von 30 s nach der Rotation -> invalid_grant ohne Sperre,
+    solange der Nachfolger unbenutzt ist; danach bzw. mit benutztem Nachfolger -> Kette gesperrt. N5: gleichzeitige
+    Anfragen ohne Verklemmen (nur 200/400)."""
+    import threading
+    d = full_tokens(cid)
+    ref = d["refresh_token"]
+    st, d2, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    st, d3, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    ok("M1: Refresh-Token sofort noch einmal -> invalid_grant", st == 400 and d3.get("error") == "invalid_grant", d3)
+    ok("M1: ... ohne Sperre - Token des Nachfolgers gilt weiter", mcp_ok(d2.get("access_token", "")))
+    st, d4, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": d2.get("refresh_token", "")})
+    ok("M1: Nachfolger-Refresh funktioniert", st == 200 and d4.get("access_token"), d4)
+    st, d5, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    ok("M1: alter Token, Nachfolger schon benutzt -> invalid_grant und Kette gesperrt", st == 400 and not mcp_ok(d4.get("access_token", "")), d5)
+    # nach 30 s
+    d = full_tokens(cid)
+    ref = d["refresh_token"]
+    st, d2, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    with db.connect() as c, c:
+        c.execute("UPDATE oauth_refresh SET used=? WHERE hash=?", (time.time() - 31, hashlib.sha256(ref.encode()).hexdigest()))
+    st, d3, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    ok("M1: derselbe Token nach mehr als 30 s -> Kette gesperrt (Nachfolger unbenutzt, trotzdem)", st == 400 and not mcp_ok(d2.get("access_token", "")), d3)
+    # gleichzeitig (N5)
+    d = full_tokens(cid)
+    ref = d["refresh_token"]
+    out, bar = [None] * 5, threading.Barrier(5)
+
+    def run(i):
+        bar.wait()
+        out[i] = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
+    th = [threading.Thread(target=run, args=(i,)) for i in range(5)]
+    [x.start() for x in th]
+    [x.join(30) for x in th]
+    sts = [o[0] if o else None for o in out]
+    wins = [o[1] for o in out if o and o[0] == 200]
+    ok(f"M1/N5: 5 gleichzeitige Refresh mit demselben Token -> genau einer 200, Rest 400 ({sts})", len(wins) == 1 and sorted(sts) == [200, 400, 400, 400, 400], sts)
+    ok("M1: danach lebt die Verbindung (Token und Refresh des Gewinners)", wins and mcp_ok(wins[0]["access_token"])
+       and token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": wins[0]["refresh_token"]})[0] == 200)
+
+
+def part_m2():
+    """M2: Registrierung nicht lahmlegbar - IPv6 je /64, globaler Zaehler bleibt beim Aufraeumen, voller Bestand
+    verdraengt den aeltesten unbenutzten Client."""
+    ok("M2: IPv6 je /64 ein Schluessel, IPv4 einzeln", oauth.ip_key("2001:db8:1:2::5") == oauth.ip_key("2001:db8:1:2:ffff::9")
+       != oauth.ip_key("2001:db8:1:3::5") and oauth.ip_key("198.51.100.1") != oauth.ip_key("198.51.100.2")
+       and oauth.ip_key("::ffff:198.51.100.1") == oauth.ip_key("198.51.100.1"))
+    lim = int(os.environ.get("SAGA_OAUTH_REG_PER_IP") or 40)
+    sts = [register(client_name=f"Testclient v6 {i}", headers=None, xff=f"2001:db8:77:1::{i + 1:x}")[0] for i in range(lim + 1)]
+    ok(f"M2: {lim + 1} Registrierungen aus einem /64 (verschiedene Adressen) -> zuletzt 429", sts[-1] == 429 and sts.count(201) == lim, sts[-4:])
+    st = register(client_name="Testclient v6 anderes", xff="2001:db8:77:2::1")[0]
+    ok("M2: anderes /64 registriert weiter", st == 201, st)
+    # im Prozess: Aufraeumen leert den globalen Zaehler nie
+    hits = {"*": [time.time()] * 7}
+    for i in range(6000):
+        hits[f"198.51.{i // 250}.{i % 250}"] = [time.time() - 7200]
+    oauth._prune(hits, 3600, time.time())
+    ok("M2: Aufraeumen entfernt alte IP-Schluessel, nie den globalen Zaehler", "*" in hits and len(hits["*"]) == 7 and len(hits) <= 5000, len(hits))
+    # voller Bestand: aeltester unbenutzter Client weicht (im Prozess, Grenze = aktueller Bestand)
+    with db.connect() as c, c:
+        c.execute("INSERT INTO oauth_client (id, name, redirect_uris, created) VALUES (?,?,?,?)", ("sgc_" + "a" * 24, "Testclient aeltester", json.dumps([RU]), 1.0))
+        unused = c.execute("SELECT COUNT(*) FROM oauth_client WHERE NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id)").fetchone()[0]
+    old_max, oauth.UNUSED_MAX = oauth.UNUSED_MAX, unused
+    try:
+        out, err = oauth.register_client({"client_name": "Testclient verdraengt", "redirect_uris": [RU], "token_endpoint_auth_method": "none"})
+    finally:
+        oauth.UNUSED_MAX = old_max
+    with db.connect() as c:
+        gone = c.execute("SELECT 1 FROM oauth_client WHERE id=?", ("sgc_" + "a" * 24,)).fetchone() is None
+    ok("M2: Bestand voll -> neuer Client angelegt, aeltester unbenutzter verdraengt (kein 429)", out and not err and gone, (out, err, gone))
+
+
+def part_n3(cid):
+    """N3: offene Anfrage gehoert zum Browser, der sie begonnen hat; ohne Anmeldung ratenbegrenzt; Verdraengung nur nicht
+    frischer Anfragen."""
+    ver, ch = pkce()
+    st, _, _, hd = req("GET", authorize_url(cid, ch), jar=JAR)
+    nxt = hd.get("location") or ""
+    ok("N3: Bindungs-Cookie gesetzt (HttpOnly, SameSite=Lax, Pfad /oauth)", "saga_oab" in JAR.more, JAR.more)
+    other = Jar(JAR.c)                                    # dieselbe Anmeldung, anderer Browser (ohne Bindungs-Cookie)
+    st, _, raw, hd2 = req("GET", nxt, jar=other)
+    ok("N3: Link der offenen Anfrage in einem anderen Browser -> Fehlerseite, keine Zustimmung", st == 400 and 'name="scope"' not in raw
+       and 'name="secret"' not in raw, st)
+    st, _, _, hd2 = req("POST", "/oauth/authorize", form={"csrf": CSRF, "r": nxt.split("r=", 1)[-1], "action": "allow", "scope": ["mcp", "read:pages"]},
+                        jar=other, headers={"Origin": BASE})
+    ok("N3: Zustimmung aus fremdem Browser -> kein Code", "code=" not in (hd2.get("location") or ""), st)
+    st, _, raw, _ = req("GET", nxt, jar=JAR)
+    ok("N3: im eigenen Browser weiter die Zustimmung", st == 200 and 'name="scope"' in raw, st)
+    lim = int(os.environ.get("SAGA_OAUTH_ANON_PER_IP") or 20)
+    sts = [req("GET", authorize_url(cid, ch), headers={"X-Forwarded-For": "198.51.100.77"})[0] for _ in range(lim + 1)]
+    ok(f"N3: GET /oauth/authorize ohne Anmeldung: {lim} je IP, dann 429", sts[:lim] == [303] * lim and sts[-1] == 429, sts[-3:])
+    ok("N3: andere IP ohne Anmeldung weiter", req("GET", authorize_url(cid, ch), headers={"X-Forwarded-For": "198.51.100.78"})[0] == 303)
+    ok("N3: angemeldet nicht begrenzt (gleiche IP)", req("GET", authorize_url(cid, ch), jar=JAR, headers={"X-Forwarded-For": "198.51.100.77"})[0] == 303)
+    # Verdraengung (im Prozess): voll mit frischen -> keine Verdraengung; nicht frische weichen zuerst
+    saved = dict(oauth._pending)
+    old_max = oauth.PENDING_MAX
+    try:
+        oauth._pending.clear()
+        oauth.PENDING_MAX = 5
+        now = time.time()
+        fresh = [oauth.add_pending({"bind": "x"}, now=now) for _ in range(5)]
+        ok("N3: Speicher voll mit frischen Anfragen -> neue abgelehnt, keine frische verdraengt",
+           oauth.add_pending({"bind": "x"}, now=now + 1) is None and all(r in oauth._pending for r in fresh))
+        later = now + oauth.PENDING_FRESH + 5
+        r = oauth.add_pending({"bind": "x"}, now=later)
+        ok("N3: nach PENDING_FRESH weicht die aelteste nicht frische", r is not None and len(oauth._pending) == 5 and fresh[0] not in oauth._pending)
+    finally:
+        oauth.PENDING_MAX = old_max
+        oauth._pending.clear()
+        oauth._pending.update(saved)
+
+
+def part_n4(cid):
+    """N4: Passwort aus 6 Ziffern zaehlt als Passwort, Code der Authenticator-App weiter; Konto ohne Passwort und Code:
+    kein Passwortfeld."""
+    from saga import mfa
+    pw6 = "".join(secrets.choice("0123456789") for _ in range(6))
+    with db.connect() as c, c:
+        c.execute("DELETE FROM mfa_totp WHERE uid=?", (U4,))
+    auth.set_password(U4, pw6)
+    info = mfa.totp_begin(U4)
+    sec = base64.b32decode(info["secret"].replace(" ", ""))
+    step = int(time.time() // mfa.TOTP_STEP)
+    mfa.totp_finish(U4, mfa.totp_at(sec, step))
+
+    def confirm_with(secret):
+        jar = Jar(session(U4, CSRF, sec_at=0))
+        ver, ch = pkce()
+        st, _, _, hd = req("GET", authorize_url(cid, ch), jar=jar)
+        nxt = hd.get("location") or ""
+        st, _, page, _ = req("GET", nxt, jar=jar)
+        assert 'name="secret"' in page, page[:300]
+        st, _, _, hd = req("POST", "/oauth/authorize", form={"csrf": CSRF, "r": nxt.split("r=", 1)[-1], "action": "confirm", "secret": secret},
+                           jar=jar, headers={"Origin": BASE})
+        return st, hd.get("location") or ""
+    st, loc = confirm_with(pw6)
+    ok("N4: Passwort aus 6 Ziffern (Konto mit Authenticator-App) -> als Passwort bestaetigt", st == 303 and loc.startswith("/oauth/authorize?r="), (st, loc))
+    st, loc = confirm_with(mfa.totp_at(sec, step + 1))
+    ok("N4: Code der Authenticator-App -> bestaetigt", st == 303 and loc.startswith("/oauth/authorize?r="), (st, loc))
+    st, loc = confirm_with("000000" if pw6 != "000000" else "111111")
+    ok("N4: falsche 6 Ziffern -> nicht bestaetigt", st == 200, (st, loc))
+    # Konto ohne Passwort und ohne Code (nur Passkey bzw. nichts): kein Passwortfeld, ehrlicher Hinweis
+    jar = Jar(session(U2, CSRF, sec_at=0))
+    ver, ch = pkce()
+    st, _, _, hd = req("GET", authorize_url(cid, ch), jar=jar)
+    st, _, page, _ = req("GET", hd.get("location") or "/", jar=jar)
+    ok("N4: Konto ohne Passwort/Code -> kein Passwortfeld, Hinweis statt Versprechen", st == 200 and 'name="secret"' not in page
+       and "auth-err" in page and 'name="scope"' not in page, page[:300])
+
+
 def pkce():
     v = secrets.token_urlsafe(48)
     return v, base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"=").decode()
 
 
-def register(**kw):
+def register(xff=None, headers=None, **kw):
     b = {"client_name": "Testclient", "redirect_uris": [RU], "token_endpoint_auth_method": "none",
          "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"]}
     b.update(kw)
     b = {k: v for k, v in b.items() if v is not None}
-    return req("POST", "/oauth/register", b)
+    return req("POST", "/oauth/register", b, headers=dict(headers or {}, **({"X-Forwarded-For": xff} if xff else {})))
 
 
 def authorize_url(cid, ch, ru=RU, state="st-1", scope=None, resource=BASE + "/mcp", method="S256", rt="code", extra=None):
@@ -204,7 +363,7 @@ def settings_api(**kw):
 
 
 def cleanup():
-    for u in (U, U2, U3):
+    for u in (U, U2, U3, U4):
         if auth.get_user(u):
             delete_user_data(u, drop_user=True)
     with db.connect() as c, c:
@@ -646,6 +805,7 @@ def main():
         auth.create_user(U, PW, "Olga Auth")
         auth.create_user(U2, None, U2)
         auth.create_user(U3, None, "Sso Person", source="oidc", ext_id="oa-sub-1")
+        auth.create_user(U4, "".join(secrets.choice("0123456789") for _ in range(6)), "Totp Person")
         settings_api(enabled=True, mcp=True, oauth=True, rate=3000, rate_write=1000, max_tokens=50)
         part_meta()
         cid = part_register()
@@ -653,6 +813,9 @@ def main():
         part_fresh(cid)
         part_rt42(acc)
         part_refresh(cid, ref)
+        part_grace(cid)
+        part_n3(cid)
+        part_n4(cid)
         part_errors(cid)
         part_revoke(cid)
         cacc, cref, conf_c = part_confidential()
@@ -670,6 +833,7 @@ def main():
         ok("Ueberall abmelden: Refresh des vertraulichen Clients -> invalid_grant", st == 400 and d2.get("error") == "invalid_grant", d2)
         ok("Ueberall abmelden: sga_-Token widerrufen (wie bisher)", not mcp_ok(sga))
         part_limits()
+        part_m2()
     finally:
         auth.save_setting("api", prev)
         cleanup()

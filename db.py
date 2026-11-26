@@ -1109,7 +1109,8 @@ CREATE INDEX IF NOT EXISTS webhook_delivery_hook ON webhook_delivery (hook_id, i
 -- client_secret_basic, secret_hash nur als SHA-256. oauth_grant = eine "verbundene App" einer Person (Zustimmung):
 -- Bereiche (JSON-Liste, nie tel), resource (= BASE_URL/mcp), revoked = getrennt bzw. Wiederverwendung erkannt (why).
 -- oauth_code: Autorisierungs-Code (nur Hash, einmalig, kurzlebig, PKCE S256). oauth_refresh: Refresh-Token (nur Hash,
--- Rotation - used gesetzt = verbraucht; ein zweites Mal -> ganze Kette gesperrt). Zugriffstoken stehen in api_token
+-- Rotation - used gesetzt = verbraucht; ein zweites Mal -> ganze Kette gesperrt, ausser innerhalb von 30 s, solange der
+-- Nachfolger (parent = Hash des Vorgaengers) unbenutzt ist). Zugriffstoken stehen in api_token
 -- (Spalte grant_id, Migration 43) und gelten nur fuer /mcp.
 CREATE TABLE IF NOT EXISTS oauth_client (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, auth_method TEXT NOT NULL DEFAULT 'none',
@@ -1126,7 +1127,7 @@ CREATE TABLE IF NOT EXISTS oauth_code (
     redirect_uri TEXT NOT NULL, challenge TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
 CREATE TABLE IF NOT EXISTS oauth_refresh (
     hash TEXT PRIMARY KEY, grant_id BIGINT NOT NULL REFERENCES oauth_grant(id) ON DELETE CASCADE,
-    created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
+    created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION, parent TEXT);
 CREATE INDEX IF NOT EXISTS oauth_refresh_grant ON oauth_refresh (grant_id);
 -- Erwaehnungen (2.5, P6-5, saga/mentions.py): Index der Personen, die in einer Seite erwaehnt sind (span.hk-mention data-u im
 -- Inhalt). person = kanonische Kennung (lokaler Benutzername bzw. Prinzipal '@name@host'), verlaesst den Server nie roh.

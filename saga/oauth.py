@@ -64,10 +64,14 @@ NAME_MAX = 80
 URI_MAX = 500
 REDIRECTS_MAX = 5
 REG_PER_IP = int(os.environ.get("SAGA_OAUTH_REG_PER_IP") or 10)        # Testreihen brauchen mehr (tests/mcp_oauth.py)
-REG_PER_HOUR = max(100, REG_PER_IP)
+REG_PER_HOUR = max(int(os.environ.get("SAGA_OAUTH_REG_PER_HOUR") or 100), REG_PER_IP)
 CLIENTS_MAX = 2000
 UNUSED_MAX = 300
 PENDING_MAX = 2000
+PENDING_FRESH = 60                          # juenger: wird bei vollem Speicher nie verdraengt (N3)
+ANON_PER_IP = int(os.environ.get("SAGA_OAUTH_ANON_PER_IP") or 30)   # GET /oauth/authorize ohne Anmeldung je IP (/64) und 10 min
+REFRESH_GRACE = 30                          # M1: Wiederholung desselben Refresh-Tokens kurz nach der Rotation ohne Sperre
+BIND_COOKIE = "saga_oab"                    # N3: offene Anfrage gehoert zu diesem Browser
 VERIFIER_RE = re.compile(r"[A-Za-z0-9._~-]{43,128}")
 CHALLENGE_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 CLIENT_RE = re.compile(r"sgc_[A-Za-z0-9_-]{20,40}")
@@ -76,7 +80,8 @@ LOOPBACK = ("localhost", "127.0.0.1", "[::1]", "::1")
 
 _lock = threading.Lock()
 _pending = {}                               # r -> Anfrage (Saga laeuft als EIN Prozess)
-_reg_hits = {}                              # Registrierungen je IP bzw. "*" (gleitende Stunde)
+_reg_hits = {}                              # Registrierungen je IP (/64) bzw. "*" (gleitende Stunde)
+_anon_hits = {}                             # GET /oauth/authorize ohne Anmeldung je IP (/64), 10 min
 _last_gc = [0.0]
 
 
@@ -209,19 +214,49 @@ def redirect_ok(uri):
     return False
 
 
-def _rate_reg(ip):
-    now = time.time()
-    with _lock:
-        if len(_reg_hits) > 5000:
-            _reg_hits.clear()
-        for key, lim in ((ip, REG_PER_IP), ("*", REG_PER_HOUR)):
-            h = [x for x in _reg_hits.get(key, ()) if now - x < 3600]
-            _reg_hits[key] = h
-            if len(h) >= lim:
-                return max(1, int(3600 - (now - h[0])) + 1)
-        for key in (ip, "*"):
-            _reg_hits[key].append(now)
+def ip_key(ip):
+    """Schluessel fuer Ratengrenzen: IPv4 einzeln, IPv6 je /64 (ein Anschluss hat meist ein ganzes /64)."""
+    try:
+        a = ipaddress.ip_address(str(ip).split("%", 1)[0])
+    except ValueError:
+        return str(ip)[:64]
+    if a.version == 6 and a.ipv4_mapped is None:
+        return str(ipaddress.ip_network(f"{a}/64", strict=False))
+    return str(a.ipv4_mapped or a)
+
+
+def _prune(hits, window, now, keep=("*",), limit=5000):
+    """Alte Eintraege weg (nie die Schluessel in keep, M2); bleibt es zu voll, die am laengsten ruhigen IP-Schluessel."""
+    if len(hits) <= limit:
+        return
+    for k in [k for k, v in hits.items() if k not in keep and (not v or now - v[-1] >= window)]:
+        hits.pop(k, None)
+    if len(hits) > limit:
+        for k in sorted((k for k in hits if k not in keep), key=lambda k: hits[k][-1] if hits[k] else 0)[:len(hits) - limit]:
+            hits.pop(k, None)
+
+
+def _rate(hits, checks, window, now):
+    """checks [(schluessel, grenze)] -> 0 (gezaehlt) oder Sekunden bis frei. Erst pruefen, dann zaehlen."""
+    _prune(hits, window, now)
+    for key, lim in checks:
+        h = [x for x in hits.get(key, ()) if now - x < window]
+        hits[key] = h
+        if len(h) >= lim:
+            return max(1, int(window - (now - h[0])) + 1)
+    for key, _ in checks:
+        hits[key].append(now)
     return 0
+
+
+def _rate_reg(ip):
+    with _lock:
+        return _rate(_reg_hits, ((ip_key(ip), REG_PER_IP), ("*", REG_PER_HOUR)), 3600, time.time())
+
+
+def _rate_anon(ip):
+    with _lock:
+        return _rate(_anon_hits, ((ip_key(ip), ANON_PER_IP),), 600, time.time())
 
 
 def register_client(b):
@@ -261,7 +296,13 @@ def register_client(b):
         total = c.execute("SELECT COUNT(*) FROM oauth_client").fetchone()[0]
         unused = c.execute("SELECT COUNT(*) FROM oauth_client WHERE NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id)").fetchone()[0]
         if total >= CLIENTS_MAX or unused >= UNUSED_MAX:
-            return None, ("temporarily_unavailable", "too many registered clients", 429)
+            # M2: voller Bestand legt die Registrierung nicht lahm - der aelteste nie benutzte Client weicht
+            old = c.execute("SELECT id FROM oauth_client WHERE NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = oauth_client.id) "
+                            "ORDER BY created, id LIMIT 1").fetchone()
+            if not old:
+                return None, ("temporarily_unavailable", "too many registered clients", 429)
+            c.execute("DELETE FROM oauth_client WHERE id=?", (old[0],))
+            print(f"oauth: Bestand voll - unbenutzten Client {old[0][:10]}… verdraengt", flush=True)
         c.execute("INSERT INTO oauth_client (id, name, redirect_uris, auth_method, secret_hash, grant_types, created) VALUES (?,?,?,?,?,?,?)",
                   (cid, name, json.dumps(uris), method, _tok_hash(secret) if secret else None, json.dumps(gts), now))
     print(f"oauth: Client {cid[:10]}… registriert ({method})", flush=True)
@@ -400,31 +441,60 @@ def oauth_authorize(request: Request):
     scopes, why = parse_scope(q.get("scope"))
     if why:
         return fail("invalid_scope", why)
+    anon = not _session_user(request)
+    if anon:
+        from saga.web_auth import _ip
+        if _rate_anon(_ip(request)):
+            return _error_page(request, t("Zu viele Anfragen – bitte kurz warten."), status=429)
+    # N3: die offene Anfrage gehoert zu diesem Browser (eigener Cookie, ueberlebt die Anmeldung - die Sitzung nicht)
+    bind = request.cookies.get(BIND_COOKIE) or ""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{22,64}", bind):
+        bind = secrets.token_urlsafe(24)
+    rid = add_pending({"client_id": cl["id"], "redirect_uri": ru, "challenge": ch, "scopes": scopes, "state": state,
+                       "bind": _tok_hash(bind)})
+    if rid is None:
+        return _error_page(request, t("Zu viele Anfragen – bitte kurz warten."), status=429)
+    nxt = "/oauth/authorize?r=" + rid
+    resp = RedirectResponse(("/login?" + urlencode({"next": nxt})) if anon else nxt, status_code=303, headers={"Cache-Control": "no-store"})
+    resp.set_cookie(BIND_COOKIE, bind, max_age=PENDING_TTL, httponly=True, secure=BASE.startswith("https://"), samesite="lax", path="/oauth")
+    return resp
+
+
+def add_pending(entry, now=None):
+    """Offene Anfrage merken -> rid oder None (Speicher voll mit frischen Anfragen). N3: bei vollem Speicher weichen erst
+    abgelaufene, dann die aeltesten nicht mehr frischen (> PENDING_FRESH) - nie eine frische."""
+    now = time.time() if now is None else now
     rid = secrets.token_urlsafe(18)
     with _lock:
         if len(_pending) >= PENDING_MAX:
-            now = time.time()
-            for k in [k for k, v in _pending.items() if now - v["at"] > PENDING_TTL] or list(_pending)[:100]:
+            for k in [k for k, v in _pending.items() if now - v["at"] > PENDING_TTL]:
                 _pending.pop(k, None)
-        _pending[rid] = {"at": time.time(), "client_id": cl["id"], "redirect_uri": ru, "challenge": ch, "scopes": scopes,
-                         "state": state}
-    nxt = "/oauth/authorize?r=" + rid
-    if not _session_user(request):
-        return RedirectResponse("/login?" + urlencode({"next": nxt}), status_code=303, headers={"Cache-Control": "no-store"})
-    return RedirectResponse(nxt, status_code=303, headers={"Cache-Control": "no-store"})
+        if len(_pending) >= PENDING_MAX:
+            stale = sorted((k for k, v in _pending.items() if now - v["at"] > PENDING_FRESH), key=lambda k: _pending[k]["at"])
+            for k in stale[:len(_pending) - PENDING_MAX + 1]:
+                _pending.pop(k, None)
+        if len(_pending) >= PENDING_MAX:
+            return None
+        _pending[rid] = dict(entry, at=now)
+    return rid
 
 
-def _get_pending(rid):
+def _get_pending(rid, request=None):
+    """Offene Anfrage rid - nur im Browser, der sie begonnen hat (N3: Bindungs-Cookie; ein fremder Link zeigt nichts)."""
     with _lock:
         p = _pending.get(rid) if isinstance(rid, str) else None
         if p and time.time() - p["at"] > PENDING_TTL:
             _pending.pop(rid, None)
             p = None
+    if p is not None and request is not None:
+        bind = request.cookies.get(BIND_COOKIE) or ""
+        if not bind or not secrets.compare_digest(_tok_hash(bind), p["bind"]):
+            return None
     return p
 
 
 def _consent(request, rid, err=None):
-    p = _get_pending(rid)
+    p = _get_pending(rid, request)
     if p is None:
         return _error_page(request, t("Diese Anfrage ist abgelaufen oder ungültig. Bitte starte die Verbindung in der App neu."))
     uid = _session_user(request)
@@ -445,8 +515,15 @@ def _consent(request, rid, err=None):
     if not apitok._confirmed(request, uid):
         # wie beim Anlegen eines sga_-Tokens (apitok._confirmed): frische Bestaetigung (Passwort oder Code, hoechstens
         # mfa.FRESH_SEC alt); SSO-Konten: Anmeldung hoechstens so alt -> erst bestaetigen, dann die Rechte
+        sso = not mfa.supported(info)
+        have = [] if sso else mfa.methods(uid, request)
+        # N4: Passkey ueber dieselben Endpunkte wie Einstellungen > Sicherheit; ohne Passwort und Code nur dieser Weg
+        pk_only = not sso and "password" not in have and "totp" not in have
+        if pk_only and "passkey" not in have and not err:
+            err = t("Bitte bestätigen: Passwort, Code oder Passkey.")
         return _page(request, csp_form=_origin(back), mode="confirm", rid=rid, client=cl["name"], user=info.get("name") or uid,
-                     uid=uid, sso=not mfa.supported(info), err=err)
+                     uid=uid, sso=sso, pk_only=pk_only, passkey="passkey" in have, pk_origin=mfa.ORIGIN,
+                     code_only="password" not in have and "totp" in have, err=err)
     rights = [{"scope": s, "label": _scope_label(s)} for s in p["scopes"] if s != "mcp"]
     return _page(request, csp_form=_origin(back), mode="consent", rid=rid, client=cl["name"], back_host=_host_of(back),
                  rights=rights, user=info.get("name") or uid, uid=uid, err=err)
@@ -460,6 +537,23 @@ def _form(raw):
 
 
 @router.post("/oauth/authorize")
+def _confirm_secret(request, uid, secret):
+    """N4: Eingabe erst als Passwort pruefen, dann (6 Ziffern, Konto mit Authenticator-App) als Code - ein Passwort aus
+    6 Ziffern bleibt so moeglich. Je Versuch dieselben Zaehler/Sperren wie mfa.confirm. -> Fehlertext oder None."""
+    if not mfa.supported(user_info(uid)):
+        return t("Bitte bestätigen: Passwort, Code oder Passkey.")
+    have = mfa.methods(uid, request)
+    msg = t("Bitte bestätigen: Passwort, Code oder Passkey.")
+    if "password" in have:
+        msg = mfa.confirm(request, uid, {"password": secret})
+        if msg is None:
+            return None
+    v = secret.strip()
+    if "totp" in have and re.fullmatch(r"\d{6}", v):
+        return mfa.confirm(request, uid, {"code": v})
+    return msg
+
+
 async def oauth_authorize_post(request: Request):
     """Zustimmung bzw. Ablehnung (Formular der Zustimmungsseite)."""
     raw = await request.body()
@@ -481,14 +575,12 @@ async def oauth_authorize_post(request: Request):
     if not uid or not _csrf_ok(request, one):
         return _error_page(request, t("Diese Anfrage ist abgelaufen oder ungültig. Bitte starte die Verbindung in der App neu."), status=403)
     rid = one.get("r") or ""
-    p = _get_pending(rid)
+    p = _get_pending(rid, request)
     if p is None:
         return _error_page(request, t("Diese Anfrage ist abgelaufen oder ungültig. Bitte starte die Verbindung in der App neu."))
     if one.get("action") == "confirm":
         # dieselbe Bestaetigung wie POST /api/account/security/confirm (mfa.confirm, setzt sec_at) - Passwort oder Code
-        v = (one.get("secret") or "").strip()
-        b = {"code": v} if re.fullmatch(r"\d{6}", v) else {"password": one.get("secret") or ""}
-        msg = await run_in_threadpool(mfa.confirm, request, uid, b) if mfa.supported(user_info(uid)) else t("Bitte bestätigen: Passwort, Code oder Passkey.")
+        msg = await run_in_threadpool(_confirm_secret, request, uid, one.get("secret") or "")
         if msg:
             return _consent(request, rid, err=msg)
         request.session["sec_at"] = int(time.time())
@@ -570,12 +662,13 @@ def _client_auth(request, f):
     return cl, None
 
 
-def _issue(c, gid, uid, name, scopes, now):
+def _issue(c, gid, uid, name, scopes, now, parent=None):
     acc = apitok.OAUTH_PREFIX + secrets.token_urlsafe(32)
     ref = "sgr_" + secrets.token_urlsafe(32)
     c.execute("INSERT INTO api_token (uid, name, hash, prefix, scopes, roots, created, expires, grant_id) VALUES (?,?,?,?,?,?,?,?,?)",
               (uid, name, _tok_hash(acc), acc[:12], json.dumps(scopes), None, now, now + ACCESS_TTL, gid))
-    c.execute("INSERT INTO oauth_refresh (hash, grant_id, created, expires) VALUES (?,?,?,?)", (_tok_hash(ref), gid, now, now + REFRESH_TTL))
+    c.execute("INSERT INTO oauth_refresh (hash, grant_id, created, expires, parent) VALUES (?,?,?,?,?)",
+              (_tok_hash(ref), gid, now, now + REFRESH_TTL, parent))
     c.execute("UPDATE oauth_grant SET last_used=? WHERE id=?", (now, gid))
     return {"access_token": acc, "token_type": "Bearer", "expires_in": ACCESS_TTL, "refresh_token": ref, "scope": " ".join(scopes)}
 
@@ -589,8 +682,13 @@ def token_code(cl, f):
     code, ru, ver = f.get("code") or "", f.get("redirect_uri"), f.get("code_verifier") or ""
     now = time.time()
     with _db() as c, c:
-        r = c.execute("SELECT grant_id, client_id, redirect_uri, challenge, expires, used FROM oauth_code WHERE hash=? FOR UPDATE",
-                      (_tok_hash(code),)).fetchone() if code.startswith("sgk_") and len(code) < 100 else None
+        # N5: Sperren immer in derselben Reihenfolge oauth_grant -> oauth_code/oauth_refresh (kein Verklemmen mit Widerruf)
+        h = _tok_hash(code)
+        r0 = c.execute("SELECT grant_id FROM oauth_code WHERE hash=?", (h,)).fetchone() if code.startswith("sgk_") and len(code) < 100 else None
+        if not r0:
+            return _oerr("invalid_grant", "unknown code")
+        g = c.execute("SELECT uid, scopes, revoked FROM oauth_grant WHERE id=? FOR UPDATE", (r0[0],)).fetchone()
+        r = c.execute("SELECT grant_id, client_id, redirect_uri, challenge, expires, used FROM oauth_code WHERE hash=? FOR UPDATE", (h,)).fetchone()
         if not r:
             return _oerr("invalid_grant", "unknown code")
         gid, cid, cru, ch, exp, used = r
@@ -599,8 +697,7 @@ def token_code(cl, f):
             _revoke_grant(c, gid, "code_reuse", now)
             print(f"oauth: Code doppelt eingeloest - Verbindung {gid} gesperrt", flush=True)
             return _oerr("invalid_grant", "code already used")
-        c.execute("UPDATE oauth_code SET used=? WHERE hash=?", (now, _tok_hash(code)))
-        g = c.execute("SELECT uid, scopes, revoked FROM oauth_grant WHERE id=? FOR UPDATE", (gid,)).fetchone()
+        c.execute("UPDATE oauth_code SET used=? WHERE hash=?", (now, h))
         # Jeder Fehler ab hier verbraucht den Code und beendet die (noch leere) Verbindung
         why = None
         if cid != cl["id"]:
@@ -629,17 +726,27 @@ def token_refresh(cl, f):
     ref = f.get("refresh_token") or ""
     now = time.time()
     with _db() as c, c:
-        r = c.execute("SELECT grant_id, expires, used FROM oauth_refresh WHERE hash=? FOR UPDATE", (_tok_hash(ref),)).fetchone() \
-            if ref.startswith("sgr_") and len(ref) < 100 else None
+        # N5: erst die Verbindung sperren, dann den Refresh-Token (dieselbe Reihenfolge wie _revoke_grant und token_code)
+        h = _tok_hash(ref)
+        r0 = c.execute("SELECT grant_id FROM oauth_refresh WHERE hash=?", (h,)).fetchone() if ref.startswith("sgr_") and len(ref) < 100 else None
+        if not r0:
+            return _oerr("invalid_grant", "unknown refresh token")
+        g = c.execute("SELECT uid, scopes, revoked, expires, client_id FROM oauth_grant WHERE id=? FOR UPDATE", (r0[0],)).fetchone()
+        r = c.execute("SELECT grant_id, expires, used FROM oauth_refresh WHERE hash=? FOR UPDATE", (h,)).fetchone()
         if not r:
             return _oerr("invalid_grant", "unknown refresh token")
         gid, exp, used = r
-        g = c.execute("SELECT uid, scopes, revoked, expires, client_id FROM oauth_grant WHERE id=? FOR UPDATE", (gid,)).fetchone()
         if not g or g[4] != cl["id"]:
             return _oerr("invalid_grant", "refresh token was issued to another client")
         if g[2] is not None:
             return _oerr("invalid_grant", "connection revoked")
         if used is not None:
+            # M1 (Entscheidung 26.11.): derselbe Token kurz nach der Rotation noch einmal (zwei gleichzeitige Anfragen,
+            # verlorene Antwort) -> nur ablehnen, solange der Nachfolger unbenutzt ist und es hoechstens REFRESH_GRACE her ist
+            nxt = c.execute("SELECT used FROM oauth_refresh WHERE parent=? AND grant_id=?", (h, gid)).fetchone()
+            if now - used <= REFRESH_GRACE and nxt is not None and nxt[0] is None:
+                print(f"oauth: Refresh-Token {REFRESH_GRACE}-s-Kulanz - Verbindung {gid} bleibt", flush=True)
+                return _oerr("invalid_grant", "refresh token already used - use the newest one")
             # Wiederverwendung: jemand hat einen alten Refresh-Token - ganze Kette sperren (OAuth 2.1 4.3.1)
             _revoke_grant(c, gid, "refresh_reuse", now)
             print(f"oauth: Refresh-Token wiederverwendet - Verbindung {gid} gesperrt", flush=True)
@@ -655,8 +762,8 @@ def token_refresh(cl, f):
             if any(s not in scopes for s in w):
                 return _oerr("invalid_scope", "scope exceeds the connection")
             scopes = apitok.norm_scopes(sorted(set(w) | {"mcp"}))
-        c.execute("UPDATE oauth_refresh SET used=? WHERE hash=?", (now, _tok_hash(ref)))
-        out = _issue(c, gid, g[0], cl["name"], scopes, now)
+        c.execute("UPDATE oauth_refresh SET used=? WHERE hash=?", (now, h))
+        out = _issue(c, gid, g[0], cl["name"], scopes, now, parent=h)
     return _j(out)
 
 

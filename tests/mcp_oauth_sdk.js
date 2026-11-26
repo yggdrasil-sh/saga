@@ -20,12 +20,13 @@ const { Client } = await imp('client/index.js');
 const { StreamableHTTPClientTransport } = await imp('client/streamableHttp.js');
 const { UnauthorizedError } = await imp('client/auth.js');
 
-let cookie = '';
+const jar = {};                              // Sitzung "saga" und Bindungs-Cookie der offenen Anfrage "saga_oab" (N3)
 function take(r) {
   const sc = r.headers.getSetCookie ? r.headers.getSetCookie() : [];
-  for (const c of sc) if (c.startsWith('saga=')) cookie = c.split(';')[0];
+  for (const c of sc) { const [kv] = c.split(';'); const i = kv.indexOf('='); if (i > 0) jar[kv.slice(0, i)] = kv.slice(i + 1); }
 }
 async function get(u, init = {}) {
+  const cookie = Object.entries(jar).filter(([, v]) => v).map(([k, v]) => k + '=' + v).join('; ');
   const r = await fetch(new URL(u, BASE), { redirect: 'manual', ...init, headers: { ...(init.headers || {}), ...(cookie ? { Cookie: cookie } : {}) } });
   take(r);
   return r;

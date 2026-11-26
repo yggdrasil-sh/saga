@@ -19,7 +19,7 @@ case $RN in
   collab.py)       REIHE_ENV=(COLLAB_MAT_DELAY=0.5 COLLAB_COMPACT_IDLE=3) ;;
   ki_web.py)       REIHE_ENV=(SEARXNG_URL=http://127.0.0.1:18292 SEARXNG_SECRET=umg-nur-test-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')) ;;
   webhooks.py)     REIHE_ENV=(SAGA_WEBHOOK_DEBOUNCE=1 SAGA_WEBHOOK_RETRY_SCALE=0.02) ;;
-  mcp_oauth.py)    REIHE_ENV=(SAGA_OAUTH_REG_PER_IP=40) ;;      # 2.6 (2264): viele Registrierungen, Rate-Grenze mit 40 geprueft
+  mcp_oauth.py|mcp_oauth_proben.py) REIHE_ENV=(SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000 SAGA_OAUTH_ANON_PER_IP=20) ;;  # 2.6 (2264): Grenzen werden mit diesen Werten geprueft
 esac
 # Backups vor Migrationen: sonst aus (schneller); an fuer Reihen, die sie pruefen (versionen.py) oder mit UMG_BACKUP=1
 case $RN in versionen.py) UMG_BACKUP=${UMG_BACKUP:-1} ;; esac
