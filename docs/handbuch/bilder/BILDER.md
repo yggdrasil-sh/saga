@@ -58,9 +58,9 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | a05-05-mitteilungen.png | A05 | Web | hell | Mitteilungen: Web Push, ntfy, UnifiedPush, Apple Push (Felder leer) | – |
 | a05-06-diagnose.png | A05 | Web | hell | Allgemein → Diagnose: „Diagnose senden“ der Benutzer (clientlog) | – |
 | a06-01-anrufe.png | A06 | Web | hell | Anrufe → 1:1-Anrufe: STUN/TURN (Geheimnis leer), nur über TURN, Anruf-Diagnose, Klingeldauer, Gruppenanrufe ohne Knoten | – |
-| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn (noch mit Marke „Experimentell“ aus 2.5 – neu aufnehmen, s. u.): drei Schalter (alle an), Tunnel-Kasten („Bereit als Rückweg“), Knoten-Liste mit dem eingebauten Knoten knoten.verein.example (Bereit, 2.5.0), Erweitern | – |
+| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn (2.6, ohne Marke „Experimentell“): Grenzen je Anruf über Knoten, drei Schalter (alle an), Tunnel-Kasten („Bereit als Rückweg“, Hinweis „Proxy reicht WebSocket durch“ mit NPM und Node64), Knoten-Liste mit dem eingebauten Knoten knoten.verein.example (Bereit, Geschätzte Kapazität, Version aus `VERSION`), Hinweis HORN_MAX_PER_IP, Erweitern | – |
 | a06-03-knoten-koppeln.png | A06 | Web | hell | Erweitern: weiteren Knoten koppeln – Name (Vorschlag des Servers), Optionen, Kopplungs-Skript erzeugen | 1 = Name des neuen Knotens; 2 = Skript erzeugen (auf dem neuen Server ausführen) |
-| a06-04-tunnel-kasten.png | A06 | Web | hell | Kasten „Anrufe über die Saga-Adresse (Tunnel)“ nach „Jetzt prüfen“: Zustand „Bereit als Rückweg“ (Knoten mit eigenem Namen), „Proxy reicht WebSocket durch? Ja ✓“, Tunnel, Browser (WebSocket) | – |
+| a06-04-tunnel-kasten.png | A06 | Web | hell | Kasten „Anrufe über die Saga-Adresse (Tunnel)“ nach „Jetzt prüfen“: Zustand „Bereit als Rückweg“ (Knoten mit eigenem Namen), „Proxy reicht WebSocket durch? Ja ✓“, Tunnel, Browser (WebSocket); Hinweis „Pflicht ist nur, dass der Proxy WebSocket durchreicht (Nginx Proxy Manager … Node64 …)“ | – |
 | a07-01-foederation.png | A07 | Web | hell | Föderation (ganze Seite): diese Instanz verein.example, Fingerprint, Einladen, Verbinden, verbundene Instanz saga.example | – |
 | a07-02-einladung.png | A07 | Web | hell | Einladungscode erzeugen (gilt einmal; Code hier erfunden) – die andere Instanz trägt ihn ein | – |
 | a07-03-funktionen-je-instanz.png | A07 | Web | hell | Funktionen je Instanz (Familie Sommer, saga.example): Protokoll, gemeinsame Fähigkeiten, Chat, Anrufe, Adressbuch, gemeinsame Gruppen | – |
@@ -249,23 +249,27 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 - a01-02: Admin-Anmeldung ohne zweiten Faktor (Demo verlangt keinen); 2FA-Abfrage selbst siehe b01-03.
 - b10-04: öffentliche Adresse ist `saga.example/@anna-sommer/sommerfest` (öffentlicher Name der Demo), nicht `@sommer`.
 
-## Neu aufnehmen für 2.6: Marke „Experimentell“ (2263-10)
+## Neu aufgenommen für 2.6: Marke „Experimentell“ (2263-10, Bugs-DB 2456) – erledigt 26.11.2026
 
 Seit 2.6 ist Gjallarhorn ab Werk an; die Marke „Experimentell“, der Kasten „getestet mit bis zu 4 …“ (Admin) und der
-Chip im Anrufkopf sowie der Satz in der Teilnehmerliste (Web) sind weg (2263-4, 2263-5). Diese Bilder zeigen sie noch
-und müssen neu aufgenommen werden (`tools/handbuch-stack.sh --nur a06-02,b13-01,b13-02,b13-03,b13-07,b13-08,b13-09`):
+Chip im Anrufkopf sowie der Satz in der Teilnehmerliste (Web) sind weg (2263-4, 2263-5). Neu aufgenommen mit
+`tools/handbuch-stack.sh --nur a06-02,a06-04,b13-01,b13-02,b13-03,b13-07,b13-08,b13-09,w-anruf,w-tunnel`:
 
-- **a06-02** – Marke neben „Gjallarhorn – große Gruppenanrufe“ und „Knoten“, Kasten „Gjallarhorn ist in Saga 2.5
-  experimentell …“; neu dazu: Zeile „Grenzen je Anruf über Knoten“ und „Geschätzte Kapazität“ beim Knoten, Version 2.6.
-- **b13-01, b13-02, b13-03, b13-07, b13-09** – Chip „Experimentell“ im Anrufkopf.
-- **b13-08** – Chip im Anrufkopf und Kasten „Experimentell – Gjallarhorn ist in Saga 2.5 experimentell …“ in der
-  Teilnehmerliste.
-- **Projektseite** (nicht Handbuch, `tools/website-bilder.py`): `docs/bilder/anruf-gruppe.webp` (Chip und Kasten in der
-  Teilnehmerliste) und `docs/bilder/handy-anruf.webp` (Chip) – Alt-Texte in `docs/index.html` und den Sprachfassungen
-  nennen „Experimentell“ noch, bis die Bilder neu sind.
+- [x] **a06-02** – ohne Marke und Kasten; neu: Zeile „Grenzen je Anruf über Knoten“, „Geschätzte Kapazität“ beim
+  Knoten, Hinweis HORN_MAX_PER_IP; Text am Schalter „Eingebauten Knoten …“ und Tunnel-Hinweis nennen NPM und Node64
+  (Bugs-DB 2462). Die Knoten-Version kommt aus `VERSION` (auf main noch 2.5.0).
+- [x] **a06-04** und Projektseite `docs/bilder/tunnel.webp` (Szene `w-tunnel`) – Tunnel-Hinweis „Pflicht ist nur, dass
+  der Proxy WebSocket durchreicht …“ statt nur „Websockets Support“ (2462); Bild 34 px höher (`height` in den
+  `docs/*index.html` angepasst).
+- [x] **b13-01, b13-02, b13-03, b13-07, b13-09** – ohne Chip „Experimentell“ im Anrufkopf.
+- [x] **b13-08** – ohne Chip und ohne Kasten in der Teilnehmerliste.
+- [x] **Projektseite** (`tools/website-bilder.py`, Szene `w-anruf`): `docs/bilder/anruf-gruppe.webp` und
+  `docs/bilder/handy-anruf.webp` (Handy-Browser mit Android-Kennung, kein App-Bild) – Alt-Texte in `docs/index.html`
+  und den Sprachfassungen ohne „Experimentell“.
 
-Geprüft am 26.11.2026 durch Ansehen der Bilder; a07-01 ist sauber. Nicht angesehen: a01-01, a06-01, a06-03, a06-04,
-b13-04, b13-05, b13-10 – beim Neuaufnehmen mit prüfen.
+Angesehen und sauber (nicht neu): a01-01, a06-01, a06-03, a07-01, b13-04, b13-05, b13-10, b13-11. Noch mit Marke:
+**b13-12** (iOS-App, aus dem App-Durchgang 2029-6, Chip „Experimentell“ in der Teilnehmerliste) – die iOS-App zeigt ihn
+seit 2263 nicht mehr; neu nur mit dem iOS-Simulator.
 
 ## Funde aus Durchgang 2
 
