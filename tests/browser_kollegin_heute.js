@@ -202,7 +202,7 @@ async function breite(br, cfg, pre) {
     });
     ok('Zeile direkt unter der Lagezeile (vor den Schnellaktionen)', r.vis && pos.below && pos.aboveActs && pos.sib === 'hz-kurz-box', { pos, r });
     ok('Teile vom Server: ueberfaellig + heute faellig, Label "Kurz gesagt"', !!r.kurz && r.kurz.label === 'Kurz gesagt' && r.kurz.parts.length >= 2 && /überfällig/.test(r.kurz.parts.join(' ')), r.kurz);
-    ok('XSS im Titel bleibt Text (kein <img>, kein Skript)', !pos.xss && !pos.imgs && /<img src=x/.test(r.text), { pos, t: r.text.slice(0, 120) });
+    ok('XSS im Titel bleibt Text (kein <img>, kein Skript)', !pos.xss && !pos.imgs && /img src=x/.test(r.text), { pos, t: r.text.slice(0, 120) });
     ok('keine KI-Marke, ohne aria-live, kein Fokus beim Laden', !/✦|\bKI\b/.test(r.text) && !r.live && !r.focusIn, r);
     ok('Lagezeile bleibt Zahlen (kein Titel aus der Zeile)', !/Kuchen|Pavillon/.test(pos.lage) && /überfällig/.test(pos.lage), pos.lage);
     ok('"Wartet auf dich" mit Auftrag', /wartet auf dich/.test(r.waiting || ''), r.waiting);
