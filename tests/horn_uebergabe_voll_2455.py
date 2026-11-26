@@ -108,6 +108,8 @@ def forged(cand, cid, dev):
 
 
 def room_max(cid):
+    if not hasattr(HN, "room_max"):                    # Gegenprobe auf einem Stand vor 2455
+        return "fehlt"
     with connect() as c:
         return HN.room_max(c, cid)
 
@@ -194,6 +196,9 @@ def run(B):
         ok(f"im Anruf: A2 und B ({len(legs)})", legs == sorted([A2["id"], Bp.dev["id"]]), legs)
 
         # --- Nachrichten an den Knoten (Testprozess, horn.send aufgezeichnet) ----------------------------------------
+        if not hasattr(HN, "sync_rooms"):
+            ok("sync_rooms fehlt (Stand vor 2455)", False)
+            return
         sent, keep = [], HN.send
         HN.send = lambda nid, msg: sent.append((nid, msg)) or True
         try:
