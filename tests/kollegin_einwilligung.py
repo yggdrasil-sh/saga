@@ -212,6 +212,15 @@ def hint_cases():
                 break
         else:
             ok("RT-39: oeffentliche IP + 'lokal'-Saetze (11 Schreibweisen, de/en/es/ru) -> Satz faellt weg, Internet", True)
+        leak = [n for n in ("l0kal", "1okal", "L\u043ek\u0430l", "l0c4l", "lokaal", "\u30ed\u30fc\u30ab\u30eb\u3067\u52d5\u4f5c",
+                            "\u672c\u5730\u8fd0\u884c", "Bleibt bei uns im Haus.", "Nur im LAN.", "Im Intranet.", "Auf unserem Homeserver.",
+                            "Unser Server.", "Geht nicht nach draußen.", "Privates Netz.")
+                if "note" in h("https://llm.example.org/v1", ["8.8.8.8"], n)]
+        ok("RT-39 (Pruefer pki): Leetspeak, kyrillische Doppelgaenger, nl/ja/zh, Umschreibungen -> Satz faellt weg", not leak, leak)
+        x = [h(f"http://{ip}:11434/v1")["net"] for ip in ("100.64.1.2", "[2002:808:808::1]", "192.0.2.10", "0.0.0.0")]
+        y = h("https://llm.example.org/v1", ["100.100.1.1"])
+        ok("RT-39 (Pruefer pki): CGNAT/6to4/Doku-Netz/0.0.0.0 sind nicht 'Heimnetz' (nur rein private Adressen)",
+           x == ["internet"] * 4 and y["net"] == "internet", (x, y))
         x = h("https://llm.example.org/v1", ["8.8.8.8"], "Betrieben von unserem Verein.")
         ok("oeffentliche IP + harmloser Zusatzsatz bleibt, Hinweis 'im Internet'",
            x.get("note") == "Betrieben von unserem Verein." and x["label"] == "llm.example.org (im Internet)", x)

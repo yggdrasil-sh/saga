@@ -15,7 +15,7 @@ Einwilligung (K19, Apple 5.1.2(i), Art. 7 DSGVO) - je Person in ai_consent (Prot
 
 Anbieter-/Host-Hinweis (M4, RT-39) bildet NUR der Server (endpoint_hint), aus der Adresse des Modell-Endpunkts:
   host = ai.host_of (Host[:Port]), net = "home" nur, wenn alle festgehaltenen IPs (bzw. die IP in der Adresse) privat
-  sind (netguard.is_public), sonst "internet" (auch ohne festgehaltene IPs). Bekannte Anbieter (KNOWN, nur bei
+  sind (_private: RFC 1918, Loopback, Link-Local, ULA - nicht CGNAT/6to4), sonst "internet" (auch ohne festgehaltene IPs). Bekannte Anbieter (KNOWN, nur bei
   "internet") mit Name und Land. Der Admin kann EINEN Zusatzsatz anfuegen (setting ai.endpoint_note): eine Zeile,
   hoechstens NOTE_MAX Zeichen, nur der erste Satz; bei net "internet" faellt er weg, sobald er "lokal"/"im Heimnetz"
   o. Ae. behauptet (_claims_local, ueber eine gefaltete Form ohne Leer-/Sonderzeichen in de/en/es/ru/th).
@@ -104,18 +104,24 @@ _LOCAL = ("lokal", "local", "heimnetz", "hausnetz", "zuhause", "daheim", "intern
           "thisserver", "thismachine", "neverleave", "notontheinternet", "notsenttotheinternet", "privatenetwork",
           "redlocal", "encasa", "servidorpropio", "estosservidor", "esteservidor", "nosaledelared", "nuncasale",
           "локальн", "домашн", "внутренн", "этомсервер", "вашемсервер", "нашемсервер", "неуходит",
-          "ในเครื่อง", "ภายใน", "บ้าน", "โลคัล")
+          "ในเครื่อง", "ภายใน", "บ้าน", "โลคัล",
+          # Pruefer pki: weitere Sprachen und Umschreibungen (nl, tr, ja, zh; "im Haus", Intranet, Homeserver ...)
+          "lokaal", "yerel", "ローカル", "本地", "内网", "intranet", "inhouse", "imhaus", "dashaus", "nachdraussen",
+          "heimserver", "homeserver", "homelab", "unserserver", "unserenserver", "unseremserver", "unsererserver",
+          "privatesnetz", "privatennetz", "privatemnetz", "imlan")
+# Verschleierung: kyrillische/griechische Doppelgaenger -> lateinisch, Leetspeak-Ziffern -> Buchstaben (1 als l und als i)
+_LOOK = str.maketrans("аеорсухкіјӏԁмтвнοαεκιντρχυ0345@$|7", "aeopcyxkijldmtbhoaekivtpxuoeasasl" + "t")
 
 
-def _fold(s):
+def _fold(s, one="l"):
     s = unicodedata.normalize("NFKD", str(s or "")).casefold()
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = "".join(ch for ch in s if not unicodedata.combining(ch)).translate(_LOOK).replace("1", one)
     return "".join(ch for ch in s if ch.isalnum())
 
 
 def _claims_local(s):
-    f = _fold(s)
-    return any(_fold(w) in f for w in _LOCAL)
+    f = {_fold(s), _fold(s, "i")}
+    return any(_fold(w) in x for w in _LOCAL for x in f)
 
 
 def clean_note(s):
@@ -135,6 +141,22 @@ def _ip_lit(host):
         return str(ipaddress.ip_address(host.strip("[]")))
     except ValueError:
         return None
+
+
+# "im Heimnetz" nur bei rein privaten Adressen (RFC 1918, Loopback, Link-Local, ULA). netguard.is_public ist fuer SSRF
+# absichtlich weit ("nicht oeffentlich" = auch CGNAT 100.64/10, 6to4, Doku-Netze, Unlesbares) - das hiesse hier "Heimnetz".
+_HOME_NETS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8",
+                                                      "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"))
+
+
+def _private(ip):
+    try:
+        a = ipaddress.ip_address(str(ip).split("%")[0].strip("[]"))
+    except ValueError:
+        return False
+    if getattr(a, "ipv4_mapped", None):
+        a = a.ipv4_mapped
+    return any(a.version == n.version and a in n for n in _HOME_NETS)
 
 
 def provider_of(hostname):
@@ -157,7 +179,7 @@ def endpoint_hint(c=None):
     host = ai.host_of(c)
     lit = _ip_lit(name)
     ips = [lit] if lit else [str(x) for x in c.get("pinned") or [] if x]
-    home = bool(ips) and not any(is_public(ip) for ip in ips)
+    home = bool(ips) and all(_private(ip) and not is_public(ip) for ip in ips)
     out = {"host": host, "net": "home" if home else "internet"}
     if not home:
         prov, cc = provider_of(name)
