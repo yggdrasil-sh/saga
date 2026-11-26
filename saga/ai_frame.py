@@ -173,7 +173,8 @@ def _load_tlds():
     try:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tlds.txt"), encoding="utf-8") as f:
             return frozenset(ln.strip().lower() for ln in f if ln.strip() and not ln.startswith("#"))
-    except OSError:                                      # Liste fehlt: lieber jede TLD-Form als Adresse werten (wie zuvor)
+    except (OSError, ValueError):                        # Liste fehlt/unlesbar (auch kein UTF-8): lieber jede TLD-Form als
+        # Adresse werten (wie zuvor) - ein Importfehler hier legte sonst alle KI-Wege und MCP lahm (Pruefer prr1)
         return None
 
 

@@ -156,6 +156,22 @@ def main():
         ok(f"kein Fehlalarm (Kuerzel): {txt}", F.no_links(txt) == txt and not F.has_links(txt), F.no_links(txt))
     for txt in ("ASP.NET/Core", "bericht.final/v2"):
         ok(f"bewusst hingenommener Fehlalarm (ungemischt, echte TLD .net/.final): {txt}", F.has_links(txt), txt)
+    # Pruefer prr1: tlds.txt kaputt (kein UTF-8) oder weg -> kein Importfehler, Rueckfall "jede TLD-Form"
+    import builtins
+    real_open = builtins.open
+
+    def bad_open(path, *a, **k):
+        if str(path).endswith("tlds.txt"):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "Test")
+        return real_open(path, *a, **k)
+    builtins.open = bad_open
+    try:
+        loaded = F._load_tlds()
+    except Exception as ex:  # noqa: BLE001
+        loaded = ex
+    finally:
+        builtins.open = real_open
+    ok("tlds.txt unlesbar (kein UTF-8) -> None statt Ausnahme (Rueckfall: jede TLD-Form)", loaded is None, loaded)
     for txt in ("Treffen um 10.30 Uhr, Preis 3.14 Euro, Version 2.6/2.7", "Hast du bericht.pdf? Sonst docs/handbuch.md lesen.",
                 "Lies ~/Dokumente/bericht.pdf und /srv/saga.test/x", "Das ist z.B. gut, d.h. fertig. Saga.Ende. Mo./Di. 50 km/h",
                 "Kap. 3.2/4.1 und S. 12/13", "E-Mail/Telefon, und/oder, Std./Tag", "Liste [1] und [2] sowie [x] erledigt",
