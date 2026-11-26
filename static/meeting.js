@@ -10,6 +10,7 @@
 // - galleryGrid / pages: Spalten und Seiten je Fensterklasse (§2.2), Video-Hoechstzahl (§8)
 // - SpeakerPick: Sprechring (> 0,03 fuer >= 300 ms, Nachlauf 600 ms) und Buehnenwechsel mit Hysterese (>= 1,5 s am
 //   Stueck lauter und >= 3 s seit dem letzten Wechsel; eigene Stimme bewegt die Buehne nie)
+// - SelfRing / selfLevel: eigener Sprechring an der eigenen Kachel (Bugs-DB 2472, ueberall gleich)
 // - hideControls: Leisten nach 4 s ausblenden, mit Ausnahmen (§6.1)
 // - selfPipSize: eigenes Bild im Seitenverhaeltnis der Kamera, Breite nach der Ausrichtung der Kamera, S/M/L (§7)
 (function (root) {
@@ -277,6 +278,22 @@
     return Object.keys(w).length >= RING_MIN_PERSONS;
   }
 
+  // Bugs-DB 2472 (Entscheidung 26.11.: "ueberall gleich"): eigener Sprechring - Rand um die EIGENE Kachel, wenn man selbst
+  // spricht -, auf allen Plattformen und Wegen (Mesh und Knoten) gleich (Vektoren "selfRing"). Gemessen wird der eigene
+  // Pegel (media-source am Ton-Sender) nur, solange es eine eigene Kachel gibt, im Takt der Pegel-Schleife (Web 330 ms,
+  // Apps 500 ms). Regel: eigener Pegel > 0,03 -> an, 600 ms Nachlauf fuer Sprechpausen, Mikro aus -> sofort aus (Bugs-DB
+  // 2459, auch kein Aufleuchten beim Wieder-Einschalten); ein Messwert aelter als 1,5 s zaehlt nicht (Bugs-DB 2458). Ob der
+  // Ring zu sehen ist, entscheidet wie bei den anderen Kacheln speakRingOn (2125: nur ab 3 Personen, im 1:1 nie).
+  var SELF_LEVEL = 0.03, SELF_TAIL = 600, SELF_MAX_AGE = 1500;
+  function selfLevel(level, at, now, mic) { return mic && at > 0 && now - at <= SELF_MAX_AGE ? (+level || 0) : 0; }
+  function SelfRing() { this.onAt = 0; }
+  // level/at: letzter eigener Messwert und wann (ms, 0 = nie gemessen), mic: eigenes Mikro an -> eigene Kachel "spricht"
+  SelfRing.prototype.update = function (now, level, at, mic) {
+    if (!mic) { this.onAt = 0; return false; }
+    if (selfLevel(level, at, now, mic) > SELF_LEVEL) this.onAt = now;
+    return !!this.onAt && now - this.onAt < SELF_TAIL;
+  };
+
   // Leisten ausblenden? (§6.1) idle = 4 s ohne Bedienung, phase 'connected' (sonst Klingeln/Verbinden), video = Bild auf
   // der Buehne, screenReader, menuOpen (Menue/Blatt/Dialog), notice (wichtige Meldung), pointerOverBar (Maus auf Kopf/Leiste
   // bzw. Tastaturfokus darin)
@@ -316,7 +333,7 @@
   var api = { K: K, LAYOUTS: LAYOUTS, people: people, meetingTiles: meetingTiles, hiddenNoVideo: hiddenNoVideo, pickLayout: pickLayout,
               galleryOrder: galleryOrder, arrange: arrange, windowClass: windowClass, galleryGrid: galleryGrid, pages: pages, pageOf: pageOf,
               videoBudget: videoBudget, videoFor: videoFor, stripSide: stripSide, SpeakerPick: SpeakerPick, hideControls: hideControls,
-              selfPipSize: selfPipSize, layoutPref: layoutPref, speakRingOn: speakRingOn };
+              selfPipSize: selfPipSize, layoutPref: layoutPref, speakRingOn: speakRingOn, SelfRing: SelfRing, selfLevel: selfLevel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaMeeting = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -1533,7 +1533,7 @@
     if (tr && tr.readyState !== 'live') tr = null;
     if (tr !== E.track) { E.track = tr; E.v.srcObject = tr ? new MediaStream([tr]) : null; if (tr) E.v.play().catch(function () {}); }
     var frames = !!tr && E.v.readyState >= 2 && E.v.videoWidth > 0;
-    var b = E.box, spk = t.kind !== 'screen' && !!(mt.pick && mt.pick.speaking[t.who]) && t.mic;
+    var b = E.box, spk = tileSpeaking(R, mt, t);
     b.classList.toggle('has-video', frames);
     b.classList.toggle('peer-screen', t.kind === 'screen');
     b.classList.toggle('cl-me', !!t.me);
@@ -1935,6 +1935,34 @@
     return on;
   }
 
+  // Bugs-DB 2472 (ueberall gleich): eigener Sprechring auch im Mesh - bisher nur ueber den Knoten (2458). Eigene Kachel =
+  // Meeting-Ansicht mit dem eigenen Bild als Kachel (nicht schwebend, Klasse self-tile); nur dann wird der eigene Pegel
+  // gemessen (getStats am Ton-Sender, media-source wie hornSelfLevel - wie 2459 im Knoten). Regel SagaMeeting.SelfRing:
+  // > 0,03, 600 ms Nachlauf, stumm sofort aus; zu sehen ist der Ring wie bei allen Kacheln nur ab 3 Personen (2125).
+  // Die eigene Stimme geht NICHT in die Sprecher-Hysterese (Buehne) - Ring und Buehne bleiben getrennt.
+  function meshSelfTile(R) {
+    var mt = R && R.mt;
+    if (!R || !R.meshOn || R.horn || !mt || !R.ui || !R.ui.w.classList.contains('self-tile')) return false;
+    return Object.keys(mt.els).some(function (k) { return !!mt.els[k].t.me; });
+  }
+  function meshSelfLevel(R) {
+    var S = mtOf(R).self || (mtOf(R).self = {});
+    if (S.busy) return;
+    var L = links(R).filter(function (x) { return x.pc && x.connected && audioSender(x); })[0], snd = L && audioSender(L);
+    if (!snd || !snd.getStats) return;
+    S.busy = true;
+    snd.getStats().then(function (st) {
+      var lv = 0; st.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'audio' && typeof x.audioLevel === 'number') lv = x.audioLevel; });
+      S.selfLevel = micOn(R) ? lv : 0; S.selfAt = Date.now(); S.n = (S.n || 0) + 1;
+    }).catch(function () {}).then(function () { S.busy = false; });
+  }
+  // Kachel "spricht" (Klasse speaking: Ring ab 3 Personen, Lautsprechersymbol, Vorlesetext); eigene Kachel per SelfRing
+  function tileSpeaking(R, mt, t) {
+    if (t.kind === 'screen') return false;
+    if (t.me) return meshSelfTile(R) && selfRingOn(R, mt.self || (mt.self = {}));
+    return !!(mt.pick && mt.pick.speaking[t.who]) && t.mic;
+  }
+
   // Sprecher: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde; Personen-Pegel = Maximum ueber
   // ihre Geraete, Sprechring und Buehne mit Hysterese (SagaMeeting.SpeakerPick)
   function speakers(R) {
@@ -1943,6 +1971,7 @@
       if (!live(R)) { clearInterval(R.spkT); return; }
       ringSet(R);                                      // 2125: Ring nur ab 3 Personen
       if (!meshView(R)) return;
+      if (meshSelfTile(R)) meshSelfLevel(R);           // 2472: eigener Pegel nur mit eigener Kachel (wie ueber den Knoten)
       var best = null, top = 0.03, now = Date.now(), lv = {};
       links(R).forEach(function (L) {
         var rc = L.pc && L.pc.getReceivers ? L.pc.getReceivers().filter(function (r) { return r.track && r.track.kind === 'audio'; })[0] : null;
@@ -1958,7 +1987,7 @@
       mt.pick.update(now, lv, meName());
       Object.keys(mt.els).forEach(function (id) {
         var E = mt.els[id], t = E.t;
-        E.box.classList.toggle('speaking', t.kind !== 'screen' && !t.me && !!mt.pick.speaking[t.who] && t.mic);
+        E.box.classList.toggle('speaking', tileSpeaking(R, mt, t));
       });
       if (mt.pick.cur !== was && mt.lay === 'speaker' && !mt.pin) meetSoon(R);
     }, 330);
@@ -2337,6 +2366,9 @@
     msMic(c.mic);
     micWatch(c); drawCtl(c); stateAll(c);
     if (c.horn && c.horn.self) c.horn.self.box.classList.toggle('speaking', hornSelfSpeaking(c));   // 2459: eigene Kachel sofort
+    else if (c.meshOn && c.mt) Object.keys(c.mt.els).forEach(function (k) {                          // 2472: auch im Mesh
+      var E = c.mt.els[k]; if (E.t.me) E.box.classList.toggle('speaking', tileSpeaking(c, c.mt, E.t));
+    });
   }
   // 2.5 (Bugs-DB 2198): Media Session setMicrophoneActive nur aus einer Nutzergeste. WebKit (Safari, Mac-Huelle) schaltet
   // mit false die Aufnahme der Seite selbst stumm (Spur muted) und lehnt true ohne Geste ab (Promise mit InvalidStateError) -
@@ -4561,7 +4593,7 @@
     H.selfT = true;
     L.tr.sender.getStats().then(function (st) {
       var lv = 0; st.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'audio' && typeof x.audioLevel === 'number') lv = x.audioLevel; });
-      H.selfLevel = R.mic ? lv : 0; H.selfAt = Date.now();
+      H.selfLevel = R.mic ? lv : 0; H.selfAt = Date.now(); H.selfN = (H.selfN || 0) + 1;   // 2472: Zahl der Messungen (Tests)
     }).catch(function () {}).then(function () { H.selfT = false; });
   }
   // 2458: eigener Pegel nur frisch (<= 1,5 s alt) und mit Mikro an, sonst 0
@@ -4572,11 +4604,15 @@
   // 2458: eigene Kachel "spricht" (Schwelle 0,03, Nachlauf 600 ms wie die anderen Kacheln)
   // Bugs-DB 2459: stumm = sofort aus (Nachlauf nur fuer Sprechpausen, wie die anderen Kacheln und iOS/Android); der alte
   // Zeitpunkt faellt weg, damit der Ring beim Wieder-Einschalten nicht kurz aufleuchtet
-  function hornSelfSpeaking(R) {
-    var H = R.horn, now = Date.now();
-    if (!micOn(R)) { H.selfOnAt = 0; return false; }
-    if (hornSelfLv(R) > 0.03) H.selfOnAt = now;
-    return !!H.selfOnAt && now - H.selfOnAt < 600;
+  // Bugs-DB 2472: dieselbe Regel fuer den Knoten (S = R.horn) und das Mesh (S = R), SagaMeeting.SelfRing (Vektoren "selfRing")
+  function hornSelfSpeaking(R) { return selfRingOn(R, R.horn); }
+  function selfRingOn(R, S) {
+    if (!S) return false;
+    var now = Date.now(), mic = micOn(R);
+    if (MT && MT.SelfRing) { if (!S.selfRing) S.selfRing = new MT.SelfRing(); return S.selfRing.update(now, S.selfLevel || 0, S.selfAt || 0, mic); }
+    if (!mic) { S.selfOnAt = 0; return false; }      // ohne meeting.js: gleiche Regel
+    if (S.selfAt && now - S.selfAt <= 1500 && (S.selfLevel || 0) > 0.03) S.selfOnAt = now;
+    return !!S.selfOnAt && now - S.selfOnAt < 600;
   }
   // Qualitaet (RTT, Verlust, Einfrieren) und UDP-Regeln aus getStats
   function hornStats(R, conn) {
@@ -5790,6 +5826,8 @@
     return { id: R.id, kind: R.kind, dm: !!R.dm, chat_id: R.chat_id || null, title: R.title || '', companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, micOn: micOn(R), micStuck: micStuck(R), spkOut: R.spkOut, mesh: meshView(R),
              cam: !!(R.cam && R.cam.readyState === 'live'),
              ring: !!(R.ui && R.ui.w.classList.contains('cl-spkring')),   // 2125: Sprechring erlaubt (ab 3 Personen)
+             // 2472: eigene Kachel im Mesh - da?, eigener Pegel (Alter in ms, Zahl der Messungen: Messtakt)
+             meshSelf: R.mt ? { tile: meshSelfTile(R), level: (R.mt.self || {}).selfLevel || 0, age: (R.mt.self || {}).selfAt ? Date.now() - R.mt.self.selfAt : null, n: (R.mt.self || {}).n || 0 } : null,
              // 2.5: Kacheln anderer (ohne die eigene) - in der Meeting-Ansicht die Kacheln je Person/Bildschirm
              tiles: R.ui ? (R.meshOn && R.mt ? Object.keys(R.mt.els).filter(function (k) { return !R.mt.els[k].t.me; }).length : R.ui.grid.children.length) : 0,
              meet: R.meshOn && R.mt ? Object.assign({ pin: R.mt.pin, stageWho: R.mt.pick && R.mt.pick.cur, idle: R.ui ? R.ui.w.classList.contains('idle') : false,
@@ -5820,7 +5858,7 @@
              conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
              diag: diagSnap(R), switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
              ring: !!(R.ui && R.ui.w.classList.contains('cl-spkring')),
-             self: H.self ? { speaking: H.self.box.classList.contains('speaking'), level: hornSelfLv(R) } : null,
+             self: H.self ? { speaking: H.self.box.classList.contains('speaking'), level: hornSelfLv(R) } : null, selfN: H.selfN || 0,
              runes: H.runes, host: hornHost(R), screen: !!R.screen, spk: H.spk || null, speaking: Object.keys(H.speaking), levels: H.levels || {}, lvSeen: !!H.lvSeen, errs: H.errs || [], bad: H.bad, log: H.log || [],
              tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live'), still: x.box.classList.contains('still'),
                                                                                          big: x.box.classList.contains('big'), speaking: x.box.classList.contains('speaking'), muted: x.box.classList.contains('muted') }; }),

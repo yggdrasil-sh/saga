@@ -6,6 +6,8 @@
 // 2459: stumm = Ring sofort aus (eigene Kachel im selben Takt wie der Klick, bei den anderen ohne 600-ms-Nachlauf).
 // PEGEL_MESH=1 (2459): dieselbe Gruppe DIREKT (Mesh; Server ohne "Alle Anrufe ueber Knoten", Gruppe unter der Mesh-Grenze):
 // A und B zu zweit - B spricht, kein Ring; C kommt dazu - Ring erscheint (Wechsel 2 -> 3); B stumm - Ring an B sofort aus.
+// 2472 (eigener Ring ueberall gleich): im Mesh zu dritt zeigt Bs EIGENE Kachel den Ring, Messtakt des eigenen Pegels
+// (>= 4 Messungen in 2 s, Mesh und Knoten), stumm -> eigene Kachel sofort aus; zu zweit ueber den Knoten kein eigener Pegel.
 // Laeuft aus tests/anrufe_horn_knoten.py (beide Durchgaenge, eigene Konten je Durchgang), geht aber auch allein:
 //   SAGA_BASE=http://host:port SAGA_USERS=u1,u2,u3 SAGA_PASS=... [SHOTS=dir] [PEGEL_MESH=1] node tests/browser_horn_pegel.js
 'use strict';
@@ -124,6 +126,9 @@ async function meshRun(ps, devs) {
   const r2 = await ringLook(ps[0]);
   ok('2459: Mesh zu zweit - B spricht, A erkennt den Sprecher, aber kein Ring (keine Fensterklasse, kein Schatten)', !!sp2 && !r2.ring && r2.shadow === 'none', r2);
   await ps[0].waitForTimeout(300); await shot(ps[0], PFX + 'mesh-zu-zweit-b-spricht-bei-a');
+  // 2472: zu zweit auch an der eigenen Kachel kein Ring (2125); gemessen wird nur mit eigener Kachel (nicht schwebend)
+  const sb2 = await selfLook(ps[1]), rb2 = await room(ps[1]);
+  ok('2472: Mesh zu zweit - B spricht, an Bs eigenem Bild kein Ring', !sb2.tile || sb2.shadow === 'none', { self: sb2, meshSelf: rb2 && rb2.meshSelf });
   // C kommt dazu (Wechsel 2 -> 3): Ring erscheint bei A; die Liste zaehlt (Verbindung zu C muss dafuer noch nicht stehen)
   const t0 = Date.now();
   let legAt = 0, ringAt = 0, cConnAtRing = null;
@@ -141,11 +146,26 @@ async function meshRun(ps, devs) {
   const rc3 = await until(async () => { const r = await ringLook(ps[2]); return r.ring && r.tile && r.shadow !== 'none' && r; }, 12000, 250);
   ok('2459: Mesh zu dritt - auch bei C (ohne Kamera) Ring an B', !!rc3, await ringLook(ps[2]));
   await ps[0].waitForTimeout(300); await shot(ps[0], PFX + 'mesh-zu-dritt-b-spricht-bei-a');
+  // --- 2472: eigener Ring im Mesh - B spricht, Bs eigene Kachel zeigt den Ring (wie ueber den Knoten und in den Apps) ---
+  const sb3 = await until(async () => { const x = await selfLook(ps[1]); return x.tile && x.speaking && x.shadow !== 'none' && x; }, 8000, 150);
+  ok('2472: Mesh zu dritt - B spricht: eigene Kachel bei B mit Ring', !!sb3, { self: await selfLook(ps[1]), meshSelf: (await room(ps[1])).meshSelf });
+  await ps[1].waitForTimeout(300); await shot(ps[1], PFX + 'mesh-zu-dritt-b-spricht-eigene-kachel-bei-b');
+  // Messtakt: eigener Pegel im Takt der Pegel-Schleife (330 ms) - ueber 2 s mindestens 4 Messungen, nie aelter als 800 ms
+  {
+    const m0 = (await room(ps[1])).meshSelf, ages = [];
+    for (let k = 0; k < 8; k++) { await ps[1].waitForTimeout(250); const m = (await room(ps[1])).meshSelf; ages.push(m.age); }
+    const m1 = (await room(ps[1])).meshSelf, n = m1.n - m0.n;
+    ok(`2472: Messtakt Mesh - eigener Pegel ${n}x in ~2 s, Alter hoechstens ${Math.max(...ages)} ms`, m0.tile && n >= 4 && Math.max(...ages) <= 800, { m0, m1, ages });
+  }
+  // A sieht an der eigenen Kachel keinen Ring (A ist leise)
+  const sa3 = await selfLook(ps[0]);
+  ok('2472: Mesh zu dritt - A leise: eigene Kachel bei A ohne Ring', sa3.tile && !sa3.speaking && sa3.shadow === 'none', sa3);
   // B schaltet stumm: Kachel bei A sofort ohne "spricht" (kein Nachlauf), der Ring bleibt erlaubt (3 Personen)
   const mc = await micClick(ps[1], true), tm = Date.now();
   const off = await until(async () => { const r = await ringLook(ps[0]); return !r.tile && r; }, 4000, 40);
   const msOff = Date.now() - tm;
   ok(`2459: Mesh - B stumm: bei A sofort ohne Ring (${msOff} ms nach dem Klick), Fensterklasse bleibt`, mc.btn && !!off && off.ring && msOff < 1500, { mc, ms: msOff, look: await ringLook(ps[0]) });
+  ok('2472: Mesh - B stumm: eigene Kachel bei B im selben Takt wie der Klick ohne Ring', mc.btn && !mc.selfSpeaking && !(await selfLook(ps[1])).speaking, { mc, self: await selfLook(ps[1]) });
   await micClick(ps[1], false);
   await ps[1].evaluate(() => window.__hornGain(0.004));
   for (const p of ps) await p.click('.cl-ctl .cl-red').catch(() => {});
@@ -214,6 +234,10 @@ async function meshRun(ps, devs) {
     for (let i = 0; i < 3; i++) await ps[i].evaluate(v => window.__hornGain(v), i === 0 ? 0.6 : 0.004);
     const selfOn = await until(async () => { const x = await selfLook(ps[0]); return x.speaking && x; }, 6000, 250);
     ok('2458: A spricht - eigene Kachel bei A zeigt "spricht"', !!selfOn, await selfLook(ps[0]));
+    {                                                  // 2472: Messtakt ueber den Knoten (330 ms) - wie im Mesh
+      const n0 = (await horn(ps[0])).selfN; await ps[0].waitForTimeout(2000); const n1 = (await horn(ps[0])).selfN;
+      ok(`2472: Messtakt Knoten - eigener Pegel ${n1 - n0}x in 2 s (eigene Kachel)`, n1 - n0 >= 4, { n0, n1 });
+    }
     const nSw = (await horn(ps[0])).switches.length;
     await ps[0].evaluate(() => window.HKCalls.hornSwitch('draining'));
     const swd = await until(async () => { const h = await horn(ps[0]); return h.switches.length > nSw && !h.switching && h.up && h; }, 30000, 300);
@@ -253,6 +277,10 @@ async function meshRun(ps, devs) {
     ok('2125: zu zweit - A spricht, B erkennt den Sprecher (speaking), aber kein Ring (keine Fensterklasse, kein Schatten)',
        !!sp2 && !r2.ring && r2.shadow === 'none' && r2.tile, { speaking: !!sp2, look: r2 });
     await ps[1].waitForTimeout(400); await shot(ps[1], PFX + 'zu-zweit-a-spricht-bei-b');
+    {                                                  // 2459/2472: zu zweit keine eigene Kachel -> kein eigener Pegel je Takt
+      const h0 = await horn(ps[0]); await ps[0].waitForTimeout(2000); const h1 = await horn(ps[0]);
+      ok(`2472: zu zweit ueber den Knoten - ohne eigene Kachel kein eigener Pegel (${h1.selfN - h0.selfN} Messungen in 2 s)`, !h1.self && h1.selfN - h0.selfN <= 1, { n0: h0.selfN, n1: h1.selfN, self: h1.self });
+    }
     await ps[0].evaluate(() => window.__hornGain(0.004));
     for (const p of ps) await p.click('.cl-ctl .cl-red').catch(() => {});
     await ps[0].waitForTimeout(1000);

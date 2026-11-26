@@ -126,6 +126,12 @@ V.speakRing.forEach(c => ok(`Sprechring: ${c.name}`, M.speakRingOn(c.roster, c.s
   ok('Sprechring Ablauf: 2 Personen aus, + Begleitgeraet aus, dritte kommt an, dritte geht aus', eq(seq, [false, false, true, false]), seq);
   ok('Sprechring: leere/fehlende Liste ohne self aus', M.speakRingOn(null) === false && M.speakRingOn([], '') === false);
 }
+// Bugs-DB 2472: eigener Sprechring (gleiche Faelle in iOS und Android)
+(V.selfRing || []).forEach(c => {
+  const r = new M.SelfRing(), got = c.steps.map(s => r.update(s.t, s.level, s.at, s.mic));
+  ok(`eigener Sprechring: ${c.name}`, eq(got, c.steps.map(s => s.expect)), { got, c });
+});
+ok('eigener Sprechring: Vektoren vorhanden (mind. 7 Faelle)', (V.selfRing || []).length >= 7);
 ok('Layout-Wahl: gespeichert, Uebernahme aus saga-horn-view (grid -> gallery), sonst Auto',
    M.layoutPref('speaker') === 'speaker' && M.layoutPref(null, 'grid') === 'gallery' && M.layoutPref(null, 'speaker') === 'speaker' && M.layoutPref('x', null) === 'auto');
 ok('Fensterklassen: Handy hochkant, Handy quer, Tablet, Desktop, gross',
