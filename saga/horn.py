@@ -733,7 +733,10 @@ def sync_rooms(c, cid):
     """2.6 (Bugs-DB 2455): max_peers (room_max) an alle eigenen Knoten mit Endpunkten des Anrufs - nach jeder Aenderung
     der Teilnehmerliste (Uebernahme beginnt: Grenze + 1, das alte Geraet geht bzw. die Uebernahme endet: wieder die
     Grenze). "open" ist am Knoten idempotent und setzt die Grenze auch fuer einen offenen Raum (ab 2.6); laufende Geraete
-    bleiben, die Grenze gilt fuer neue."""
+    bleiben, die Grenze gilt fuer neue. Nur der fuehrende Server (lead NULL) - Kopien foederierter Anrufe kennen die
+    festgehaltene Grenze nicht und bleiben wie bisher beim Standard des Knotens."""
+    if not c.execute("SELECT 1 FROM chat_call WHERE id=? AND lead IS NULL", (cid,)).fetchone():
+        return
     mp = room_max(c, cid)
     if not mp:
         return
@@ -856,10 +859,10 @@ def _active_rooms(node_id):
 def _room_limits(node_id):
     """2.6 (Bugs-DB 2455): "open" mit max_peers (room_max) fuer jeden laufenden Anruf mit Endpunkten an diesem Knoten -
     nach dem (Neu-)Verbinden: ein neu gestarteter Knoten legte die Raeume sonst beim ersten Bein mit seinem Standard (50)
-    wieder an."""
+    wieder an. Wie sync_rooms nur Anrufe, die dieser Server fuehrt."""
     with _db() as c:
         rows = c.execute("SELECT DISTINCT l.call_id FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.node=? "
-                         "AND l.state='active' AND k.state<>'ended' AND k.topo='horn'", (node_id,)).fetchall()
+                         "AND l.state='active' AND k.state<>'ended' AND k.topo='horn' AND k.lead IS NULL", (node_id,)).fetchall()
         out = []
         for (cid,) in rows:
             mp = room_max(c, cid)

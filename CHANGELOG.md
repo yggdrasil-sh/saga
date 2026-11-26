@@ -301,6 +301,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   anderen Server weiter mit dem Standard 50); Knoten ab 2.6 übernehmen sie auch für einen schon offenen Raum und zählen
   dabei nur Geräte am eigenen Knoten, nicht Teilnehmende über eine Brücke (sonst hing ein umziehendes Gerät bei vollem
   Anruf am Zielknoten fest).
+- **Gjallarhorn: „Hierher übernehmen“ klappt auch bei vollem Anruf über einen Knoten** (Bugs-DB 2455): Saga lässt die
+  Übernahme zu (das ersetzte Gerät zählt nicht mit), das alte Gerät bleibt aber am Knoten verbunden, bis das neue
+  steht – mit `max_peers` = Anrufgrenze bekam das neue Gerät dort „knoten oder raum voll“. Jetzt hält Saga während
+  einer laufenden Übernahme an jedem eigenen Knoten des Anrufs genau einen Platz mehr frei und setzt die Grenze danach
+  wieder zurück (`open` mit `max_peers` bei jeder Änderung der Teilnehmerliste, auch nach dem Neuverbinden eines
+  Knotens). Die sichtbare Grenze bleibt gleich: Weitere Personen oder Geräte werden bei vollem Anruf weiter abgelehnt –
+  von Saga und am Knoten.
 - **Gjallarhorn: „ausgelastet“ statt „kein Anruf-Knoten erreichbar“** (2263-4): Ist ein erreichbarer Knoten nur ausgelastet,
   antwortet der Beitritt weiter mit 409 `join_block:"node"`, zusätzlich mit `busy: true` und dem Text „Die Anruf-Knoten
   sind gerade ausgelastet – bitte gleich noch einmal.“
