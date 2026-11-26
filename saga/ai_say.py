@@ -204,6 +204,13 @@ def label(persona=None, lang="en"):
     return CAT[lang]["label"].replace("{name}", nm) if nm else _default_name(lang)
 
 
+def style(uid, conn=None, lang=None):
+    """Fuer /api/ai/status (Feld style): {label, form, lively, salutation} - wirksam fuer diese Person (Sprache der Anfrage)."""
+    from saga import i18n
+    p = persona_for(uid, conn)
+    return {"label": label(p, lang or i18n.get_lang()), "form": p["form"], "lively": p["lively"], "salutation": p["address"]}
+
+
 def contact_style(c, uid, contact_id):
     """Anrede fuer Entwuerfe NUR aus dem Kontaktfeld (2027a: contact.form/salutation des Besitzers) - M10, RT-41.
     -> {"address": du|sie, "greeting": Grussform|None}; unbekannt -> Sie (Konzept §1)."""

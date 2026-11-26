@@ -34,6 +34,7 @@ from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, 
 from saga import chat_grp                        # 2.5: Gruppenbild/-rechte, Admin-Loeschen, Anheften, Blockieren, Melden (Chat-Standard B)
 from saga import chat_unfurl                     # 2.5 (Chat-Alltag): Linkvorschau fuer den Absender (netguard)
 from saga import calldiag                      # 2.5: Anruf-Diagnose POST /api/calls/diag (nur Server-Log)
+from saga import ai_say                        # 2.6 K-H (2268): Bausteine der Kollegin, /api/ai/prefs
 from saga import call_add                      # 2.5 (L8): Personen zum laufenden Gruppenanruf holen
 from saga import pmdiag                        # 2.5 (T6): Editor-Diagnose POST /api/diag (Round-Trip-Abweichungen, nur Server-Log)
 from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (Server-Log + diag_event)
@@ -355,6 +356,7 @@ app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/...,
 app.include_router(chat_files.router)       # Videos im Chat (2.4): /api/chats/{cid}/uploads, /api/chat/uploads/{id}, Medien-Token
 app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
 app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history
+app.include_router(ai_say.router)           # 2.6 K-H (2268): GET/PUT /api/ai/prefs - Anrede und Lebhaftigkeit der Person
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
 app.include_router(clientlog.router)        # 2.5: Fehlerberichte und "Diagnose senden" (Feature clientlog1)

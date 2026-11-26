@@ -58,7 +58,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 import auth
 from db import connect as _db
-from saga import ai_ctx, ai_frame, ai_units, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
+from saga import ai_ctx, ai_frame, ai_say, ai_units, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
@@ -2010,7 +2010,8 @@ def api_ai_status(request: Request):
                          "notice": t("Inhalte, die du dem Assistenten gibst, gehen an {host}.", host=host),
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
-                         "caps": caps_now, "sources": srcs, "units": units},
+                         "caps": caps_now, "sources": srcs, "units": units,
+                         "style": ai_say.style(uid)},                    # 2.6 K-H (2268): Persona-Form, Lebhaftigkeit, Anrede
                         headers={"Cache-Control": "no-store"})
 
 

@@ -134,6 +134,7 @@
     bookorbitSection(body);                                  // 2.5: BookOrbit (Leseliste, nur lesen)
     tokenSection(body);
     pagesSection(body);                                      // 2.5 (Tiptap T2): Seiten-Editor
+    sagaSection(body);                                       // 2.6 K-H (2268): Anrede und Lebhaftigkeit der KI (/api/ai/prefs)
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
@@ -146,7 +147,7 @@
       HKLive.settingsSection(push);
     }
     var GROUPS = [
-      [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell']]],
+      [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell'], ['saga', 'Saga', 'sparkles']]],
       [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star'], ['contacts', T('Kontakte'), 'users']]],
       [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
       [T('Daten'), [['backup', T('Mein Backup'), 'download']]],
@@ -263,6 +264,45 @@
         }).then(function () { go.disabled = false; });
       });
     }).catch(function () {});
+  }
+
+  // --- Abschnitt "Saga" (2.6 K-H, Bugs-DB 2268): wie die KI diese Person anspricht - Anrede du/Sie und eine ruhigere
+  //     Lebhaftigkeit (hoechstens die des Admins). Nur wenn die KI fuer die Person an ist; sonst verschwindet der Eintrag.
+  //     Die Anrede gilt fuer Saetze der KI an dich, nie fuer Entwuerfe an andere (die richten sich nach dem Kontakt).
+  function sagaSection(body) {
+    var sec = el('section', 'hk-set hk-set-saga'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, 'Saga'));
+    var box = el('div'); sec.appendChild(box);
+    api('GET', '/api/ai/prefs').then(function (d) {
+      if (!d || d.enabled === false) { hideSaga(sec); return; }
+      box.appendChild(el('p', 'hk-hint', T('So spricht die KI in ihren Sätzen mit dir – in Rückmeldungen, Plänen und Rückfragen.')));
+      var LV = { sachlich: T('sachlich'), warm: T('warm'), verspielt: T('verspielt') };
+      var AD = { du: T('du'), sie: T('Sie##Anrede') };
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status');
+      function row(label, id, key, opts, names, def) {
+        var l = el('label', 'hk-avset-row'); l.htmlFor = id;
+        l.appendChild(el('span', null, label));
+        var sel = el('select', 'hk-in'); sel.id = id;
+        var o0 = el('option', null, T('Standard ({v})', { v: names[def] || def })); o0.value = ''; sel.appendChild(o0);
+        opts.forEach(function (v) { var o = el('option', null, names[v] || v); o.value = v; sel.appendChild(o); });
+        sel.value = d[key] || '';
+        sel.addEventListener('change', function () {
+          var b = {}; b[key] = sel.value || null; sel.disabled = true;
+          api('PUT', '/api/ai/prefs', b).then(function (r) { d = r; sel.value = r[key] || ''; status(st, T('✓ Gespeichert'), 'ok'); })
+            .catch(function (err) { sel.value = d[key] || ''; status(st, err.message, 'err'); }).then(function () { sel.disabled = false; });
+        });
+        l.appendChild(sel); box.appendChild(l);
+      }
+      row(T('Anrede'), 'hk-saga-sal', 'salutation', d.choices.salutation, AD, d['default'].salutation);
+      if (d.choices.lively.length > 1) row(T('Lebhaftigkeit'), 'hk-saga-lively', 'lively', d.choices.lively, LV, d['default'].lively);
+      box.appendChild(st);
+      box.appendChild(el('p', 'hk-hint', T('Entwürfe in deinem Namen richten sich nach der Anrede im Kontakt, nicht nach dieser Einstellung.')));
+    }).catch(function () { hideSaga(sec); });
+  }
+  function hideSaga(sec) {
+    sec.hidden = true; sec.classList.add('hk-set-off');
+    if (!sec.querySelector('.hk-hint')) sec.appendChild(el('p', 'hk-hint', T('Der KI-Assistent ist für dich nicht eingeschaltet.')));
+    var b = document.getElementById('hk-tab-saga'); if (b && b.parentNode) b.parentNode.hidden = true;
   }
 
   // --- Abschnitt "Seiten" (2.5, Tiptap-Umbau T2): neuer Seiten-Editor an/aus, nur wenn der Admin die Wahl freigibt

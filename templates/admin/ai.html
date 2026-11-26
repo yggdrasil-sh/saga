@@ -65,6 +65,15 @@
     <label class="adm-field"><span>{{ _("Persönlichkeit und Tonfall") }}</span>
       <textarea class="hk-in adm-ta" name="tone" maxlength="500" rows="3" placeholder="{{ _('z. B. freundlich und knapp, duzt die Personen, gern mit einem Augenzwinkern') }}">{{ p.tone }}</textarea>
       <small>{{ _("Optional, höchstens 500 Zeichen. Wirkt nur auf die Formulierung eigener Antworten – Regeln, Quellenangaben und Formate (z. B. Aufgaben-Vorschläge) haben immer Vorrang; Verbessern und Übersetzen bleiben beim Ton des Textes.") }}</small></label>
+    <label class="adm-field"><span>{{ _("Sprachform") }}</span>
+      <select class="hk-in" name="form">{% for v, l in (("sie", _("weiblich (sie)")), ("er", _("männlich (er)")), ("neutral", _("neutral"))) %}<option value="{{ v }}"{% if p.form == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <small>{{ _("Wie die KI über sich spricht – wirkt in Russisch, Spanisch und Thai (z. B. „я нашла“ statt „я нашёл“), im Deutschen und Englischen ändert sich nichts. Standard: weiblich.") }}</small></label>
+    <label class="adm-field"><span>{{ _("Lebhaftigkeit") }}</span>
+      <select class="hk-in" name="lively">{% for v, l in (("sachlich", _("sachlich")), ("warm", _("warm")), ("verspielt", _("verspielt"))) %}<option value="{{ v }}"{% if p.lively == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <small>{{ _("Sachlich: ohne Begrüßung und Ausrufezeichen. Warm: kurze Begrüßung. Verspielt: wie warm, bei Ideen selten ein Augenzwinkern. Fehlermeldungen bleiben immer sachlich; jede Person kann für sich eine ruhigere Stufe wählen.") }}</small></label>
+    <label class="adm-field"><span>{{ _("Anrede (Standard)") }}</span>
+      <select class="hk-in" name="salutation">{% for v, l in (("du", _("du")), ("sie", _("Sie##Anrede"))) %}<option value="{{ v }}"{% if p.salutation == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <small>{{ _("Gilt für alle, die nichts anderes eingestellt haben. Jede Person kann es in ihren Einstellungen unter „Saga“ ändern.") }}</small></label>
   </section>
   <div class="adm-actions">
     <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Persona speichern") }}</button>

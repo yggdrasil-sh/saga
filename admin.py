@@ -1855,7 +1855,9 @@ def ai_page(request: Request):
 def _persona_ctx():
     p = dict(auth.settings(fresh=True).get("ai_persona") or {})
     url, _etag = ai.persona_avatar()
-    return {"p": {"name": ai.clean_name(p.get("name")), "tone": ai.clean_tone(p.get("tone"))}, "persona_name": ai.persona_name(p),
+    sp = ai.ai_say.admin_persona()                         # 2.6 K-H (2268): Form, Lebhaftigkeit, Standard-Anrede
+    return {"p": {"name": ai.clean_name(p.get("name")), "tone": ai.clean_tone(p.get("tone")), "form": sp["form"],
+                  "lively": sp["lively"], "salutation": sp["salutation"]}, "persona_name": ai.persona_name(p),
             "default_name": ai.default_name(), "has_av": bool(url), "av_v": (url or "").rsplit("=", 1)[-1],
             "av_max": avatars.UPLOAD_MAX // 1048576}
 
@@ -1978,13 +1980,19 @@ async def ai_persona_post(request: Request):
                 _flash(request, t("Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel)."), "err")
                 return _go("/settings/ai#persona")
     old = dict(auth.settings(fresh=True).get("ai_persona") or {})
-    auth.save_setting("ai_persona", {"name": name, "tone": tone})
+    say = ai.ai_say                                          # 2.6 K-H (2268): unbekannte Werte -> bisheriger Wert bzw. Standard
+    keep = say.admin_persona()
+    extra = {"form": f.get("form") if f.get("form") in say.FORM_NAMES else keep["form"],
+             "lively": f.get("lively") if f.get("lively") in say.LIVELY else keep["lively"],
+             "salutation": f.get("salutation") if f.get("salutation") in say.ADDRESS else keep["salutation"]}
+    auth.save_setting("ai_persona", {"name": name, "tone": tone, **extra})
     img = await run_in_threadpool(ai.set_avatar, enc) if enc else False
     if not img and (old.get("name") or "") != name:       # Bild geaendert: set_avatar hat das Ereignis schon geschickt
         with _db() as c, c:
             ai.announce_persona(c)
     print(f"admin: {me['username']} speichert Persona der KI (Name={'eigener' if name else 'Standard'}, "
-          f"Tonfall={'ja' if tone else 'nein'}, Bild={'neu' if img else 'unveraendert'})", flush=True)
+          f"Tonfall={'ja' if tone else 'nein'}, Bild={'neu' if img else 'unveraendert'}, Form={extra['form']}, "
+          f"Lebhaftigkeit={extra['lively']}, Anrede={extra['salutation']})", flush=True)
     _flash(request, t("Persona der KI gespeichert."))
     return _go("/settings/ai#persona")
 
