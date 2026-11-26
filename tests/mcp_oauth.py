@@ -41,6 +41,7 @@ U, PW = "oa-test-a", "Oa-Pass-" + secrets.token_hex(6)
 U2 = "oa-test-b"
 U3 = "oa-test-sso"                          # SSO-Konto (source oidc): Bestaetigung = frische Anmeldung
 U4 = "oa-test-totp"                         # Passwort aus 6 Ziffern + Authenticator-App (N4)
+PW6 = "".join(secrets.choice("0123456789") for _ in range(6))
 RU = "http://127.0.0.1:9/cb"                 # Loopback-Client (RFC 8252), wird nie aufgerufen
 RU2 = "https://client.example/cb?x=1"
 res = []
@@ -246,10 +247,9 @@ def part_n4(cid):
     """N4: Passwort aus 6 Ziffern zaehlt als Passwort, Code der Authenticator-App weiter; Konto ohne Passwort und Code:
     kein Passwortfeld."""
     from saga import mfa
-    pw6 = "".join(secrets.choice("0123456789") for _ in range(6))
+    pw6 = PW6
     with db.connect() as c, c:
         c.execute("DELETE FROM mfa_totp WHERE uid=?", (U4,))
-    auth.set_password(U4, pw6)
     info = mfa.totp_begin(U4)
     sec = base64.b32decode(info["secret"].replace(" ", ""))
     step = int(time.time() // mfa.TOTP_STEP)
@@ -806,7 +806,8 @@ def main():
         auth.create_user(U, PW, "Olga Auth")
         auth.create_user(U2, None, U2)
         auth.create_user(U3, None, "Sso Person", source="oidc", ext_id="oa-sub-1")
-        auth.create_user(U4, "".join(secrets.choice("0123456789") for _ in range(6)), "Totp Person")
+        auth.create_user(U4, "Oa-Lang-" + secrets.token_hex(6), "Totp Person")
+        auth.set_password(U4, PW6)            # 6 Ziffern: die Richtlinie verlangt 10 Zeichen, LDAP und Admin koennen kuerzere setzen
         settings_api(enabled=True, mcp=True, oauth=True, rate=3000, rate_write=1000, max_tokens=50)
         part_meta()
         cid = part_register()
