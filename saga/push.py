@@ -1048,6 +1048,15 @@ def _apns_plan(msg, voip):
     return pt, prio, int(msg.get("ttl") or TTL), ("u" if update else "") + (msg.get("tag") or ""), rate
 
 
+def _apns_expiration(push_type, ttl, now=None):
+    """apns-expiration (eigener Weg und Relais). 2.6 (2188, 2511): stille Hintergrund-Pushes (background: Widget-Push,
+    Aktualisierung notify.update) nur sofort (0) - APNs haelt fuer ein Geraet ohne Netz nur EINE Mitteilung je App vor;
+    ein spaeterer stiller Push wuerde eine wartende echte Mitteilung verdraengen. Sichtbare Mitteilungen und VoIP: jetzt + ttl."""
+    if push_type == "background":
+        return 0
+    return int(time.time() if now is None else now) + int(ttl)
+
+
 def _apns_aps(msg, push_type):
     """Sichtbarer Teil einer E2E-Mitteilung - ohne Inhalte (Namen/Texte nur im Chiffrat), ohne thread-id."""
     if push_type == "voip":
@@ -1116,9 +1125,7 @@ def _send_apns(endpoint, msg, voip=False, keys=None, topic=None):
         return "gone", "Schluessel ungueltig"
     collapse = e2e_collapse(auth_s, ctag) if e2e else ctag[:64]          # E2E: undurchsichtig (ohne Klartext-tag)
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
-    # 2.6 (2188): Widget-Push nur sofort (apns-expiration 0) - APNs haelt fuer ein Geraet ohne Netz nur EINE Mitteilung je
-    # App vor; ein spaeterer stiller Push wuerde eine wartende echte Mitteilung verdraengen
-    exp = 0 if msg.get("kind") == WIDGET_KIND else int(time.time()) + ttl
+    exp = _apns_expiration(push_type, ttl)
     if route == "relay":
         return push_relay.send(tok, env, topic + (".voip" if voip else ""), push_type, prio, exp, collapse,
                                rate, body["aps"], body["saga"])

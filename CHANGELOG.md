@@ -517,6 +517,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Knoten-Text auch nginx: `proxy_http_version 1.1`, `Upgrade`/`Connection`), in allen fünf Sprachen. Das Handbuch
   verweist für Caddy, Traefik und nginx auf Abschnitt 3 der Anleitung. Die Warnung „Wohl nicht …“ zeigt den Zeitpunkt
   wieder als Datum (vorher stand dort das HTML-Markup `<time …>` als Text).
+- **Stille Pushes verdrängen keine Mitteilung mehr** (Bugs-DB 2511): Der stille Hintergrund-Push, mit dem Saga eine schon
+  gezeigte Chat-Mitteilung anpasst oder entfernt (zum Beispiel nach dem Löschen einer Nachricht), ging mit 4 Stunden
+  Lebensdauer an Apple. Apple hält für ein iPhone oder iPad ohne Netz nur eine Mitteilung je App vor – der stille Push
+  konnte so eine wartende echte Mitteilung verdrängen. Jetzt gehen alle stillen Hintergrund-Pushes nur sofort
+  (`apns-expiration: 0`, eigener Weg und Push-Relais, wie schon der Widget-Push); sichtbare Mitteilungen und Anrufe
+  bleiben unverändert.
 
 ### Sicherheit
 

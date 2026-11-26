@@ -226,10 +226,12 @@ Ende entfernen, das letzte Byte muss `0x02` sein (sonst Fehler). Mehr als ein Da
 | normale Mitteilung | `alert` | 10 | `alert` | `{"alert": {"title-loc-key": "SAGA_PUSH_TITLE", "loc-key": "SAGA_PUSH_BODY"}, "mutable-content": 1, "sound": "default"}` (bei `silent` ohne `sound`) |
 | klingelnder Anruf ohne VoIP-Abo (`call`, `call.group`) | `alert` | 10 | `ring` | wie oben, aber `loc-key: "SAGA_PUSH_CALL"` und `"interruption-level": "time-sensitive"` |
 | klingelnder Anruf an VoIP-Abo | `voip` | 10 | `ring` | `{}` |
-| Aktualisierung (`update`) | `background` | 5 | `bg` | `{"content-available": 1}` |
+| Aktualisierung (`update`, 2.6 Bugs-DB 2511) | `background` | 5 | `bg` | `{"content-available": 1}`, **`expiration: 0`** (wie der Widget-Push) |
 | Widget-Push (2.6, Bugs-DB 2188, `kind: widgets.update`) | `background` | 5 | `bg` | `{"content-available": 1}`, **`expiration: 0`** (nur sofort, verdrängt keine wartende Mitteilung) |
 
-- `apns-expiration` = jetzt + (`ttl` der Mitteilung oder 4 h).
+- `apns-expiration` = jetzt + (`ttl` der Mitteilung oder 4 h); stille Hintergrund-Pushes (`background`) immer `0`
+  (Bugs-DB 2511: APNs hält für ein Gerät ohne Netz nur eine Mitteilung je App vor – ein stiller Push darf keine wartende
+  echte Mitteilung verdrängen). Die Testvektoren (§ 10) führen `expiration` weiter als `now + ttl`.
 - **`voip` nur für `kind ∈ {call, call.group}`** – sonst sendet der Server nicht (`fail`). Aufträge der Kollegin (`job.*`)
   sind nie `voip`.
 - **Keine `thread-id`** im Klartext; die Notification Service Extension setzt `threadIdentifier = thread ?? tag`.

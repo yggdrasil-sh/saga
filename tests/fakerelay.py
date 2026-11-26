@@ -214,9 +214,11 @@ def sub_tuple(endpoint):
 def check_plan(name, g, inner, voip):
     pt, prio, ttl, ctag, rate = push._apns_plan(inner, voip)
     h = g["headers"]
-    exp = int(h.get("apns-expiration") or 0)
-    good = (h.get("apns-push-type") == pt and h.get("apns-priority") == str(prio) and abs(exp - (time.time() + ttl)) < 30)
-    return good, (h.get("apns-push-type"), h.get("apns-priority"), exp - int(time.time()), pt, prio, ttl)
+    exp = int(h.get("apns-expiration") or -1)
+    # Bugs-DB 2511: stille Hintergrund-Pushes (background) nur sofort - apns-expiration 0, sonst jetzt + ttl
+    exp_ok = exp == 0 if pt == "background" else abs(exp - (time.time() + ttl)) < 30
+    good = h.get("apns-push-type") == pt and h.get("apns-priority") == str(prio) and exp_ok
+    return good, (h.get("apns-push-type"), h.get("apns-priority"), exp if exp <= 0 else exp - int(time.time()), pt, prio, ttl)
 
 
 def main():

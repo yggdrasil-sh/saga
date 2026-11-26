@@ -464,13 +464,25 @@ def run(A, Bk):
         base = {"title": "Saga", "body": "", "url": "/chats#c1", "tag": "chat-1", "kind": "chat.message", "ts": 1}
         push._send_apns("apns:sandbox:" + "a" * 64, dict(base))
         push._send_apns("apns:sandbox:" + "a" * 64, dict(base, update=True, removed=True, n=0))
+        push._send_apns("apns-voip:sandbox:" + "b" * 64, dict(base, kind="call", tag="call-" + "ab" * 16, call="ab" * 16,
+                                                             ttl=55), voip=True)
     finally:
         push.apns_cfg, push._apns_token, push._apns_client = orig
-    (h1, _b1), (h2, b2) = seen
+    (h1, _b1), (h2, b2), (h3, _b3) = seen
+    now = int(time.time())
     ok("APNs-Aktualisierung: background, Prio 5, collapse-id u<tag>, ohne alert",
        h1["apns-collapse-id"] == "chat-1" and h1["apns-push-type"] == "alert" and h2["apns-push-type"] == "background"
        and h2["apns-priority"] == "5" and h2["apns-collapse-id"] == "uchat-1" and "alert" not in b2["aps"]
        and b2["aps"].get("content-available") == 1 and b2.get("removed") is True, (h1, h2, b2))
+    # Bugs-DB 2511: stille Aktualisierung nur sofort (apns-expiration 0) - verdraengt keine wartende echte Mitteilung;
+    # sichtbare Mitteilung (4 h) und VoIP (ttl des Anrufs) unveraendert
+    e1, e2, e3 = (int(h.get("apns-expiration") or -1) for h in (h1, h2, h3))
+    ok(f"APNs-Ablauf: Aktualisierung 0, sichtbare Mitteilung jetzt + 4 h, VoIP jetzt + ttl ({e1 - now}, {e2}, {e3 - now})",
+       e2 == 0 and h2["apns-expiration"] == "0" and abs(e1 - (now + push.TTL)) < 30 and abs(e3 - (now + 55)) < 30
+       and h3["apns-push-type"] == "voip")
+    ok("APNs-Ablauf: _apns_expiration (eigener Weg und Relais) background 0, alert/voip jetzt + ttl",
+       push._apns_expiration("background", push.TTL, 1000) == 0 and push._apns_expiration("alert", push.TTL, 1000) == 1000 + push.TTL
+       and push._apns_expiration("voip", 55, 1000) == 1055)
 
 
 if __name__ == "__main__":
