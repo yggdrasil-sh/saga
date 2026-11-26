@@ -97,7 +97,9 @@ func hasSubprotocol(r *http.Request, p string) bool {
 }
 
 // tunnelNoUpgradeText: Hinweis fuer Menschen (Admin-Pruefung, Logs der Apps); Apps werten "error" aus.
-const tunnelNoUpgradeText = "Der Reverse Proxy reicht WebSocket nicht durch. Bei Nginx Proxy Manager \"Websockets Support\" einschalten."
+// 2462: allgemein (jeder Proxy), Schalternamen nur als Beispiele - Caddy/Traefik reichen WebSocket von selbst durch.
+const tunnelNoUpgradeText = "Der Reverse Proxy reicht WebSocket nicht durch. Am Proxy-Host WebSocket-Unterstützung einschalten " +
+	"(Nginx Proxy Manager: \"Websockets Support\", Node64: \"WebSockets\"; nginx: proxy_set_header Upgrade und Connection)."
 
 func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	t := s.tun

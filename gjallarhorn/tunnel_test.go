@@ -96,7 +96,9 @@ func TestTunnel426OhneUpgrade(t *testing.T) {
 	var j map[string]string
 	_ = json.NewDecoder(resp.Body).Decode(&j)
 	resp.Body.Close()
+	// 2462: der Hinweis nennt nicht nur NPM
 	if resp.StatusCode != http.StatusUpgradeRequired || j["error"] != "websocket_required" || !strings.Contains(j["text"], "Websockets Support") ||
+		!strings.Contains(j["text"], "Node64: \"WebSockets\"") || !strings.Contains(j["text"], "Upgrade und Connection") ||
 		resp.Header.Get("Upgrade") != "websocket" {
 		t.Fatalf("%d %v %v", resp.StatusCode, j, resp.Header)
 	}

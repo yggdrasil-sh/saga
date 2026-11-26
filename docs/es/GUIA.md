@@ -248,7 +248,8 @@ puerto 443**.
    (o el nombre del contenedor de Saga si ambos están en la misma red de Docker), **WebSockets activado** (por defecto en
    hosts nuevos), el certificado que quieras (Let's Encrypt, propio, autofirmado para pruebas). Sin WebSockets las
    páginas cargan, pero las llamadas no: el nodo responde entonces `426` y Admin → Llamadas muestra «el proxy no deja
-   pasar WebSocket» (el aviso nombra el interruptor de Nginx Proxy Manager; aquí se llama «WebSockets»).
+   pasar WebSocket» (el aviso nombra los dos interruptores: «Websockets Support» en Nginx Proxy Manager y «WebSockets»
+   en Node64).
 2. **`.env`:** `BASE_URL=https://saga.example.org` y `TRUSTED_PROXIES` = la dirección desde la que Node64 llega a Saga
    (contenedor en la misma red de Docker: su dirección o toda la red, p. ej. `172.18.0.0/16`; Node64 en la red del host:
    `TRUSTED_PROXIES=*` como arriba), además `HOST_BIND=127.0.0.1`; si no, se llega al puerto 8080 sin pasar por Node64

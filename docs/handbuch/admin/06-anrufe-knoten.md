@@ -86,15 +86,18 @@ Ganz oben auf der Seite steht **Gjallarhorn – große Gruppenanrufe**.
 4. Klick auf **Speichern**.
 
 **Hinter einem Reverse Proxy (zum Beispiel Nginx Proxy Manager):** Du brauchst nur **eine Domain** (die von Saga),
-**Port 443** und im Proxy **„Websockets Support“**. Kein eigener Name für den Knoten, keine TLS-Durchreiche, keine
+**Port 443** und einen Proxy, der **WebSocket durchreicht** – in Nginx Proxy Manager heißt der Schalter am Proxy-Host
+**„Websockets Support“**, in Node64 **„WebSockets“**. Kein eigener Name für den Knoten, keine TLS-Durchreiche, keine
 weiteren Ports. Der eingebaute Knoten läuft dann im **Tunnel-Betrieb**: Apps und Browser schicken ihre (weiter
-verschlüsselten) Anrufdaten als WebSocket an die normale Saga-Adresse.
+verschlüsselten) Anrufdaten als WebSocket an die normale Saga-Adresse. Caddy und Traefik reichen WebSocket von selbst
+durch; ein selbst geschriebenes nginx braucht die Kopfzeilen `Upgrade` und `Connection` – Beispiele und Einzelheiten
+stehen in der [Anleitung, Abschnitt 3](../../ANLEITUNG.md#3-https-mit-reverse-proxy).
 
 Auf der Seite erscheint dafür der Kasten **Anrufe über die Saga-Adresse (Tunnel)**:
 
 - **Zustand** – „An ✓ – Apps und Browser telefonieren über …“.
 - **Proxy reicht WebSocket durch?** – mit dem Knopf **Jetzt prüfen**. „Ja ✓ – der Tunnel kommt beim Knoten an.“
-  ist richtig. Steht dort „Nein ✗“, schalte im Proxy „Websockets Support“ ein.
+  ist richtig. Steht dort „Nein ✗“, schalte am Proxy-Host die WebSocket-Unterstützung ein (siehe oben).
 - **Tunnel** und **Browser (WebSocket)** – wie viele Verbindungen gerade offen sind, und **Beine je Weg** – wie die
   Geräte gerade verbunden sind (UDP, TCP, TLS, Tunnel der Apps, WebSocket der Browser).
 
@@ -235,8 +238,10 @@ Meist fehlt der DNS-Eintrag oder der Port ist nicht erreichbar. **Port prüfen**
 Den eingebauten Knoten im Tunnel-Betrieb betrifft das nicht – er braucht kein eigenes Zertifikat.
 
 **„Proxy reicht WebSocket nicht durch“.**
-Der Reverse Proxy lässt die WebSocket-Verbindung nicht durch; der Knoten antwortet dann mit dem Fehler 426. Bei Nginx
-Proxy Manager im Proxy-Host „Websockets Support“ einschalten und speichern, dann **Jetzt prüfen**.
+Der Reverse Proxy lässt die WebSocket-Verbindung nicht durch; der Knoten antwortet dann mit dem Fehler 426. Am
+Proxy-Host die WebSocket-Unterstützung einschalten (Nginx Proxy Manager: „Websockets Support“, Node64: „WebSockets“;
+nginx: Kopfzeilen `Upgrade` und `Connection`, siehe [Anleitung, Abschnitt 3](../../ANLEITUNG.md#3-https-mit-reverse-proxy))
+und speichern, dann **Jetzt prüfen**.
 
 **Eine Person sieht „Gegenstelle veraltet – direkt verbunden“.**
 Das Gegenüber hat auf einem kürzlich benutzten Gerät noch eine App vor 2.5. Der Anruf läuft dann direkt. Mit der

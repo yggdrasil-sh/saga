@@ -271,7 +271,8 @@ Webseite, Apps, Live-Kanal und Anrufe (Tunnel, oben) laufen über **eine Domain 
    (bzw. der Name des Saga-Containers, wenn beide im selben Docker-Netz hängen), **WebSockets an** (bei neuen Hosts
    ab Werk an), Zertifikat nach Wahl (Let's Encrypt, eigenes, für Tests selbst signiert). Ohne WebSockets
    laden Seiten zwar, Anrufe aber nicht: Der Knoten antwortet dann `426`, Admin → Anrufe zeigt „Proxy reicht WebSocket
-   nicht durch“ (der Hinweis nennt den Schalter von Nginx Proxy Manager, gemeint ist hier „WebSockets“).
+   nicht durch“ (der Hinweis nennt beide Schalter: „Websockets Support“ für Nginx Proxy Manager, „WebSockets“ für
+   Node64).
 2. **`.env`:** `BASE_URL=https://saga.example.org` und `TRUSTED_PROXIES` = Adresse, von der Node64 bei Saga ankommt
    (Container im selben Docker-Netz: dessen Adresse oder das ganze Docker-Netz, z. B. `172.18.0.0/16`; Node64 im
    Host-Netz: `TRUSTED_PROXIES=*` wie oben), dazu `HOST_BIND=127.0.0.1` – sonst erreicht man Port 8080 an Node64 vorbei

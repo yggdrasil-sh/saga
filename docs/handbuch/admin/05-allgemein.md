@@ -60,8 +60,9 @@ und am Ende steht eine Tabelle mit allen Schaltern und ihrem Standardwert.
 - **Editor-Diagnose** – der neue Editor meldet beim Speichern Stellen, die er noch nicht sauber kann. Gespeichert wird
   eine Zeile im Server-Log und derselbe Inhalt unter **Diagnose** (siehe [A09](09-diagnose.md)).
 - **Gleichzeitig bearbeiten live** – mehrere Personen schreiben in derselben Seite und sehen Eingaben und Cursor der
-  anderen sofort. Standard: aus. Das läuft über eine WebSocket-Verbindung – hinter Nginx Proxy Manager muss beim
-  Proxy-Host „Websockets Support“ an sein.
+  anderen sofort. Standard: aus. Das läuft über eine WebSocket-Verbindung – der Reverse Proxy muss WebSocket
+  durchreichen (Nginx Proxy Manager: „Websockets Support“ am Proxy-Host, Node64: „WebSockets“; Caddy und Traefik von
+  selbst; mehr in der [Anleitung, Abschnitt 3](../../ANLEITUNG.md#3-https-mit-reverse-proxy)).
 - **Wetter-Widget anbieten** – Standard: aus. Die Daten holt der Saga-Server bei Open-Meteo; Browser und Apps fragen
   dort nie selbst. Der freie Zugang ist nur für **nicht-kommerzielle** Nutzung. Optional eigene Open-Meteo-Adressen
   oder ein API-Schlüssel.

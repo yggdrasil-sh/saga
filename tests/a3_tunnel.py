@@ -408,7 +408,7 @@ def teil1(media, node):
     st, hd, body = ws_handshake(NGX_OFF)
     j = json.loads(body) if body.strip().startswith("{") else {}
     ok("nginx ohne \"Websockets Support\": 426 websocket_required mit Hinweis", st == 426 and j.get("error") == "websocket_required"
-       and "Websockets Support" in j.get("text", ""), (st, body[:300]))
+       and "Websockets Support" in j.get("text", "") and 'Node64: "WebSockets"' in j.get("text", ""), (st, body[:300]))  # 2462: nicht nur NPM
     st, body = https_get(NGX, "/api/sfu/ws")
     ok("GET ohne Upgrade auch ueber den richtigen Proxy: 426", st == 426, (st, body[:200]))
     # 101 mit Websockets an, Unterprotokoll, Zugang
@@ -437,7 +437,8 @@ def teil1(media, node):
     i = html.find('id="tunnel"')
     card = html[i:html.find("</div>", i)] if i >= 0 else ""
     ok("Admin -> Anrufe: Kasten \"Anrufe über die Saga-Adresse (Tunnel)\" mit Warnung \"Wohl nicht\"",
-       "Anrufe über die Saga-Adresse (Tunnel)" in card and "Wohl nicht" in card and "Websockets Support" in card, card[:1200])
+       "Anrufe über die Saga-Adresse (Tunnel)" in card and "Wohl nicht" in card and "Websockets Support" in card
+       and "Node64: „WebSockets“" in card, card[:1200])
     # Medien ueber die ganze Kette (pion, Go-Test) mit den Token von Saga
     toks = os.path.join(STATE, "tokens.json")
     devs = []

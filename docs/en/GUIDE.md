@@ -243,7 +243,7 @@ HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use 
    (or the name of the Saga container if both share a Docker network), **WebSockets on** (the default for new hosts),
    any certificate (Let's Encrypt, your own, self-signed for tests). Without WebSockets pages still load, but calls do
    not: the node then answers `426`, and Admin → Calls shows “the proxy does not pass WebSocket through” (the hint names
-   the Nginx Proxy Manager switch; here it is “WebSockets”).
+   both switches: “Websockets Support” for Nginx Proxy Manager, “WebSockets” for Node64).
 2. **`.env`:** `BASE_URL=https://saga.example.org` and `TRUSTED_PROXIES` = the address Node64 uses to reach Saga
    (container in the same Docker network: its address or the whole Docker network, e.g. `172.18.0.0/16`; Node64 on the
    host network: `TRUSTED_PROXIES=*` as above), plus `HOST_BIND=127.0.0.1` – otherwise port 8080 can be reached around

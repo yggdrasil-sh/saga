@@ -336,7 +336,7 @@ def teil_d_e(media, node, people):
     j = json.loads(body) if isinstance(body, str) and body.strip().startswith("{") else {}
     print("   ohne WebSockets:", st, (body if isinstance(body, str) else "")[:300])
     ok("(e) Node64 ohne WebSockets: der Knoten antwortet 426 websocket_required mit Hinweis", st == 426 and j.get("error") == "websocket_required"
-       and "WebSocket" in j.get("text", ""), (st, hd, body if isinstance(body, str) else ""))
+       and 'Node64: "WebSockets"' in j.get("text", ""), (st, hd, body if isinstance(body, str) else ""))  # 2462: Hinweis nennt den Node64-Schalter
     if st == 101 and not isinstance(body, str):
         body.close()
     time.sleep(6)

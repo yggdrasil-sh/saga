@@ -2614,8 +2614,9 @@ mit Frame-E2E wie auf allen Wegen).
   ptime 40, kein NACK). Weg heißt in Diagnose und `calldiag` `ws`.
 - **Handschlag:** `GET wss://{host von url}/api/sfu/ws` mit `Sec-WebSocket-Protocol: saga-tunnel.1` (Pflicht; keine
   Query, keine eigenen Köpfe). Ohne `Upgrade` → **426** `{"error": "websocket_required", "text": …}` (der Proxy reicht
-  WebSocket nicht durch – „Websockets Support“), vor jeder anderen Prüfung. Weder `saga-tunnel.1` noch `saga-frames.1`
-  (Browser-Weg, unten) → 400 `{"error": "subprotocol", "supported": ["saga-tunnel.1", "saga-frames.1"]}`; bietet der
+  WebSocket nicht durch – z. B. Nginx Proxy Manager „Websockets Support“, Node64 „WebSockets“), vor jeder anderen
+  Prüfung. Weder `saga-tunnel.1` noch `saga-frames.1` (Browser-Weg, unten) → 400
+  `{"error": "subprotocol", "supported": ["saga-tunnel.1", "saga-frames.1"]}`; bietet der
   Client beide an, gilt `saga-tunnel.1`. Zu viele WebSockets dieser Client-Adresse (4 × `HORN_MAX_PER_IP`, Tunnel und
   Rahmen-Weg zusammen) → 429 `{"error": "limit"}`.
 - **Erste Nachricht** (Text, ≤ 4 KiB, spätestens 10 s nach 101):

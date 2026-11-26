@@ -406,6 +406,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   steht nie in der Meldung); beim Einspielen eines persönlichen Backups werden solche Werte übergangen. Das Web kodiert
   `mailto:`-Links jetzt je Teil wie die Apps. Ein schon gespeicherter Kontakt mit einer solchen Adresse lässt sich erst wieder speichern, wenn sie
   entfernt oder korrigiert ist.
+- **Hinweis „Proxy reicht WebSocket nicht durch“ gilt für jeden Reverse Proxy** (Bugs-DB 2462, ohne Migration): Die
+  Antwort `426` des Knotens (`text`), Admin › Anrufe (Prüfung, Warnung, Tunnel-Hinweise) und das Handbuch (A05, A06)
+  nannten nur den Schalter von Nginx Proxy Manager. Jetzt heißt es allgemein „WebSocket-Unterstützung am Proxy-Host
+  einschalten“, mit den Schaltern als Beispiel (Nginx Proxy Manager: „Websockets Support“, Node64: „WebSockets“; im
+  Knoten-Text auch nginx: `Upgrade`/`Connection`), in allen fünf Sprachen. Das Handbuch verweist für Caddy, Traefik
+  und nginx auf Abschnitt 3 der Anleitung.
 
 ### Sicherheit
 
