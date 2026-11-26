@@ -45,7 +45,8 @@ def clean():
 
 
 def msg(job, kind):
-    from saga import ai_notify, push  # noqa: F401  (ai_notify meldet die Darstellung an)
+    from saga import ai_notify, push
+    _ = ai_notify                         # meldet beim Import die Darstellung und die Haken an
     with db.connect() as c:
         m = push.message(c, USER, kind, data={"job": int(job)}, sub_kind="webpush", lang="de",
                          sub={"id": None, "kind": "webpush", "caps": ("detail", "actions"), "device": None, "lang": "de", "e2e": True})
@@ -53,7 +54,8 @@ def msg(job, kind):
 
 
 def needs(title):
-    from saga import ai_notify, ai_plan, jobs  # noqa: F401
+    from saga import ai_notify, ai_plan, jobs
+    _ = ai_notify
     print(jobs.create(USER, ai_plan.KIND, source="api", title=title, plan={},
                       steps=[{"tool": "create_task", "args": {"text": title}}]))
 
