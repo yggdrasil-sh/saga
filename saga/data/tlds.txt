@@ -2,7 +2,8 @@
 # Quelle: Public Suffix List (https://publicsuffix.org/list/public_suffix_list.dat), Abschnitt "ICANN DOMAINS",
 # Stand 2025-12-28 (Paket publicsuffix-list-0-unstable-2025-12-28), daraus alle Eintraege ohne Punkt; IDN-Endungen
 # fehlen hier, Punycode-Endungen (xn--...) erlaubt ai_frame ohnehin. Dazu reserviert (RFC 2606/6761/7686):
-# example, test, invalid, localhost, local, onion. Neu erzeugen: siehe Kopf von saga/ai_frame.py (_TLDS).
+# example, test, invalid, localhost, local, onion. Neu erzeugen: aus der PSL alle Zeilen des ICANN-Abschnitts ohne
+# Punkt und ohne Nicht-ASCII nehmen, klein schreiben, sortieren, die reservierten Namen anfuegen.
 aaa
 aarp
 abb
