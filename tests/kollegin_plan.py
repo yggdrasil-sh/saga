@@ -364,7 +364,8 @@ def part_contract(pages):
     ok("Rückgängig zweimal -> 409", s == 409)
     # Lieber nicht
     r = plan(A, "Erinnere mich Freitag an die Grillkohle")
-    s, d = K.req("POST", f"/api/ai/jobs/{r['job']}/cancel", cA, {})
+    ok(f"Plan fuer Lieber nicht ({r.get('type')}, {r.get('case') or r.get('error')})", r.get("type") == "plan", r)
+    s, d = K.req("POST", f"/api/ai/jobs/{r.get('job') or 0}/cancel", cA, {})
     ok(f"Lieber nicht -> Abgebrochen – nichts ist passiert ({d})", s == 200 and d["text"] == "Abgebrochen – nichts ist passiert."
        and jobs.state_of(r["job"])["state"] == "abgebrochen")
     # Rueckgaengig mit Konflikt (eintragen, danach von Hand geaendert)
