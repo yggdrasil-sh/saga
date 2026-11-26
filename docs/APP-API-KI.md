@@ -458,6 +458,10 @@ Anrede `/api/ai/status` neu laden.
   auf Gruß/Dank antwortet die Kollegin kurz in der Persona, Faktenfragen ohne Material mit „nichts gefunden“ (vom
   Modell, Zug `answer`, zählt aufs Kontingent). `done.no_match` kommt im Gespräch nicht mehr; ältere Züge mit
   `zug: "no_match"` bleiben lesbar.
+  Quellen (2542): das erste `sources` nennt alle gelesenen Seiten (für die `[n]`-Links beim Streamen); direkt vor
+  `done` kommt ein zweites `sources` mit nur den belegten (`[n]` in der Antwort, ohne Beleg – etwa „nichts gefunden“ –
+  leer) und ersetzt das erste. Der gespeicherte Zug (`fields.sources`) enthält nur die belegten; was gelesen wurde,
+  steht weiter in `done.read`/`read`. Clients zeigen höchstens drei Quellen und den Rest hinter „{n} weitere“.
 - `DELETE /api/ai/thread` → `{deleted}` (Gespräch leeren).
 - Kein E2E-Chat: eigene Tabellen `ai_thread`/`ai_turn`, nie in `/api/chats`. Apps zeigen den Ort als eigenen Tab bzw.
   Bereich „Saga“ (M1), Kopf „{persona.name} · KI“ mit Persona-Bild und KI-Marke (K11).

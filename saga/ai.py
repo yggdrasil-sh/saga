@@ -1954,7 +1954,8 @@ def _respond(uid, c, messages, first, finish, quota_left, quota=0, prep=None):
     meldet eine Denkphase des Modells; 'done' enthaelt cut=true, wenn die Antwort abgeschnitten wurde.
     prep(emit, stop) (2.1, Websuche): laeuft vorher im selben Thread, darf Ereignisse schicken (emit(typ, daten)) und
     gibt die Nachrichten fuer das Modell zurueck (None = messages) oder {text, extra} = Antwort ohne Modell.
-    finish(text) -> Felder fuer 'done' (ueberschreiben quota_left, z. B. nach einer Websuche)."""
+    finish(text) -> Felder fuer 'done' (ueberschreiben quota_left, z. B. nach einer Websuche); eine Liste unter "sources"
+    geht stattdessen vorher als zweites Ereignis 'sources' (ersetzt das vom Anfang - Clients ueberschreiben, 2542)."""
     loop = asyncio.get_running_loop()
     q = asyncio.Queue()
     halt = threading.Event()
@@ -2026,6 +2027,8 @@ def _respond(uid, c, messages, first, finish, quota_left, quota=0, prep=None):
                 else:
                     full = "".join(text)
                     extra = await asyncio.to_thread(finish, full) if finish else {}
+                    if isinstance((extra or {}).get("sources"), list):     # 2542: belegte Quellen ersetzen die vom Anfang
+                        yield _fmt("sources", {"sources": extra.pop("sources")})
                     if val and val.get("cut"):
                         extra = dict(extra or {}, cut=True)
                     out = {"quota_left": quota_left}

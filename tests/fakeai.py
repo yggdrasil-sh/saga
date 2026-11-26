@@ -21,6 +21,7 @@ Verhalten nach Modellname:
                  Zahlen: Eingabe = Woerter aller Nachrichten + 7, Ausgabe = Woerter der Antwort + 3 (Pruefwerte)
   fake-bausteine (2.6 K-H 2268) Luecken fuer saga/ai_say.py als JSON: Zeile 'FAKE-GAP: <base64-JSON>' im Material wird
                  dekodiert zurueckgegeben, sonst der erste Satz des Materials; fake-bausteine-junk: Text ohne JSON
+  fake-nichts    (2542) immer "Dazu habe ich in deinen Seiten nichts gefunden." (Negativ-Antwort mit vielen gelesenen Seiten)
   fake-nousage   OpenAI: 400 "Unrecognized request argument supplied: stream_options", wenn die Anfrage es enthaelt
                  (wie Endpunkte ohne usage im Strom); Ollama: ohne Zaehler
 Planer der Kollegin (2.6 K-B, saga/ai_plan.py; erkannt am System-Prompt "You plan tasks for Saga" bzw. "You fill the
@@ -122,6 +123,8 @@ def answer(messages, model=None):
                     "Für den Abend am Wasser lohnt sich eine leichte Jacke.")
         cite = f" Laut Web sonnig [{webn[0]}]." if webn else ""
         return f"  Hallo aus dem Chat! Verlauf: {n} Nachrichten. Frage: {ask[:80]}{cite}  \n"
+    if model == "fake-nichts":                             # 2542: Negativ-Antwort, obwohl Material gelesen wurde
+        return "Dazu habe ich in deinen Seiten nichts gefunden."
     if model == "fake-demo":                               # Browser-Pruefung: lesbare Antwort aus den Auszuegen
         out, seen = [], set()
         for m in re.finditer(r"(?m)^\[(\d+)\] [^\n]*\n([^\n]+)", data):

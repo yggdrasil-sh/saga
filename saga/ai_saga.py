@@ -851,6 +851,16 @@ async def api_thread_clear(request: Request):
     return await asyncio.to_thread(run)
 
 
+_CITE = re.compile(r"\[([0-9]{1,2}(?:\s*[,;]\s*[0-9]{1,2})*)\]")   # wie die [n]-Links in static/saga.js
+
+
+def cited_sources(text, origins):
+    """Bugs-DB 2542: nur die Quellen, die die Antwort mit [n] belegt (Reihenfolge wie gelesen) - ohne Beleg, z. B. bei
+    "nichts gefunden", keine. Was gelesen wurde, steht weiter im Kontext-Ausweis (read)."""
+    nums = {int(x) for m in _CITE.finditer(text or "") for x in re.split(r"\s*[,;]\s*", m.group(1))}
+    return [s for s in origins or [] if s.get("n") in nums]
+
+
 @router.post("/api/ai/thread")
 async def api_thread_ask(request: Request):
     """Gespraech im Ort "Saga": {q, tasks?, calendar?} -> text/event-stream wie /api/ai/ask (sources/status/delta/done),
@@ -896,10 +906,12 @@ async def api_thread_ask(request: Request):
             clean = ai.strip_markers(answer, rid).strip() if answer else ""
             if answer and clean != answer.strip():
                 out["text"] = clean
+            cited = cited_sources(clean, cx.origins)        # 2542: ersetzt per Ereignis 'sources' vor 'done' die gelesenen
+            out["sources"] = cited
             if clean:
                 from saga import ai_frame
                 out["turn"] = add_turn(uid, "ai", ai_frame.no_images(clean), zug="answer", read=cx.read,
-                                       fields={"sources": [{"n": s["n"], "id": s["id"], "title": s.get("title")} for s in cx.origins]})
+                                       fields={"sources": [{"n": s["n"], "id": s["id"], "title": s.get("title")} for s in cited]})
             return out
         return ai._respond(uid, c, msgs, [ai._fmt("sources", {"sources": cx.origins})], finish, left, quota)
     except BaseException:
