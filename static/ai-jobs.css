@@ -81,6 +81,7 @@
 .kj-detail[hidden]{display:none}
 .kj-back{align-self:flex-start}
 .kj-dtitle{margin:0;font-size:var(--fs-md,1.1rem)}
+.kj-dtitle:focus{outline:none}
 .kj-dstate{margin:0}
 .kj-sec h4{margin:.2rem 0 .3rem;font-size:14px;color:var(--muted);font-weight:600}
 .kj-sec p{margin:0}

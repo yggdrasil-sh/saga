@@ -395,13 +395,17 @@ def part_contract(pages):
     b0 = body_of(pages["fest"])
     r = plan(A, "Trag auf der Seite Sommerfest ein, dass Clara Salat mitbringt.")
     jid = r["job"]
+    t0 = r.get("title")                          # Pruefer pkb: Aendern ohne Text-Feld (eintragen) behaelt den Titel
+    s, d = ai_plan.edit(jid, A, r["plan_v"], [{"n": 0, "args": {"markdown": "Clara bringt Salat mit."}}])
+    ok(f"Ändern bei eintragen: Titel bleibt ({t0} -> {d.get('title')})", s == 200 and t0 and t0 != "Auftrag" and d.get("title") == t0, d)
+    r = dict(r, plan_v=d.get("plan_v"), plan_hash=d.get("plan_hash"))
     jobs.approve(jid, A, r["plan_v"], r["plan_hash"])
     run_jobs(jid)
     cid = pg("SELECT id FROM job_change WHERE job_id=? ORDER BY id", (jid,))[0][0]
     s, d = K.req("POST", f"/api/ai/jobs/{jid}/undo", cA, {"change": cid})
     ok(f"Rückgängig je Aenderung -> Seite wie vorher, Auftrag zurueckgenommen ({s}, {d})", s == 200 and body_of(pages["fest"])[0] == b0[0]
        and jobs.state_of(jid)["state"] == "zurueckgenommen")
-    vers = pg("SELECT COUNT(*) FROM note_version WHERE note_id=? AND body LIKE '%Clara Salat%'", (pages["fest"],))[0][0]
+    vers = pg("SELECT COUNT(*) FROM note_version WHERE note_id=? AND body LIKE '%Clara bringt Salat%'", (pages["fest"],))[0][0]
     ok("Rückgängig ueber Versionen: der eingetragene Stand bleibt im Verlauf", vers >= 1)
 
 

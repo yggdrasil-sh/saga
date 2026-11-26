@@ -1048,6 +1048,8 @@ def edit(job_id, uid, plan_v, edits):
         return 400, {"error": t("Das bekomme ich so nicht sicher hin – bitte anders formulieren."), "problems": [p["code"] for p in probs]}
     pj = dict(pj, edited=True, labels=dict(pj.get("labels") or {}, **_labels(uid, [rf for s in steps for rf in tools.get(s["tool"]).refs(s["args"])])))
     title = _auto_title(steps) if not pj.get("title_model") else None   # Titel folgt dem geaenderten Text
+    if title == t("Auftrag") and pj.get("title"):                     # kein Text im Plan (z. B. eintragen): Titel behalten
+        title = None
     if title:
         pj = dict(pj, title=title, say=dict(pj.get("say") or {}, item=title))
     nv = jobs.replan(job_id, uid, plan_v, pj, steps, title=title)

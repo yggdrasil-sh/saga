@@ -98,18 +98,19 @@
       var bar = el('div', 'kj-actions');
       if (editing) {
         bar.appendChild(btn(T('Speichern'), 'btn-primary kj-save', function () { saveEdit(err); }));
-        bar.appendChild(btn(T('Abbrechen'), 'btn-quiet', function () { editing = false; paint(); }));
+        bar.appendChild(btn(T('Abbrechen'), 'btn-quiet', function () { editing = false; paint(); focusIn('.kj-edit'); }));
       } else {
         var go = btn(T('Passt, los'), 'btn-primary kj-go', function () { approve(err, go); });
         go.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });   // Enter gibt nie frei
         bar.appendChild(go);
-        if (cur.steps.some(function (s) { return s.edit && s.edit.length; })) bar.appendChild(btn(T('Ändern'), 'kj-edit', function () { editing = true; paint(); }));
+        if (cur.steps.some(function (s) { return s.edit && s.edit.length; })) bar.appendChild(btn(T('Ändern'), 'kj-edit', function () { editing = true; paint(); focusIn('.kj-editbox input, .kj-editbox textarea'); }));
         var no = btn(T('Lieber nicht'), 'btn-quiet kj-no', function () { cancel(err); });
         bar.appendChild(no);
       }
       card.appendChild(bar);
       if (window.HKAI && HKAI.reportBtn) card.appendChild(HKAI.reportBtn(planText(), 'job', cur.job));
     }
+    function focusIn(sel) { var x = card.querySelector(sel); if (x) { if (x.tabIndex < 0 && !x.hasAttribute('tabindex')) x.tabIndex = -1; try { x.focus(); } catch (e) { /* egal */ } } }   // nur nach eigener Aktion
     function planText() { return cur.steps.map(function (s) { return s.text + (s.wording ? '\n' + s.wording : ''); }).join('\n'); }
     var inputs = {};
     function editBox(s, i) {
@@ -122,7 +123,10 @@
         var inp;
         if (k === 'markdown') { inp = el('textarea', 'hk-in'); inp.rows = 3; }
         else if (k === 'allday') { inp = el('input'); inp.type = 'checkbox'; }
-        else { inp = el('input', 'hk-in'); inp.type = k === 'due' ? 'date' : (k === 'start' || k === 'end') ? 'datetime-local' : 'text'; }
+        else {                                     // ganztaegig (JJJJ-MM-TT): Datumsfeld - datetime-local wuerde den Wert leeren
+          inp = el('input', 'hk-in');
+          inp.type = k === 'due' ? 'date' : (k === 'start' || k === 'end') ? (String(src[k] || src.start || '').length === 10 ? 'date' : 'datetime-local') : 'text';
+        }
         var v = src[k] != null ? src[k] : (k === 'markdown' ? (s.wording || '') : '');
         if (k === 'allday') inp.checked = !!v; else inp.value = v;
         lab.appendChild(inp); w.appendChild(lab); inputs[i][k] = inp;
@@ -137,7 +141,7 @@
         edits.push({ n: +i, args: a });
       });
       api('PUT', '/api/ai/jobs/' + cur.job + '/plan', { plan_v: cur.plan_v, edits: edits }).then(function (d) {
-        cur = d; editing = false; inputs = {}; paint();
+        cur = d; editing = false; inputs = {}; paint(); focusIn('.kj-lead');
         say(opts.live, T('geändert – bitte neu freigeben'));
         if (opts.onEdit) opts.onEdit(cur.job);
       }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
@@ -149,6 +153,7 @@
         card.textContent = ''; card.classList.add('kj-small');
         card.appendChild(head(d.state_text));
         card.appendChild(el('p', 'kj-lead', d.say || ''));
+        focusIn('.kj-lead');                       // der Knopf ist weg: Fokus nicht auf <body> fallen lassen
         say(opts.live, d.state_text);
         if (opts.onDone) opts.onDone('laeuft', cur.job, card);
       }).catch(function (e) {
@@ -160,6 +165,7 @@
       api('POST', '/api/ai/jobs/' + cur.job + '/cancel', {}).then(function (d) {
         card.textContent = ''; card.classList.add('kj-small');
         card.appendChild(head(d.state_text)); card.appendChild(el('p', 'kj-lead', d.text || ''));
+        focusIn('.kj-lead');
         say(opts.live, d.text || d.state_text);
         if (opts.onDone) opts.onDone('abgebrochen', cur.job, card);
       }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
@@ -191,7 +197,7 @@
       ul.appendChild(li);
     });
     if (rep.lines && rep.lines.length) card.appendChild(ul);
-    if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(d.id); }));
+    if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(d.id, true); }));
     if (window.HKAI && HKAI.reportBtn && rep.text) card.appendChild(HKAI.reportBtn(rep.text, 'job', d.id));
     return card;
   }
@@ -326,7 +332,7 @@
             var ln = !it.line || it.line === it.state_text ? it.state_text : it.line.indexOf(it.state_text) === 0 ? it.line : it.state_text + ' · ' + it.line;
             tx.appendChild(el('span', 'kj-iline', ln));
             b.appendChild(tx); var ch = el('span', 'kj-chev', '›'); ch.setAttribute('aria-hidden', 'true'); b.appendChild(ch);
-            b.addEventListener('click', function () { open(it.id); });
+            b.dataset.job = it.id; b.addEventListener('click', function () { open(it.id, true); });
             li.appendChild(b); ul.appendChild(li);
           });
           sec.appendChild(ul); listEl.appendChild(sec);
@@ -334,18 +340,19 @@
       }).catch(function () { /* naechstes Ereignis */ });
     }
 
-    function open(id) {
+    function open(id, focusIt) {
       openId = id;
       return load(id).then(function (d) {
         if (!d) return;
+        var keep = focusIt || detailEl.contains(document.activeElement);   // Neuzeichnen ersetzt das fokussierte Element
         detailEl.textContent = ''; detailEl.hidden = false; listEl.hidden = true; form.hidden = true; stage.hidden = true;
         var back = btn('‹ ' + T('Aufträge'), 'btn-quiet kj-back', close); detailEl.appendChild(back);
-        var h = el('h3', 'kj-dtitle', d.title || T('Auftrag')); detailEl.appendChild(h);
+        var h = el('h3', 'kj-dtitle', d.title || T('Auftrag')); h.tabIndex = -1; detailEl.appendChild(h);
         var stw = el('p', 'kj-dstate'); stw.appendChild(el('strong', null, d.state_text));
         if (d.reason_text) stw.appendChild(document.createTextNode(' – ' + d.reason_text));
         detailEl.appendChild(stw);
         if (d.state === 'wartet_ok' && d.plan && d.plan.steps) {
-          detailEl.appendChild(planCard(d.plan, { live: live, onDone: function (s, job) { onDone(s, job); open(job); } }));
+          detailEl.appendChild(planCard(d.plan, { live: live, onDone: function (s, job) { onDone(s, job); open(job, true); } }));
         } else {
           if (d.state === 'erledigt' || d.state === 'zurueckgenommen') detailEl.appendChild(feedback(d, { onChange: function () { open(id); } }));
           var sp = el('section', 'kj-sec'); sp.appendChild(el('h4', null, T('Plan')));
@@ -370,6 +377,7 @@
           li.appendChild(document.createTextNode(' ' + e.text)); ul.appendChild(li);
         });
         ev.appendChild(ul); detailEl.appendChild(ev);
+        if (keep) { try { h.focus(); } catch (e) { /* egal */ } }
         if (d.actions.indexOf('cancel') >= 0 && d.state !== 'wartet_ok') {
           detailEl.appendChild(btn(T('Auftrag abbrechen'), 'kj-cancel', function () {
             api('POST', '/api/ai/jobs/' + id + '/cancel', {}).then(function (r) { say(live, r.text || r.state_text); open(id); refresh(); }).catch(function (e) { HK.toast(e.message); });
@@ -378,8 +386,13 @@
       });
     }
     function close() {
+      var last = openId;
       openId = null; detailEl.hidden = true; detailEl.textContent = ''; listEl.hidden = false; form.hidden = false; stage.hidden = false;
-      refresh();
+      try { ta.focus(); } catch (e) { /* egal */ }                    // sofort nicht auf <body>, danach auf den Eintrag
+      return refresh().then(function () {
+        var b = last != null && listEl.querySelector('.kj-item[data-job="' + last + '"]');
+        if (b) try { b.focus(); } catch (e) { /* egal */ }
+      });
     }
     document.addEventListener('hk-live', function (e) {
       var d = e.detail && e.detail.type === 'ai.job.changed' ? e.detail.data || e.detail : null;
