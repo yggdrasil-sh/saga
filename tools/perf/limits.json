@@ -30,7 +30,7 @@
   "Status: reachability": 5,
   "Kollegin: Runner-Schritt": 25,
   "Kollegin: POST /api/ai/jobs bis Plan": 400, "Kollegin: approve": 80, "Kollegin: GET /api/ai/jobs": 80,
-  "Kollegin: act": 80, "Kollegin: Tageszeile": 80, "Kollegin: GET /api/ai/today": 80
+  "Kollegin: act": 80, "Kollegin: Tageszeile": 80, "Kollegin: GET /api/ai/today": 100
  },
  "L": {
   "Kollegin: Plan pruefen": 50,
