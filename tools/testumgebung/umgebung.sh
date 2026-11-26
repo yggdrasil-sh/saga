@@ -106,9 +106,9 @@ lauf() {
   local T0=$(date +%s)
   {
     echo "== $NAME art=$ART slot=$SLOT ns=$NS db=${UMG_DB}_$SLOT rev=$REV bin=$UMG_BIN $(date '+%F %T')"
+    aufraeumen $NS                      # Reste eines abgebrochenen Laufs auf diesem Slot - vor dropdb (sonst haengen sie noch an der DB)
     rm -rf $RUN; mkdir -p $RUN/shots
     dropdb -h /tmp -p 55432 -U saga --if-exists ${UMG_DB}_$SLOT && createdb -h /tmp -p 55432 -U saga ${UMG_DB}_$SLOT || echo "DB-Anlage fehlgeschlagen"
-    aufraeumen $NS                      # Reste eines abgebrochenen Laufs auf diesem Slot
     trap "aufraeumen $NS; exit 143" TERM INT
     ip netns add $NS && ip -n $NS link set lo up || { echo "netns fehlgeschlagen"; exit 1; }
     # Attrappe mit privater Adresse + Standardweg: WebRTC (Chromium) sammelt keine ICE-Kandidaten nur auf lo
