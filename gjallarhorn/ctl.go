@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -193,7 +192,7 @@ func (c *ctlClient) session() error {
 	hello := map[string]any{"t": "hello", "proto": ctlProto, "name": s.cfg.Name, "url": s.publicURL(), "version": version,
 		"pub": base64.StdEncoding.EncodeToString(c.sk.Public().(ed25519.PublicKey)),
 		"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(c.sk, []byte(ctlProto+" hello\n"+ch.Nonce))),
-		"udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": runtime.GOMAXPROCS(0),
+		"udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": reportCores(),
 		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status(),
 		"ice_tcp": s.sfuTCP != nil && s.iceTCP, "einport": s.ein != nil,
 		// 2.5 A3: Medien-Tunnel /api/sfu/ws (tunnel.go) unter url; tunnel = Tunnel-Betrieb (url = BASE_URL, kein eigenes TLS)
@@ -474,7 +473,7 @@ func (c *ctlClient) sendLoad() {
 	cpu, drops, up, down := 0.0, 0.0, 0.0, 0.0
 	if !c.lastAt.IsZero() {
 		dt := now.Sub(c.lastAt).Seconds()
-		cpu = float64(cpuNs-c.lastCPU) / float64(now.Sub(c.lastAt).Nanoseconds()) / float64(runtime.GOMAXPROCS(0))
+		cpu = float64(cpuNs-c.lastCPU) / float64(now.Sub(c.lastAt).Nanoseconds()) / effCores()
 		if ld.Drops >= c.lastDrop {
 			drops = float64(ld.Drops-c.lastDrop) / dt
 		}

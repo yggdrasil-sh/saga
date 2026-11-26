@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -199,7 +198,7 @@ func (s *server) pair(base, tok string) (*pairState, error) {
 	body := map[string]any{"token": tok, "name": s.cfg.Name, "node_pub": base64.StdEncoding.EncodeToString(pub),
 		"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(s.nodeKey, []byte("horn-pair/1\n"+tok+"\n"+s.cfg.Name))),
 		"v4":  v4, "v6": v6, "port": s.publicPort(), "udp": s.udp != nil, "udp_check": s.UDPCheck().State,
-		"version": version, "cores": runtime.GOMAXPROCS(0), "link_mbit": link}
+		"version": version, "cores": reportCores(), "link_mbit": link}
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequest(http.MethodPost, base+"/api/horn/pair", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
