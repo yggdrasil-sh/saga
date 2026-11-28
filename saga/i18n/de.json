@@ -5991,5 +5991,16 @@
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "So lange darf der Dienst für eine Aufnahme brauchen (5–60).",
  "Zusatzsatz zum Hinweis": "Zusatzsatz zum Hinweis",
  "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.",
- "Die Aufnahme kam zu langsam an – versuch es noch mal.": "Die Aufnahme kam zu langsam an – versuch es noch mal."
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "Die Aufnahme kam zu langsam an – versuch es noch mal.",
+ "Diktieren": "Diktieren",
+ "Auf diesem Gerät – die Aufnahme verlässt es nicht.": "Auf diesem Gerät – die Aufnahme verlässt es nicht.",
+ "Aufnahme läuft": "Aufnahme läuft",
+ "Höchstens 60 Sekunden": "Höchstens 60 Sekunden",
+ "Wird zu Text …": "Wird zu Text …",
+ "Nichts verstanden – versuch es noch mal.": "Nichts verstanden – versuch es noch mal.",
+ "Sprachpaket wird geladen …": "Sprachpaket wird geladen …",
+ "Ohne Mikrofon geht kein Diktat.": "Ohne Mikrofon geht kein Diktat.",
+ "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.",
+ "Diktat nur auf dem Gerät": "Diktat nur auf dem Gerät",
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“."
 }

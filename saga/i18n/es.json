@@ -5991,5 +5991,16 @@
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "Lo que puede tardar el servicio con una grabación (5–60).",
  "Zusatzsatz zum Hinweis": "Frase adicional para el aviso",
  "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Opcional, una frase, p. ej. «Funciona en el ordenador del sótano». Con un servicio en internet se omite una frase que afirme «local».",
- "Die Aufnahme kam zu langsam an – versuch es noch mal.": "La grabación llegó demasiado despacio – inténtalo de nuevo."
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "La grabación llegó demasiado despacio – inténtalo de nuevo.",
+ "Diktieren": "Dictar",
+ "Auf diesem Gerät – die Aufnahme verlässt es nicht.": "En este dispositivo – la grabación no sale de él.",
+ "Aufnahme läuft": "Grabando",
+ "Höchstens 60 Sekunden": "Como máximo 60 segundos",
+ "Wird zu Text …": "Convirtiendo en texto …",
+ "Nichts verstanden – versuch es noch mal.": "No se ha entendido nada – inténtalo de nuevo.",
+ "Sprachpaket wird geladen …": "Descargando paquete de idioma …",
+ "Ohne Mikrofon geht kein Diktat.": "El dictado necesita el micrófono.",
+ "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "El dictado no ha funcionado. Tu texto se queda como está.",
+ "Diktat nur auf dem Gerät": "Dictado solo en el dispositivo",
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Así ninguna grabación va al servidor. Si tu dispositivo no puede dictar por sí mismo, no tendrá el botón «Dictar»."
 }

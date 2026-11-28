@@ -5991,5 +5991,16 @@
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "How long the service may take for one recording (5–60).",
  "Zusatzsatz zum Hinweis": "Extra sentence for the notice",
  "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Optional, one sentence, e.g. “Runs on the computer in the basement.” For a service on the internet, a sentence claiming “local” is dropped.",
- "Die Aufnahme kam zu langsam an – versuch es noch mal.": "The recording arrived too slowly – try again."
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "The recording arrived too slowly – try again.",
+ "Diktieren": "Dictate",
+ "Auf diesem Gerät – die Aufnahme verlässt es nicht.": "On this device – the recording never leaves it.",
+ "Aufnahme läuft": "Recording",
+ "Höchstens 60 Sekunden": "60 seconds at most",
+ "Wird zu Text …": "Turning into text …",
+ "Nichts verstanden – versuch es noch mal.": "Didn't catch anything – try again.",
+ "Sprachpaket wird geladen …": "Downloading language pack …",
+ "Ohne Mikrofon geht kein Diktat.": "Dictation needs the microphone.",
+ "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "Dictation didn't work. Your text stays as it is.",
+ "Diktat nur auf dem Gerät": "Dictation on device only",
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Then no recording goes to the server. If your device can't dictate on its own, there's no Dictate button there."
 }

@@ -45,10 +45,19 @@
   function say(live, text) { if (live) { live.textContent = ''; live.textContent = text; } }
   // 2.6 (Bugs-DB 2275 K-G, APP-API-KI 14.1): Herkunft eines Plans aus geteiltem Inhalt - Texte fertig vom Server
   // (origin.text, bei warn ⚠ + warn_text: Symbol UND Text, nie nur Farbe). origin null = kein geteilter Inhalt.
+  // 2.6 (Bugs-DB 2274 K-F, APP-API-KI 15.5): kind "dictation" - Mikrofon-Symbol + "Diktiert", bei warn ⚠ + warn_text (in der
+  // Anrede der Person, fertig vom Server). Unbekannte Arten: nur text.
   function originNodes(o) {
     var out = [];
     if (!o || typeof o !== 'object' || !o.text) return out;
-    out.push(el('p', 'kj-origin', o.text));
+    var p = el('p', 'kj-origin');
+    if (o.kind === 'dictation') {
+      p.classList.add('kj-origin-dict');
+      var ic = (HK.icon && HK.icon('mic', 15)) || el('span', null, '🎙');
+      ic.setAttribute('aria-hidden', 'true'); ic.classList.add('kj-origin-sym'); p.appendChild(ic);
+    }
+    p.appendChild(document.createTextNode(o.text));
+    out.push(p);
     if (o.warn && o.warn_text) {
       var w = el('p', 'kj-warn'), sym = el('span', 'kj-warn-sym', '⚠'); sym.setAttribute('aria-hidden', 'true');
       w.appendChild(sym); w.appendChild(el('span', 'kj-warn-t', o.warn_text)); out.push(w);

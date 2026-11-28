@@ -126,7 +126,8 @@
     eye: 'M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z|c 12 12 3',
     'eye-off': 'M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z|c 12 12 3|M3.5 3.5l17 17',
     'archive-out': 'r 3 4 18 4 1|M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8|M12 17v-6M9.5 13.5L12 11l2.5 2.5',
-    timer: 'c 12 13.5 7.5|M12 9.5v4l2.5 1.5|M10 2.5h4'
+    timer: 'c 12 13.5 7.5|M12 9.5v4l2.5 1.5|M10 2.5h4',
+    mic: 'r 9 2.5 6 11.5 3|M5.5 10.5a6.5 6.5 0 0 0 13 0|M12 17v4.5M8.5 21.5h7'   // 2.6 (2274 K-F): Diktieren
   };
   function make(tag, attrs) { var n = document.createElementNS(NS, tag); for (var k in attrs) n.setAttribute(k, attrs[k]); return n; }
   function icon(name, size) {

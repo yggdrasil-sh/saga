@@ -13,7 +13,8 @@
    "saga-share" ab und leitet nach /saga?share=<schluessel>; hier die Auswahl "Als Seite speichern" / "Als Aufgabe
    speichern" (POST /api/capture, auch ohne KI) / "{name} soll sich kuemmern …" (nur mit aishare1, Auftraegen, ai_act und
    Einwilligung) -> Zeile "Geteilt: host ×" ueber dem Feld (wie 2508), Auftrag mit source "share" + shared (from "web").
-   /saga?share_failed=1 (Server-Rueckfall ohne Service Worker): nur ein Hinweis - der Inhalt kam nie hier an. */
+   /saga?share_failed=1 (Server-Rueckfall ohne Service Worker): nur ein Hinweis - der Inhalt kam nie hier an.
+   kf-web (2.6, Bugs-DB 2274 K-F, APP-API-KI 15): Knopf "Diktieren" am Feld - Abschnitt "Diktat" weiter unten. */
 (function () {
   'use strict';
   var HK = window.HK;
@@ -348,12 +349,14 @@
         c.appendChild(el('p', 'kj-lead', T('Diesen Auftrag gibt es nicht mehr.'))); w.appendChild(c); w.dataset.state = 'weg'; }
     });
   }
-  function askNode(d, q, sh) {                       // sh: geteilter Inhalt geht mit der Antwort erneut mit (14.1)
-    return HKJobs.askCard(d, function (ch) { giveJob(q, sh ? { choice: ch, source: 'share', shared: sh } : { choice: ch }, ch); });
+  function askNode(d, q, sh, dict) {                 // sh: geteilter Inhalt geht mit der Antwort erneut mit (14.1)
+    return HKJobs.askCard(d, function (ch) {         // dict (2274): nach einer Rueckfrage dasselbe input erneut (15.5)
+      giveJob(q, sh ? { choice: ch, source: 'share', shared: sh } : dict ? { choice: ch, input: 'dictation' } : { choice: ch }, ch);
+    });
   }
-  function refuseNode(d, q) {
+  function refuseNode(d, q, dict) {
     return HKJobs.refuseCard(d, function (alt) { giveJob(q || ' ', { recipe: alt.recipe, fields: alt.fields }, alt.label || T('Als Aufgabe anlegen')); },
-      function () { setMode('job'); var ta = $('sg-ta'); ta.value = q || ''; try { ta.focus(); } catch (e) { /* egal */ } });
+      function () { setMode('job'); var ta = $('sg-ta'); ta.value = q || ''; DI.dictated = !!dict && !!ta.value.trim(); try { ta.focus(); } catch (e) { /* egal */ } });
   }
   function jobTurn(tn) {                             // gespeicherter Zug (GET /api/ai/thread)
     var f = tn.fields || {};
@@ -375,9 +378,12 @@
     var wait = el('article', 'kj-card kj-wait sg-live'); wait.appendChild(HKJobs.head(''));
     var dots = el('p', 'kj-thinking', T('{name} denkt nach …', { name: P().name })); wait.appendChild(dots);
     feed.appendChild(wait);
-    var ta = $('sg-ta'); if (!extra) ta.value = '';
+    // 2274 (15.5): input "dictation", wenn der gesendete Text diktierte Teile enthaelt - nur mit aistt1, nie mit Rezept/Teilen
+    var dict = extra ? extra.input === 'dictation' : !!(DI.dictated && DI.feat && !sh && text.trim());
+    var ta = $('sg-ta'); if (!extra) { ta.value = ''; DI.dictated = false; }
     busy(true);
     var body = Object.assign({ text: sh ? text.trim() : text, thread: true }, extra || {}), out = null;
+    if (dict && !body.recipe && !body.source) body.input = 'dictation'; else delete body.input;
     if (G.note && !body.recipe && !body.context) body.context = { note: G.note.id };   // 2508: Auftrag zu einer offenen Seite
     if (sh) { body.source = 'share'; body.shared = shBody; }
     G.run = HKJobs.post(body, function (ev, d) {
@@ -388,8 +394,8 @@
         node = jobWrap(d.job); node.dataset.state = 'wartet_ok'; node.appendChild(planCardFor(d, node));
         out = T('Plan bereit – wartet auf dein OK');
         if (G.jobs) G.jobs.refresh();
-      } else if (ev === 'ask') node = askNode(d, text, shBody);
-      else if (ev === 'refuse') node = refuseNode(d, text);
+      } else if (ev === 'ask') node = askNode(d, text, shBody, body.input === 'dictation');
+      else if (ev === 'refuse') node = refuseNode(d, text, body.input === 'dictation');
       else {
         node = el('div', 'kj-card'); node.appendChild(HKJobs.head(''));
         var p = el('p', 'kj-err', (d && d.error) || T('Das hat nicht geklappt.')); p.setAttribute('role', 'alert'); node.appendChild(p);
@@ -415,6 +421,7 @@
     ta.setAttribute('aria-label', job ? T('Auftrag an {name}', { name: P().name }) : T('Nachricht an {name}', { name: P().name }));
     noteLine();
     shareLine();
+    if (DI.ui) dictPaint();                            // 2274: im Teilen-Modus kein Knopf
   }
   // 2508: aus dem KI-Bereich einer Seite ("{name} soll sich kümmern …" -> /saga?note=<id>): Auftraege im Gespraech gehen mit
   // context.note an den Server (der prueft das Leserecht). Zeile ueber dem Eingabefeld, mit × wieder weg.
@@ -556,7 +563,10 @@
       var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
     }).catch(function () { HK.toast(T('Diese Seite kannst du nicht öffnen.')); });
   }
-  function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }   // mit G.share auch ohne eigene Worte
+  function submit() {                               // mit G.share auch ohne eigene Worte; nie waehrend eines Diktats (2274)
+    if (DI.st !== 'idle' && DI.st !== 'hint') return;
+    if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send();
+  }
   function openJob(id) { tab('jobs', false); if (G.jobs && id != null) G.jobs.open(id, true); }
   S.openJob = function (id) { if (onPage && jobsOn()) openJob(id); };   // Glocke auf derselben Seite (static/live.js, 2270)
   function tab(k, focusTab) {
@@ -570,7 +580,7 @@
     if (k === 'jobs') {
       if (!G.jobs) G.jobs = HKJobs.mount($('sg-jobs'), { form: false, give: function (text) {
         tab('talk', false); if (!consentOk()) return;      // ohne Einwilligung: nur die Kennenlernen-Karte, nichts ans Modell
-        setMode('job'); $('sg-ta').value = text; submit(); } });
+        setMode('job'); dictText(text); submit(); } });
       else G.jobs.refresh();
     }
     try { history.replaceState(null, '', k === 'jobs' ? '/saga?tab=jobs' : '/saga'); } catch (e) { /* egal */ }
@@ -625,14 +635,14 @@
     var chips = el('div', 'sg-chips');
     [T('Was steht diese Woche an?'), T('Fass meine Notizen zum Sommerfest zusammen'), T('Welche Aufgaben sind offen?')].forEach(function (q) {
       var b = el('button', 'sg-chip', q); b.type = 'button';
-      b.addEventListener('click', function () { setMode('ask'); $('sg-ta').value = q; send(); });
+      b.addEventListener('click', function () { setMode('ask'); dictText(q); send(); });
       chips.appendChild(b);
     });
     w.appendChild(chips);
     if (jobsOn()) {                                      // UX §3: Beispiel fuer einen Auftrag (zeigt nur den Plan)
       w.appendChild(el('p', 'sg-empty-t', T('Oder gib mir einen Auftrag:')));
       var jc = el('div', 'sg-chips'), jb = el('button', 'sg-chip sg-chip-job', T('Erinnere mich Freitag an den Pavillon')); jb.type = 'button';
-      jb.addEventListener('click', function () { setMode('job'); $('sg-ta').value = jb.textContent; submit(); });
+      jb.addEventListener('click', function () { setMode('job'); dictText(jb.textContent); submit(); });
       jc.appendChild(jb); w.appendChild(jc);
     }
     feed.appendChild(w);
@@ -655,13 +665,14 @@
     $('sg-stop').hidden = !on; $('sg-send').disabled = on; $('sg-ta').readOnly = on; $('sg-mode').disabled = on;
     $('sg-status').textContent = on ? T('{name} denkt nach …', { name: P().name }) : '';
     $('sg-feed').setAttribute('aria-busy', on ? 'true' : 'false');
+    if (DI.ui) DI.ui.mic.disabled = on;
   }
   function send() {
     var ta = $('sg-ta'), q = ta.value.trim();
     if (!q || G.run) return;
     var feed = $('sg-feed'), e = $('sg-empty'); if (e) e.remove();
     feed.appendChild(turnNode({ role: 'me', text: q }));
-    ta.value = '';
+    ta.value = ''; DI.dictated = false;                // /api/ai/thread hat kein input (15.5) - diktierte Fragen wie getippte
     var card = el('article', 'sg-card sg-ai sg-live'); card.appendChild(head(24));
     var body = el('div', 'sg-answer'); card.appendChild(body); feed.appendChild(card);
     var text = '', srcs = [], fail = null;
@@ -755,6 +766,7 @@
     }
     slot.hidden = true; slot.textContent = ''; jobsNote('');
     form.hidden = false;
+    dictInit();                                        // 2274: Knopf "Diktieren" (nur mit Einwilligung, Feld aktiv)
     $('sg-tabs').hidden = !jobsOn();
     tab(jobsOn() && /[?&]tab=jobs\b/.test(location.search) ? 'jobs' : G.tab, false);
     jobFromUrl();
@@ -762,6 +774,312 @@
     api('GET', '/api/ai/thread').then(function (d) {
       G.turns = d.turns || []; renderFeed(); keepLine(d);
     }).catch(function (e) { HK.toast(e.message); });
+  }
+  // --- Diktat (2.6, Bugs-DB 2274 K-F, APP-API-KI 15, Vektoren tests/vectors/stt_contract.json) -----------------------
+  // Mikro-Knopf "Diktieren" am Feld (Frage und "Als Auftrag", nicht im Teilen-Modus). Entscheidung wie decide: Geraet (nur
+  // Mac-Huelle mit Faehigkeit dictate, SpeechAnalyzer - der Ton verlaesst den Mac nicht), sonst Server (aistt1, stt.on,
+  // dictation "server", ein Format, das dieser Browser erzeugen kann), sonst kein Knopf. Web nie ueber die Web Speech API
+  // (F1: schickt Ton je nach Browser an Google/Apple). Vor dem ersten Start (je Geraet, Weg und Ziel) und waehrend der
+  // Aufnahme steht, wohin die Aufnahme geht (stt.notice fertig vom Server bzw. ui.device); beim Server-Weg zeigt der erste
+  // Tipp nur diesen Hinweis. Aufnahme nur im Speicher (Ogg/Opus aus static/chat-voice.js bzw. WAV 16 kHz), harte Grenze
+  // 60 s. Der Text landet an der Schreibmarke und wird NIE gesendet - das bleibt der Knopf der Person. Gesendet als
+  // Auftrag traegt er input "dictation" (Herkunft "Diktiert" auf der Plan-Karte), bis das Feld leer ist.
+  var DI = { feat: null, prefs: null, st: 'idle', devFail: false, dictated: false, seq: 0, id: 0, rec: null, fmt: null,
+             t: 0, peak: 0, lv: 0, until: 0, untilMsg: '', ctrl: null, timer: null, t0: 0, ui: null, bound: false, way: 'none', limit: false, ogg: false };
+  var DI_LANGS = ['de', 'en', 'es', 'ru', 'th'], DI_MAX = 60, DI_SEEN = 'saga-dict-seen';
+  function dictDecide(x) {                             // = decide der Vektoren (15.3)
+    if (x.device_ok) return 'device';
+    if (x.aistt1 && x.stt_on && x.dictation === 'server' && x.fmt_ok) return 'server';
+    return 'none';
+  }
+  S.dictDecide = dictDecide;
+  function dictStt() { return (S.st && S.st.stt) || null; }
+  function canWav() { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext) && window.SagaVoice && SagaVoice.recordWav); }
+  function dictFmt(stt) {                              // ogg, wenn der Dienst es nimmt und der Browser es kann, sonst wav
+    var f = (stt && stt.formats) || [];
+    if (f.indexOf('ogg') >= 0 && DI.ogg) return 'ogg';
+    if (f.indexOf('wav') >= 0 && canWav()) return 'wav';
+    return null;
+  }
+  function devOk() { return !DI.devFail && !!(HK.host && HK.host.has && HK.host.has('dictate')); }
+  function dictWay() {
+    var stt = dictStt();
+    return dictDecide({ device_ok: devOk(), aistt1: !!DI.feat, stt_on: !!(stt && stt.on === true),
+                        dictation: (DI.prefs && DI.prefs.dictation) || 'server', fmt_ok: !!dictFmt(stt) });
+  }
+  function dictLang() {
+    var l = String(HK.lang || document.documentElement.lang || '').slice(0, 2).toLowerCase(), stt = dictStt();
+    var ok = (stt && stt.langs) || DI_LANGS;
+    return ok.indexOf(l) >= 0 ? l : '';
+  }
+  function dictKey(way) {                              // Hinweis neu nach jedem Wechsel des Weges oder des Ziels (15.4)
+    var w = (dictStt() || {}).where || {};
+    return way === 'server' ? 'server|' + (w.host || '') + '|' + (w.net || '') : way;
+  }
+  function seen(way) { try { return localStorage.getItem(DI_SEEN) === dictKey(way); } catch (e) { return false; } }
+  function markSeen(way) { try { localStorage.setItem(DI_SEEN, dictKey(way)); } catch (e) { /* egal */ } }
+  function dictWhere(way) { return way === 'device' ? T('Auf diesem Gerät – die Aufnahme verlässt es nicht.') : ((dictStt() || {}).notice || ''); }
+  function dictSay(text) { var s = $('sg-status'); if (s && !G.run) { s.textContent = ''; s.textContent = text || ''; } }
+  function micSvg() {
+    var s = HK.icon && HK.icon('mic', 20);
+    if (s) return s;
+    var sp = el('span', null, '🎙'); sp.setAttribute('aria-hidden', 'true'); return sp;
+  }
+  function dictBuild() {
+    if (DI.ui) return DI.ui;
+    var f = $('sg-ask'), bar = f && f.querySelector('.sg-ask-bar');
+    if (!bar) return null;
+    var U = DI.ui = {};
+    U.mic = el('button', 'btn sg-mic'); U.mic.type = 'button'; U.mic.id = 'sg-mic'; U.mic.hidden = true;
+    U.mic.setAttribute('aria-label', T('Diktieren')); U.mic.title = T('Diktieren'); U.mic.appendChild(micSvg());
+    U.mic.addEventListener('click', dictClick);
+    bar.insertBefore(U.mic, bar.firstChild);
+    U.box = el('div', 'sg-dict'); U.box.id = 'sg-dict'; U.box.hidden = true;
+    U.where = el('p', 'sg-dict-where'); U.where.id = 'sg-dict-where'; U.where.hidden = true;
+    U.row = el('div', 'sg-dict-rec'); U.row.hidden = true;
+    var dot = el('span', 'sg-dict-dot'); dot.setAttribute('aria-hidden', 'true');
+    U.time = el('span', 'sg-dict-time', '0:00'); U.time.setAttribute('aria-hidden', 'true');
+    var lvw = el('span', 'sg-dict-lvw'); lvw.setAttribute('aria-hidden', 'true'); U.lv = el('span', 'sg-dict-lv'); lvw.appendChild(U.lv);
+    U.lab = el('span', 'sg-dict-lab');
+    U.prev = el('span', 'sg-dict-prev'); U.prev.hidden = true;
+    U.cancel = el('button', 'btn btn-quiet sg-dict-cancel', T('Abbrechen')); U.cancel.type = 'button';
+    U.cancel.addEventListener('click', dictCancel);
+    U.done = el('button', 'btn btn-primary sg-dict-done', T('Fertig')); U.done.type = 'button';
+    U.done.addEventListener('click', dictFinish);
+    U.done.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); dictFinish(); } });   // nie ins Formular (Senden)
+    [dot, U.time, lvw, U.lab, U.prev, U.cancel, U.done].forEach(function (x) { U.row.appendChild(x); });
+    U.row.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); dictCancel(); } });
+    U.err = el('p', 'sg-dict-err'); U.err.setAttribute('role', 'alert'); U.err.hidden = true;
+    U.box.appendChild(U.where); U.box.appendChild(U.row); U.box.appendChild(U.err);
+    f.insertBefore(U.box, bar);
+    return U;
+  }
+  function dictErr(text) {
+    var U = dictBuild(); if (!U) return;
+    U.err.textContent = text || ''; U.err.hidden = !text; dictPaint();
+  }
+  function fmtS(s) { s = Math.max(0, Math.floor(+s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  function dictTick() {
+    var U = DI.ui; if (!U) return;
+    U.time.textContent = fmtS(DI.t) + ' / ' + fmtS(DI_MAX);
+    U.lv.style.transform = 'scaleX(' + Math.max(0.04, Math.min(1, DI.lv)).toFixed(3) + ')';
+  }
+  // Zeichnet Knopf, Hinweiszeile und Aufnahmezeile nach Zustand: idle | hint | wait | loading | rec | work
+  function dictPaint() {
+    var U = dictBuild(); if (!U) return;
+    var form = $('sg-ask'), way = dictWay(), active = DI.st !== 'idle' && DI.st !== 'hint';
+    var show = !!form && !form.hidden && consentOk() && !G.share && way !== 'none';
+    if (!show && DI.st === 'hint') DI.st = 'idle';
+    U.mic.hidden = !show || active;
+    U.mic.disabled = !!G.run;
+    var hint = show && (DI.st === 'hint' || active);
+    U.where.textContent = hint ? dictWhere(active ? DI.way : way) : ''; U.where.hidden = !hint || !U.where.textContent;
+    if (hint && DI.st === 'hint') U.mic.setAttribute('aria-describedby', 'sg-dict-where'); else U.mic.removeAttribute('aria-describedby');
+    U.row.hidden = !active;
+    U.lab.textContent = DI.st === 'loading' ? T('Sprachpaket wird geladen …') : DI.st === 'work' ? T('Wird zu Text …') : T('Aufnahme läuft');
+    U.row.classList.toggle('on', DI.st === 'rec');
+    U.done.disabled = DI.st !== 'rec';
+    U.box.hidden = U.where.hidden && U.row.hidden && U.err.hidden;
+    var send = $('sg-send'); if (send && !G.run) send.disabled = active;
+    if (active) dictTick();
+  }
+  S.dictPaint = dictPaint;
+  function dictReset() {
+    clearInterval(DI.timer); DI.timer = null;
+    DI.st = 'idle'; DI.rec = null; DI.id = 0; DI.ctrl = null; DI.t = 0; DI.lv = 0; DI.peak = 0;
+    if (DI.ui) { DI.ui.prev.textContent = ''; DI.ui.prev.hidden = true; }
+    dictPaint();
+  }
+  function dictFocusTa() { var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
+  // Text an der Schreibmarke einfuegen (bzw. Auswahl ersetzen), Leerzeichen an der Naht, Feldgrenze 1000 (15.4)
+  function dictInsert(text) {
+    var ta = $('sg-ta'); text = String(text || '').trim();
+    if (!text) return false;
+    var v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+    if (typeof s !== 'number') { s = e = v.length; }
+    var before = v.slice(0, s), after = v.slice(e);
+    if (before && !/\s$/.test(before)) text = ' ' + text;
+    if (after && !/^[\s.,;:!?)\]»“”"']/.test(after)) text += ' ';
+    var max = ta.maxLength > 0 ? ta.maxLength : 1000, room = max - before.length - after.length;
+    if (room <= 0) return false;
+    text = text.slice(0, room);
+    dictFocusTa();
+    if (ta.setRangeText) ta.setRangeText(text, s, e, 'end');
+    else { ta.value = before + text + after; ta.selectionStart = ta.selectionEnd = before.length + text.length; }
+    DI.dictated = true;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }
+  S.dictInsert = dictInsert;                           // fuer den Test (Naht, Auswahl)
+  function dictClick() {
+    if (DI.st !== 'idle' && DI.st !== 'hint') return;
+    dictErr('');
+    if (Date.now() < DI.until) { dictErr(DI.untilMsg); return; }
+    var way = dictWay();
+    if (way === 'none') { dictPaint(); return; }
+    if (way === 'server' && DI.st !== 'hint' && !seen(way)) {   // erster Tipp: nur der Hinweis (15.4)
+      DI.st = 'hint'; dictPaint(); dictSay(dictWhere(way)); return;
+    }
+    markSeen(way); DI.way = way;
+    if (way === 'device') devStart(); else srvStart();
+  }
+  function micErr(e) {
+    var n = e && e.name;
+    if (n === 'NotAllowedError' || n === 'SecurityError' || n === 'PermissionDeniedError') return T('Ohne Mikrofon geht kein Diktat.');
+    return T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.');
+  }
+  // --- Server-Weg: Aufnahme im Speicher -> POST /api/ai/transcribe (15.1) ---
+  function srvStart() {
+    var stt = dictStt(), fmt = dictFmt(stt), my = ++DI.seq;
+    DI.st = 'wait'; DI.fmt = fmt; DI.t = 0; DI.lv = 0; DI.peak = 0; dictPaint();
+    var opts = { maxS: DI_MAX,
+      onTick: function (sec, lv) { if (DI.seq !== my || DI.st !== 'rec') return; DI.t = sec; DI.lv = lv; if (lv > DI.peak) DI.peak = lv; dictTick(); },
+      onLimit: function () { if (DI.seq === my && DI.st === 'rec') { DI.limit = true; dictFinish(); } } };
+    var p = fmt === 'wav' ? SagaVoice.recordWav(opts) : SagaVoice.record(Object.assign({ kbps: 24 }, opts));
+    p.then(function (r) {
+      if (DI.seq !== my || DI.st !== 'wait') { r.cancel(); return; }
+      DI.rec = r; DI.st = 'rec'; DI.limit = false; dictPaint(); dictSay(T('Aufnahme läuft'));
+      try { DI.ui.done.focus({ preventScroll: true }); } catch (e) { DI.ui.done.focus(); }
+    }).catch(function (e) {
+      if (DI.seq !== my) return;
+      dictReset(); dictErr(micErr(e));
+    });
+  }
+  function srvFinish() {
+    var r = DI.rec, my = DI.seq, fmt = DI.fmt, peak = DI.peak, limit = DI.limit;
+    if (!r) return;
+    DI.st = 'work'; dictPaint(); dictSay(limit ? T('Höchstens 60 Sekunden') + ' · ' + T('Wird zu Text …') : T('Wird zu Text …'));
+    r.stop().then(function (res) {
+      if (DI.seq !== my) return null;
+      if (!res || !res.blob || res.dur < 0.3 || peak < 0.01) { dictReset(); dictErr(T('Nichts verstanden – versuch es noch mal.')); dictFocusTa(); return null; }   // Stille: Whisper erfaende Text
+      var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 75000);
+      DI.ctrl = ctrl;
+      var l = dictLang();
+      return fetch('/api/ai/transcribe' + (l ? '?lang=' + l : ''), { method: 'POST', credentials: 'same-origin', signal: ctrl ? ctrl.signal : undefined,
+        headers: { 'X-Saga': '1', 'Content-Type': fmt === 'wav' ? 'audio/wav' : 'audio/ogg' }, body: res.blob })
+        .then(function (rs) {
+          return rs.json().catch(function () { return {}; }).then(function (d) { return { s: rs.status, d: d || {}, ra: parseInt(rs.headers.get('Retry-After'), 10) || 0 }; });
+        }).then(function (x) { clearTimeout(to); if (DI.seq === my) srvResult(x); }, function (e) {
+          clearTimeout(to);
+          if (DI.seq !== my) return;
+          dictReset(); dictErr(T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.'));
+        });
+    }).catch(function () {
+      if (DI.seq !== my) return;
+      dictReset(); dictErr(T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.'));
+    });
+  }
+  function dictReload(what) {                          // Status bzw. Einstellung neu laden, dann neu entscheiden
+    var p = what === 'prefs' ? api('GET', '/api/ai/prefs').then(function (d) { DI.prefs = d; }) : S.load();
+    return p.catch(function () { /* naechstes Laden */ }).then(dictPaint);
+  }
+  function srvResult(x) {                              // Fehlertabelle 15.1 / Vektoren errors[].client
+    var d = x.d, code = d.code, failed = T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.');
+    dictReset();
+    if (x.s === 200) {
+      if (!dictInsert(d.text)) dictErr(T('Nichts verstanden – versuch es noch mal.'));
+      else dictSay('');
+      return;
+    }
+    if (x.s === 400 && code === 'empty') { dictErr(T('Nichts verstanden – versuch es noch mal.')); return; }
+    if (x.s === 413) { dictErr(T('Die Aufnahme ist zu groß.')); return; }       // Koerper nicht auswerten (Grenze davor ohne code)
+    if (x.s === 403 && d.consent === 'needed') { S.load().then(function () { if (!consentOk()) page(); }); return; }
+    if (x.s === 403 && !code) { if (S.st) S.st.stt = null; dictErr(d.error || failed); return; }   // fremder Schluessel: Knopf weg
+    if ((x.s === 403 && code === 'ai') || x.s === 404) { if (S.st) S.st.stt = null; dictErr(d.error || failed); dictReload('status'); return; }
+    if (x.s === 409 && code === 'device_only') { dictErr(d.error || failed); dictReload('prefs'); return; }
+    if (x.s === 429 || x.s === 503) {
+      var ra = x.ra || +d.retry_after || 0;
+      if (ra > 0) { DI.until = Date.now() + Math.min(ra, 86400) * 1000; DI.untilMsg = d.error || failed; }
+    }
+    dictErr(d.error || failed);
+    if (x.s === 502 && code === 'blocked') dictReload('status');
+  }
+  // --- Geraete-Weg: Mac-Huelle, Faehigkeit dictate (15.6) - nur Text ueber die Bruecke ---
+  function devStart() {
+    var id = 1 + Math.floor(Math.random() * 999999999), my = ++DI.seq;
+    DI.id = id; DI.st = 'rec'; DI.t = 0; DI.lv = 0; DI.limit = false; DI.t0 = Date.now(); dictPaint();
+    if (!HK.host.post({ action: 'dictate.start', v: 1, id: id, lang: dictLang() || 'de' })) { dictReset(); dictErr(T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.')); return; }
+    dictSay(T('Aufnahme läuft'));
+    DI.timer = setInterval(function () {                // Zeit selbst (state listening optional); 60 s -> wie "Fertig"
+      if (DI.seq !== my || (DI.st !== 'rec' && DI.st !== 'loading')) return;
+      if (DI.st === 'rec') { DI.t = (Date.now() - DI.t0) / 1000; dictTick(); }
+      if (DI.t >= DI_MAX && DI.st === 'rec') { DI.limit = true; dictFinish(); }
+    }, 250);
+    try { DI.ui.done.focus({ preventScroll: true }); } catch (e) { DI.ui.done.focus(); }
+  }
+  function devBind() {
+    if (DI.bound || !HK.host || !HK.host.on) return;
+    DI.bound = true;
+    function mine(e) { return e && DI.id && e.id === DI.id && DI.way === 'device' && DI.st !== 'idle' && DI.st !== 'hint'; }
+    HK.host.on('dictate.state', function (e) {
+      if (!mine(e)) return;
+      if (e.state === 'loading' && DI.st === 'rec') { DI.st = 'loading'; dictPaint(); dictSay(T('Sprachpaket wird geladen …')); }
+      else if (e.state === 'listening' && DI.st === 'loading') { DI.st = 'rec'; DI.t0 = Date.now(); DI.t = 0; dictPaint(); dictSay(T('Aufnahme läuft')); }
+    });
+    HK.host.on('dictate.level', function (e) { if (mine(e) && typeof e.level === 'number') { DI.lv = Math.max(0, Math.min(1, e.level)); dictTick(); } });
+    HK.host.on('dictate.partial', function (e) {      // Vorschau neben den Knoepfen, nicht ins Feld
+      if (!mine(e) || !DI.ui) return;
+      DI.ui.prev.textContent = String(e.text == null ? '' : e.text).slice(-200); DI.ui.prev.hidden = !DI.ui.prev.textContent;
+    });
+    HK.host.on('dictate.done', function (e) {
+      if (!mine(e)) return;
+      var lim = !!e.limit || DI.limit;
+      dictReset();
+      if (!dictInsert(String(e.text == null ? '' : e.text).slice(0, 1000))) dictErr(T('Nichts verstanden – versuch es noch mal.'));
+      else dictSay(lim ? T('Höchstens 60 Sekunden') : '');
+    });
+    HK.host.on('dictate.error', function (e) {
+      if (!mine(e)) return;
+      dictReset();
+      if (e.code === 'unavailable') {                  // neu entscheiden mit device_ok = false; Server-Weg nie von selbst starten
+        DI.devFail = true;
+        if (dictWay() === 'server') { DI.st = 'hint'; dictPaint(); dictSay(dictWhere('server')); }
+        else dictPaint();
+        return;
+      }
+      dictErr(e.code === 'denied' ? T('Ohne Mikrofon geht kein Diktat.') : T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.'));
+    });
+    window.addEventListener('pagehide', function () { if (DI.way === 'device' && DI.id && DI.st !== 'idle') dictCancel(); });
+  }
+  function dictFinish() {
+    if (DI.st !== 'rec') return;
+    if (DI.way === 'device') {
+      clearInterval(DI.timer); DI.timer = null;
+      DI.st = 'work'; dictPaint(); dictSay(DI.limit ? T('Höchstens 60 Sekunden') + ' · ' + T('Wird zu Text …') : T('Wird zu Text …'));
+      HK.host.post({ action: 'dictate.stop', v: 1, id: DI.id });
+      return;
+    }
+    srvFinish();
+  }
+  function dictCancel() {                              // verwirft die Aufnahme ohne Anfrage (laeuft schon eine: abbrechen)
+    if (DI.st === 'idle') return;
+    if (DI.st === 'hint') { dictReset(); return; }
+    DI.seq++;
+    if (DI.way === 'device' && DI.id) HK.host.post({ action: 'dictate.cancel', v: 1, id: DI.id });
+    if (DI.rec && DI.rec.cancel) try { DI.rec.cancel(); } catch (e) { /* egal */ }
+    if (DI.ctrl) try { DI.ctrl.abort(); } catch (e) { /* egal */ }
+    dictReset(); dictSay(''); dictFocusTa();
+  }
+  function dictText(v) { var ta = $('sg-ta'); ta.value = v; DI.dictated = false; }   // Text von Knoepfen (Beispiele) - nicht diktiert
+  function dictInit() {
+    if (!dictBuild()) return;
+    devBind();
+    var ta = $('sg-ta');
+    if (!DI.taBound) {
+      DI.taBound = true;
+      ta.addEventListener('input', function () { if (!ta.value.trim()) DI.dictated = false; });   // Feld leer: Markierung vergessen
+      document.addEventListener('saga:prefs', function (e) {
+        var p = e.detail && e.detail.prefs; if (p && 'dictation' in p) { DI.prefs = p; dictPaint(); }
+      });
+      document.addEventListener('saga:status', function () { dictPaint(); });
+      if (HK.host && HK.host.on) HK.host.on('hello', function () { DI.devFail = false; dictPaint(); });
+    }
+    var feat = fetch('/api/version', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (v) { return (v.features || []).indexOf('aistt1') >= 0; }).catch(function () { return false; });
+    var mode = window.SagaVoice ? SagaVoice.mode().catch(function () { return null; }) : Promise.resolve(null);
+    Promise.all([feat, api('GET', '/api/ai/prefs').catch(function () { return null; }), mode]).then(function (r) {
+      DI.feat = r[0]; DI.prefs = r[1]; DI.ogg = !!r[2]; dictPaint();
+    });
   }
   function pageInit() {
     $('sg-ask').addEventListener('submit', function (e) { e.preventDefault(); submit(); });

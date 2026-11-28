@@ -5991,5 +5991,16 @@
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "เวลาที่บริการใช้ได้ต่อการบันทึกหนึ่งครั้ง (5–60)",
  "Zusatzsatz zum Hinweis": "ประโยคเพิ่มเติมในคำแนะนำ",
  "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "ไม่บังคับ หนึ่งประโยค เช่น “ทำงานบนคอมพิวเตอร์ในห้องใต้ดิน” สำหรับบริการบนอินเทอร์เน็ต ประโยคที่อ้างว่า “อยู่ในเครื่อง” จะถูกตัดออก",
- "Die Aufnahme kam zu langsam an – versuch es noch mal.": "เสียงที่บันทึกส่งมาช้าเกินไป – ลองอีกครั้ง"
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "เสียงที่บันทึกส่งมาช้าเกินไป – ลองอีกครั้ง",
+ "Diktieren": "พิมพ์ด้วยเสียง",
+ "Auf diesem Gerät – die Aufnahme verlässt es nicht.": "บนอุปกรณ์นี้ – เสียงที่บันทึกจะไม่ออกไปจากเครื่อง",
+ "Aufnahme läuft": "กำลังบันทึก",
+ "Höchstens 60 Sekunden": "ไม่เกิน 60 วินาที",
+ "Wird zu Text …": "กำลังแปลงเป็นข้อความ …",
+ "Nichts verstanden – versuch es noch mal.": "ไม่ได้ยินอะไรเลย – ลองอีกครั้ง",
+ "Sprachpaket wird geladen …": "กำลังโหลดชุดภาษา …",
+ "Ohne Mikrofon geht kein Diktat.": "การพิมพ์ด้วยเสียงต้องใช้ไมโครโฟน",
+ "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "พิมพ์ด้วยเสียงไม่สำเร็จ ข้อความของคุณยังอยู่",
+ "Diktat nur auf dem Gerät": "พิมพ์ด้วยเสียงบนอุปกรณ์เท่านั้น",
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "เสียงที่บันทึกจะไม่ถูกส่งไปที่เซิร์ฟเวอร์ ถ้าอุปกรณ์ของคุณแปลงเสียงเองไม่ได้ จะไม่มีปุ่ม “พิมพ์ด้วยเสียง”"
 }

@@ -13,7 +13,9 @@
 (function () {
   'use strict';
   var HK = window.HK; if (!HK || HK.host) return;
-  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token', 'tunnel', 'mic'];
+  // 2.6 (Bugs-DB 2274 K-F, APP-API-KI 15.6): "dictate" - Diktat on-device in der Mac-Huelle (dictate.start/stop/cancel,
+  // Ereignisse dictate.state/level/partial/done/error ueber HK.host.on); genutzt von static/saga.js
+  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token', 'tunnel', 'mic', 'dictate'];
   var UA = /\b(?:Saga|Hlidskjalf)App\/([\w.+-]{1,40})/.exec(navigator.userAgent || '');
   var TOP = window.top === window;
 

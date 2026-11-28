@@ -97,3 +97,6 @@
   background:var(--warnbg);border:1px solid var(--warn);color:var(--fg);font-size:14px}
 .kj-warn-sym{flex:none;font-weight:700;color:var(--warn)}
 .kj-origin-sec .kj-warn{margin-top:.35rem}
+/* 2.6 (Bugs-DB 2274 K-F): Herkunft "Diktiert" - Mikrofon-Symbol vor dem Text */
+.kj-origin-dict{display:flex;align-items:center;gap:.3rem}
+.kj-origin-sym{flex:none}

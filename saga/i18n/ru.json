@@ -5991,5 +5991,16 @@
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "Столько служба может обрабатывать одну запись (5–60).",
  "Zusatzsatz zum Hinweis": "Дополнительная фраза к подсказке",
  "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Необязательно, одна фраза, например «Работает на компьютере в подвале». Для службы в интернете фраза, утверждающая «локально», убирается.",
- "Die Aufnahme kam zu langsam an – versuch es noch mal.": "Запись поступала слишком медленно – попробуй ещё раз."
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "Запись поступала слишком медленно – попробуй ещё раз.",
+ "Diktieren": "Диктовать",
+ "Auf diesem Gerät – die Aufnahme verlässt es nicht.": "На этом устройстве – запись никуда не уходит.",
+ "Aufnahme läuft": "Идёт запись",
+ "Höchstens 60 Sekunden": "Не больше 60 секунд",
+ "Wird zu Text …": "Превращается в текст …",
+ "Nichts verstanden – versuch es noch mal.": "Ничего не разобрать – попробуй ещё раз.",
+ "Sprachpaket wird geladen …": "Загружается языковой пакет …",
+ "Ohne Mikrofon geht kein Diktat.": "Для диктовки нужен микрофон.",
+ "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "Диктовка не получилась. Твой текст остаётся.",
+ "Diktat nur auf dem Gerät": "Диктовка только на устройстве",
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Тогда записи не уходят на сервер. Если устройство не умеет распознавать речь само, кнопки «Диктовать» на нём не будет."
 }

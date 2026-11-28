@@ -1,4 +1,5 @@
-// Saga - Sprachnachrichten im Chat (2.5, Konzept Chat B3). Von static/chat.js genutzt (window.SagaVoice).
+// Saga - Sprachnachrichten im Chat (2.5, Konzept Chat B3). Von static/chat.js genutzt (window.SagaVoice); seit 2.6 auch
+//   vom Diktat im Ort "Saga" (static/saga.js, Bugs-DB 2274: record({maxS: 60}) bzw. recordWav fuer Dienste ohne Ogg).
 //   Aufnahme: Opus mono 48 kHz, 24 kbit/s, Ogg (audio/ogg; codecs=opus), hoechstens 15 min (Grenzen vom Server, x3_limits).
 //     Chromium/Edge (und alle mit WebCodecs-Opus): AudioEncoder + eigener Ogg-Muxer (RFC 7845).
 //     Firefox: MediaRecorder audio/ogg;codecs=opus (Ogg direkt).
@@ -180,7 +181,8 @@
             release();
             return enc.flush().then(function () {
               try { enc.close(); } catch (e) { /* egal */ }
-              return { blob: oggOpus(pkts, preskip, null, samples), dur: Math.min(maxS, samples / RATE), wf: waveform(levels), mode: md };
+              // Ende auf maxS schneiden (Granule, RFC 7845 4.4): das Diktat (2274) prueft die Dauer serverseitig
+              return { blob: oggOpus(pkts, preskip, null, Math.min(samples, maxS * RATE)), dur: Math.min(maxS, samples / RATE), wf: waveform(levels), mode: md };
             });
           }
           return new Promise(function (res, rej) {
@@ -192,7 +194,7 @@
                 var w = webmOpus(ab), n = 0;
                 if (!w.pkts.length) throw new Error(T('Aufnahme leer.'));
                 w.pkts.forEach(function (p) { n += opusSamples(p); });
-                res({ blob: oggOpus(w.pkts, w.preskip), dur: Math.min(maxS, Math.max(0, n - w.preskip) / RATE), wf: waveform(levels), mode: md });
+                res({ blob: oggOpus(w.pkts, w.preskip, null, Math.min(Math.max(0, n - w.preskip), maxS * RATE)), dur: Math.min(maxS, Math.max(0, n - w.preskip) / RATE), wf: waveform(levels), mode: md });
               }).catch(rej);
             };
             try { mr.stop(); } catch (e) { rej(e); }
@@ -201,6 +203,67 @@
         rec.secs = secs;
         return rec;
       });
+    });
+  }
+
+  // --- WAV-Aufnahme (2.6, Bugs-DB 2274 K-F Diktat, APP-API-KI 15.1) --------------------------------------------------------
+  // Fuer Diktat-Dienste ohne Ogg (whisper.cpp ohne ffmpeg): PCM 16 Bit mono, 16 kHz (60 s = 1 920 044 Bytes). Der Ton bleibt
+  // im Speicher (Int16Array, Blob) - keine Datei, kein Cache. Herunterrechnen: Mittelwert je Ausgabe-Sample (einfacher
+  // Tiefpass, reicht fuer Sprache). Harte Grenze maxS (Samples werden danach nicht mehr angenommen).
+  // opts: {maxS, rate, onTick(sec, level 0..1), onLimit()} -> Promise<rec>; rec.stop() -> Promise<{blob, dur}>, rec.cancel()
+  function wavHead(n, rate) {
+    var b = new ArrayBuffer(44), v = new DataView(b), w = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    return b;
+  }
+  function recordWav(opts) {
+    opts = opts || {};
+    var maxS = opts.maxS || 60, OUT = opts.rate || 16000;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !AC)
+      return Promise.reject(Object.assign(new Error(T('Dieser Browser kann keine Sprachnachrichten aufnehmen.')), { code: 'unsupported' }));
+    return navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+      var ac = new AC(), src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
+      var ratio = ac.sampleRate / OUT, cap = Math.floor(maxS * OUT), out = new Int16Array(cap), n = 0, acc = 0, accN = 0, pos = 0;
+      var done = false, buf = new Float32Array(an.fftSize), tick = null;
+      var proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain(); mute.gain.value = 0;
+      src.connect(proc); proc.connect(mute); mute.connect(ac.destination);
+      proc.onaudioprocess = function (e) {
+        if (done) return;
+        var x = e.inputBuffer.getChannelData(0);
+        for (var i = 0; i < x.length && n < cap; i++) {
+          acc += x[i]; accN++; pos += 1;
+          if (pos >= ratio) { pos -= ratio; var v = acc / accN; acc = 0; accN = 0; out[n++] = Math.max(-1, Math.min(1, v)) * 32767; }
+        }
+      };
+      function release() {
+        done = true; clearInterval(tick);
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        try { src.disconnect(); proc.disconnect(); } catch (e) { /* egal */ }
+        try { ac.close(); } catch (e) { /* egal */ }
+      }
+      var limited = false;
+      tick = setInterval(function () {
+        an.getFloatTimeDomainData(buf);
+        var s = 0; for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+        var sec = n / OUT;
+        if (opts.onTick) opts.onTick(sec, Math.min(1, Math.sqrt(s / buf.length) * 4));
+        if (n >= cap && !limited && !done) { limited = true; if (opts.onLimit) opts.onLimit(); }
+      }, 100);
+      return {
+        mode: 'wav',
+        secs: function () { return n / OUT; },
+        cancel: function () { if (!done) release(); out = null; },
+        stop: function () {
+          if (done) return Promise.reject(new Error('stopped'));
+          release();
+          var blob = new Blob([wavHead(n, OUT), out.subarray(0, n)], { type: 'audio/wav' });
+          out = null;
+          return Promise.resolve({ blob: blob, dur: Math.min(maxS, n / OUT), mode: 'wav' });
+        }
+      };
     });
   }
 
@@ -280,6 +343,6 @@
     return box;
   }
 
-  window.SagaVoice = { init: function (deps) { D = deps; }, mode: mode, record: record, player: player, fmt: fmt,
+  window.SagaVoice = { init: function (deps) { D = deps; }, mode: mode, record: record, recordWav: recordWav, wavHead: wavHead, player: player, fmt: fmt,
                        oggOpus: oggOpus, webmOpus: webmOpus, opusSamples: opusSamples, waveform: waveform, WF_N: WF_N };
 })();

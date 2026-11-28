@@ -311,6 +311,31 @@
       box.appendChild(el('p', 'hk-hint', T('Entwürfe in deinem Namen richten sich nach der Anrede im Kontakt, nicht nach dieser Einstellung.')));
     }).catch(function () { hideSaga(sec); });
     todayLine(sec);
+    dictLine(sec);
+  }
+  // 2.6 (K-F, Bugs-DB 2274, APP-API-KI 15.7): "Diktat nur auf dem Geraet" (an = ai_prefs.dictation "device": keine Aufnahme
+  //     geht an den Server; ohne Geraete-Weg dann kein Knopf). Nur mit aistt1 - ohne Server-Weg aendert der Schalter nichts.
+  function dictLine(sec) {
+    var kd = el('div', 'hk-saga-dict'); sec.appendChild(kd);
+    var feat = fetch('/api/version', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (v) { return (v.features || []).indexOf('aistt1') >= 0; }).catch(function () { return false; });
+    Promise.all([feat, api('GET', '/api/ai/prefs')]).then(function (r) {
+      var d = r[1];
+      if (!r[0] || !d || d.enabled === false || !('dictation' in d)) { kd.remove(); return; }
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch');
+      i.id = 'hk-saga-dict'; i.checked = d.dictation === 'device'; l.htmlFor = i.id;
+      l.appendChild(el('span', null, T('Diktat nur auf dem Gerät'))); l.appendChild(i); kd.appendChild(l);
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); kd.appendChild(st);
+      var h = el('p', 'hk-hint', T('Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.'));
+      h.id = 'hk-saga-dict-h'; i.setAttribute('aria-describedby', h.id); kd.appendChild(h);
+      i.addEventListener('change', function () {
+        i.disabled = true;
+        api('PUT', '/api/ai/prefs', { dictation: i.checked ? 'device' : 'server' }).then(function (x) {
+          i.checked = !!x && x.dictation === 'device'; status(st, T('✓ Gespeichert'), 'ok');
+          document.dispatchEvent(new CustomEvent('saga:prefs', { detail: { prefs: x } }));   // Ort "Saga" entscheidet neu
+        }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
+      });
+    }).catch(function () { kd.remove(); });
   }
   // 2.6 (K-D, Bugs-DB 2271): Tageszeile "Kurz gesagt" auf "Heute" an/aus (PUT /api/ai/today {on}). Erklaerung = info des
   //     Servers (ohne KI berechnet). Alter Server (404) oder Konto ohne ai: kein Schalter. Eigener Block - K-C haengt eigene an.

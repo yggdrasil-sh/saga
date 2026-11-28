@@ -135,6 +135,26 @@ body.saga-page>main.sg:focus{outline:none}
 @media (max-width:760px){.sg-tab{min-height:2.75rem;flex:1 1 0}.sg-mode{min-height:2.75rem}
   .sg-ask-bar{flex-wrap:wrap}.sg-status:not(:empty){flex:1 0 100%}}   /* schmal: Ansage eine Zeile, Knoepfe darunter */
 
+/* 2.6 (Bugs-DB 2274 K-F): Diktat - Knopf am Feld (44 px), Zeile "wohin die Aufnahme geht", Aufnahme mit Zeit/Pegel */
+.sg-mic{min-width:2.75rem;min-height:2.75rem;padding:0;display:inline-grid;place-items:center;border-color:var(--ai-edge,var(--sg-edge))}
+.sg-mic[hidden],.sg-dict[hidden],.sg-dict-where[hidden],.sg-dict-rec[hidden],.sg-dict-err[hidden],.sg-dict-prev[hidden]{display:none}
+.sg-dict{display:flex;flex-direction:column;gap:.35rem}
+.sg-dict-where{margin:0;padding:.4rem .65rem;border-left:3px solid var(--ai-edge,var(--sg-edge));background:var(--ai-tint,var(--sg-tint));
+  border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:.9rem}
+.sg-dict-rec{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem}
+.sg-dict-dot{width:.7rem;height:.7rem;border-radius:var(--r-pill);background:var(--muted)}
+.sg-dict-rec.on .sg-dict-dot{background:var(--down);animation:sg-rec-b 1.2s ease-in-out infinite}
+@keyframes sg-rec-b{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.sg-dict-rec.on .sg-dict-dot{animation:none}}
+.sg-dict-time{font-variant-numeric:tabular-nums;font-size:.95rem}
+.sg-dict-lvw{flex:0 1 6rem;min-width:3rem;height:.4rem;border-radius:var(--r-pill);background:color-mix(in srgb,var(--fg) 12%,transparent);overflow:hidden}
+.sg-dict-lv{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transform:scaleX(.04);transition:transform .1s linear}
+.sg-dict-lab{font-size:.9rem;color:var(--muted)}
+.sg-dict-prev{flex:1 1 12rem;min-width:0;font-size:.9rem;font-style:italic;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-dict-cancel{margin-left:auto}
+.sg-dict-rec .btn{min-height:2.75rem}
+.sg-dict-err{margin:0;font-size:.9rem;color:var(--fg)}
+
 /* Einstellungen > Saga */
 .hk-set-saga .sg-set-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.45rem 0}
 .hk-set-saga .sg-set-row small{flex-basis:100%;margin-left:1.6rem}
