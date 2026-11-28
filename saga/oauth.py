@@ -51,8 +51,11 @@ RESOURCE = BASE + "/mcp"
 PRM_URL = BASE + "/.well-known/oauth-protected-resource/mcp"
 # Bereiche fuer verbundene Apps: MCP + Datenbereiche. Nie tel* (Weiche B.1 #14: ein Connector darf nie waehlen), nie
 # webhooks (kein MCP-Werkzeug). "mcp" bekommt jede Verbindung, die Datenbereiche waehlt die Person auf der Zustimmungsseite.
+# "memory" (Gedaechtnis recall/remember, Bugs-DB 2581) wird angeboten, ist aber nie vorausgewaehlt (OPT_IN) - die Person
+# muss es ausdruecklich anhaken.
 SCOPES = ("mcp", "read:pages", "write:pages", "read:db", "write:db", "read:tasks", "write:tasks", "read:files", "write:files",
-          "read:comments", "write:comments", "read:calendar", "write:calendar")
+          "read:comments", "write:comments", "read:calendar", "write:calendar", "memory")
+OPT_IN = ("memory",)
 assert not any(s.startswith("tel") for s in SCOPES) and set(SCOPES) <= set(apitok.SCOPES)
 IGNORED_SCOPES = ("offline_access",)        # manche Clients fragen danach - Refresh-Token gibt es ohnehin
 ACCESS_TTL = 3600
@@ -408,7 +411,8 @@ def _origin(uri):
 SCOPE_TXT = {"read:pages": "Seiten lesen", "write:pages": "Seiten schreiben", "read:db": "Datenbanken lesen",
              "write:db": "Datenbanken schreiben", "read:tasks": "Aufgaben lesen", "write:tasks": "Aufgaben schreiben",
              "read:files": "Dateien lesen", "write:files": "Dateien hochladen", "read:comments": "Kommentare lesen",
-             "write:comments": "Kommentare schreiben", "read:calendar": "Kalender lesen", "write:calendar": "Kalender schreiben"}
+             "write:comments": "Kommentare schreiben", "read:calendar": "Kalender lesen", "write:calendar": "Kalender schreiben",
+             "memory": "Gedächtnis"}
 
 
 def _scope_label(s):
@@ -530,7 +534,7 @@ def _consent(request, rid, err=None):
         return _page(request, csp_form=_origin(back), mode="confirm", rid=rid, client=cl["name"], user=info.get("name") or uid,
                      uid=uid, sso=sso, pk_only=pk_only, passkey="passkey" in have, pk_origin=mfa.ORIGIN,
                      code_only="password" not in have and "totp" in have, err=err)
-    rights = [{"scope": s, "label": _scope_label(s)} for s in p["scopes"] if s != "mcp"]
+    rights = [{"scope": s, "label": _scope_label(s), "checked": s not in OPT_IN} for s in p["scopes"] if s != "mcp"]
     return _page(request, csp_form=_origin(back), mode="consent", rid=rid, client=cl["name"], back_host=_host_of(back),
                  rights=rights, user=info.get("name") or uid, uid=uid, err=err)
 

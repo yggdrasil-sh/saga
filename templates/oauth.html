@@ -17,7 +17,7 @@
   <input type="hidden" name="r" value="{{ rid }}">
   <input type="hidden" name="scope" value="mcp">
   <fieldset class="oa-rights"><legend>{{ _("Das darf die App") }}</legend>
-    {% for r in rights %}<label class="hk-check oa-right"><input type="checkbox" name="scope" value="{{ r.scope }}" checked> {{ r.label }}</label>
+    {% for r in rights %}<label class="hk-check oa-right"><input type="checkbox" name="scope" value="{{ r.scope }}"{% if r.checked %} checked{% endif %}> {{ r.label }}</label>
     {% endfor %}
   </fieldset>
   <p class="hk-hint oa-limits">{{ _("Die App kann nie mehr als dein Konto. Chats, Anrufe und Aufträge an Saga bleiben für sie gesperrt. Trennen kannst du sie jederzeit unter Einstellungen → Verbundene Apps.") }}</p>

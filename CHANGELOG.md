@@ -43,6 +43,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Adresse, Modell, Schlüssel (nur „gespeichert ✓“, nie zurückgegeben), „Modell geladen halten“ (keep_alive, nur Ollama),
   Zeitlimits, Stand über alle Konten, „Verbindung testen“; Warnung, wenn der Endpunkt im Internet liegt („Erinnerungen
   verlassen dann den Server“), schon beim Tippen als Vorab-Hinweis. Klartexte de/en/es/ru/th.
+- **Gedächtnis über verbundene Apps (2581):** der Bereich `memory` steht jetzt auch auf der OAuth-Zustimmungsseite
+  („Gedächtnis“), als einziger **nicht vorausgewählt** – nur wer ihn anhakt, gibt etwa dem Claude-Connector `recall`/
+  `remember`. Bestehende Verbindungen behalten ihre Bereiche (für das Gedächtnis einmal trennen und neu verbinden);
+  `scopes_supported` nennt `memory`. Die Kollegin bleibt ausgeschlossen.
 - **Kollegin: Tageszeile „Kurz gesagt“ auf „Heute“ (2271, `aitoday1`):** höchstens drei Dinge des Tages beim Namen
   (nächster Termin, wichtigste überfällige bzw. heute fällige Aufgabe samt Aufgabenquellen, ab 18:00 der erste Termin
   von morgen) und „Wartet auf dich“ für Aufträge – ohne Modell und ohne Netz beim Abruf berechnet, Termine nur aus dem

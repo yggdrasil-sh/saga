@@ -162,9 +162,10 @@ die Postgres-Erweiterung). Ohne Schlüsselwort: keine Treffer.
 Rechte: nur die gebundene Datenbank bzw. Ich-Kern-Seite **des Token-Besitzers**, zusätzlich Seitenbäume (`roots`)
 und Rolle wie bei `query_database` (außerhalb: 404). Ohne Bereich `memory` → 403 `insufficient_scope`.
 Der Bereich `memory` reicht allein (kein `read:db`/`write:db` nötig) und steht in `GET /api/account/api-tokens`
-unter `scopes` (Beschriftung im Web: „Gedächtnis“). Verbundene Apps per OAuth (`sgo_`) bekommen ihn vorerst **nicht**
-(die Zustimmungsseite wählt alle Bereiche vor) – für claude.ai einen `sga_`-Token mit `mcp` + `memory` als
-Connector-Schlüssel nehmen.
+unter `scopes` (Beschriftung im Web: „Gedächtnis“). Verbundene Apps per OAuth (`sgo_`) bekommen ihn nur,
+wenn die Person ihn auf der Zustimmungsseite **ausdrücklich anhakt** – „Gedächtnis“ steht dort als einziger Bereich
+**nicht vorausgewählt** (`oauth.OPT_IN`). Bestehende Verbindungen behalten ihre Bereiche; für das Gedächtnis den
+Connector einmal trennen und neu verbinden. Alternativ ein `sga_`-Token mit `mcp` + `memory`.
 
 - `GET /api/v1/memory/core` → `{"id", "title", "markdown", "updated", "kontext"}`
   `kontext` = Ich-Kern im `saga-data`-Rahmen (für Hooks, fertig entschärft).

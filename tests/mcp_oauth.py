@@ -475,6 +475,10 @@ def part_flow(cid):
     ok("Zustimmungsseite: form-action nur self + Ruecksprung-Origin", "form-action 'self' http://127.0.0.1:9" in csp, csp)
     ok("Zustimmungsseite: kein Scope tel und keine Webhooks angeboten", "tel" not in re.findall(r'name="scope" value="([^"]+)"', page)
        and 'value="webhooks"' not in page)
+    # 2581 (a): Gedaechtnis wird angeboten, ist aber als einziger Bereich nicht vorausgewaehlt
+    ok("Zustimmungsseite: Gedächtnis (memory) angeboten, aber nicht vorausgewählt",
+       'name="scope" value="memory">' in page and "memory" not in re.findall(r'name="scope" value="([^"]+)" checked', page)
+       and 'value="read:pages" checked' in page, re.findall(r'name="scope" value="([^"]+)"[^>]*>', page))
     rid = nxt.split("r=", 1)[1]
     csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
     have = re.findall(r'name="scope" value="([^"]+)" checked', page)
@@ -670,6 +674,37 @@ def part_rt42(acc):
         tools.unregister("oa_chat_dummy")
 
 
+def part_memory(cid):
+    """2581 (a): Bereich memory nur, wenn die Person ihn ausdruecklich anhakt; sonst keine Gedaechtnis-Werkzeuge."""
+    def names(acc):
+        st, d, _, _ = rpc(acc, "tools/list")
+        return {x["name"] for x in ((d.get("result") or {}).get("tools") or [])}
+    st, d, _, _ = register(client_name="Gedaechtnis-Client")      # eigener Client: eine neue Zustimmung ersetzt die alte Verbindung
+    cid = d.get("client_id", "")
+    ver, ch = pkce()
+    code, _ = code_for(cid, ver, ch, state="mem-0")                 # nur die vorausgewaehlten Haekchen
+    st, d, _, _ = exchange(cid, code, ver)
+    got = d.get("scope", "").split()
+    ok("memory: Standard-Zustimmung gibt kein memory", st == 200 and "memory" not in got and "read:pages" in got, d)
+    n0 = names(d.get("access_token", ""))
+    ok("memory: ohne Bereich keine recall/remember in tools/list", n0 and not {"recall", "remember"} & n0, sorted(n0)[-5:])
+    ver, ch = pkce()
+    code, _ = code_for(cid, ver, ch, state="mem-1", scopes=["read:pages", "memory"])   # Person hakt Gedaechtnis an
+    st, d, _, _ = exchange(cid, code, ver)
+    got = d.get("scope", "").split()
+    ok("memory: angehakt -> Token mit memory (+mcp)", st == 200 and set(got) == {"mcp", "read:pages", "memory"}, d)
+    n1 = names(d.get("access_token", ""))
+    ok("memory: angehakt -> recall/remember in tools/list", {"recall", "remember"} <= n1, sorted(n1))
+    ver, ch = pkce()
+    code, _ = code_for(cid, ver, ch, state="mem-2", scope="mcp read:pages", scopes=["read:pages", "memory"])
+    st, d, _, _ = exchange(cid, code, ver)
+    ok("memory: nicht angefragt -> untergeschobenes Haekchen wirkt nicht", st == 200 and "memory" not in d.get("scope", "").split(), d)
+    ver, ch = pkce()
+    code, _ = code_for(cid, ver, ch, state="mem-3", scopes=["memory"])                  # nur Gedaechtnis reicht
+    st, d, _, _ = exchange(cid, code, ver)
+    ok("memory: nur Gedaechtnis gewaehlt ist erlaubt", st == 200 and set(d.get("scope", "").split()) == {"mcp", "memory"}, d)
+
+
 def part_refresh(cid, ref):
     ver, ch = pkce()
     st, d, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": ref})
@@ -816,6 +851,7 @@ def main():
         acc, ref, granted = part_flow(cid)
         part_fresh(cid)
         part_rt42(acc)
+        part_memory(cid)
         part_refresh(cid, ref)
         part_grace(cid)
         part_n3(cid)

@@ -95,5 +95,6 @@ Anweisungen**. Claude Code begrenzt den Text auf 10 000 Zeichen; ein längerer I
     | python3 ~/.config/saga/saga_hooks.py
   ```
 - Jeder gezeigte Treffer zählt als Abruf (Spalten „Abrufe“/„Letzter Abruf“, gebündelt höchstens alle 10 Minuten).
-- In claude.ai-Chats gibt es keine Hooks – dort ruft das Modell `recall` über den MCP-Connector auf (Token mit `mcp`
-  und `memory`).
+- In claude.ai-Chats gibt es keine Hooks – dort ruft das Modell `recall` über den MCP-Connector auf. Dafür beim
+  Verbinden auf der Zustimmungsseite **„Gedächtnis“ anhaken** (nicht vorausgewählt; eine bestehende Verbindung einmal
+  trennen und neu verbinden) – oder ein `sga_`-Token mit `mcp` + `memory`.

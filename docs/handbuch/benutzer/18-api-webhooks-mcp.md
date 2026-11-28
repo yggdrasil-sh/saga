@@ -207,8 +207,9 @@ mit dem MCP Inspector.
    **Neu anmelden**.
 3. Die Seite **App verbinden** zeigt, welche App fragt, mit welchem Konto du angemeldet bist, die Adresse deines Saga,
    wohin es danach weitergeht und was die App darf: Seiten, Datenbanken, Aufgaben, Dateien, Kommentare und Kalender,
-   jeweils Lesen und Ändern getrennt. Nimm die Häkchen weg, die Claude nicht braucht, und wähl **Erlauben** – oder
-   **Ablehnen**.
+   jeweils Lesen und Ändern getrennt, dazu das **Gedächtnis** (Einstellungen → Gedächtnis). Das Gedächtnis
+   ist als einziges **nicht angehakt** – setz das Häkchen nur, wenn Claude deine Erinnerungen abrufen und ergänzen
+   soll. Nimm die Häkchen weg, die Claude nicht braucht, und wähl **Erlauben** – oder **Ablehnen**.
 
 Danach siehst du Claude unter **Einstellungen → Verbundene Apps** – mit den Rechten und wann es zuletzt etwas getan
 hat. **Trennen** nimmt den Zugriff sofort weg; Claude muss dann neu verbunden werden.

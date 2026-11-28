@@ -101,7 +101,9 @@ async function passkeyPart(br) {
   const txt = await p.textContent('main');
   ok('Zustimmung nennt Client, Konto, Saga-Adresse, Ruecksprung-Host', txt.includes('„Claude“') && txt.includes('Anna Ahorn') && txt.includes(BASE) && txt.includes('claude.ai'), txt.slice(0, 300));
   const boxes = await p.$$eval('input[name=scope][type=checkbox]', (x) => x.map((i) => i.value));
-  ok(`Zustimmung: ${boxes.length} Rechte zum Abwaehlen, kein tel`, boxes.length === 12 && !boxes.some((s) => s.startsWith('tel')), boxes);
+  ok(`Zustimmung: ${boxes.length} Rechte zum Abwaehlen, kein tel`, boxes.length === 13 && !boxes.some((s) => s.startsWith('tel')), boxes);
+  const unchecked = await p.$$eval('input[name=scope][type=checkbox]:not(:checked)', (x) => x.map((i) => i.value));
+  ok('Zustimmung: nur „Gedächtnis“ (memory) nicht vorausgewählt (2581)', unchecked.length === 1 && unchecked[0] === 'memory', unchecked);
   ok('Zustimmung ohne Konsolen-/CSP-Fehler', !errs.length, errs);
   await p.screenshot({ path: path.join(SHOTS, 'oauth-zustimmung-hell.png'), fullPage: true });
   await p.emulateMedia({ colorScheme: 'dark' });
@@ -121,7 +123,7 @@ async function passkeyPart(br) {
   const tok = await (await fetch(BASE + '/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', code: back ? back.searchParams.get('code') : '', redirect_uri: RU, code_verifier: ver,
       client_id: reg.client_id, resource: BASE + '/mcp' }) })).json();
-  ok('Token: ohne write:files und write:calendar', /^sgo_/.test(tok.access_token || '') && !/write:files|write:calendar/.test(tok.scope) && /write:pages/.test(tok.scope), tok);
+  ok('Token: ohne write:files, write:calendar und memory', /^sgo_/.test(tok.access_token || '') && !/write:files|write:calendar|memory/.test(tok.scope) && /write:pages/.test(tok.scope), tok);
   const mr = await fetch(BASE + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
     Authorization: 'Bearer ' + tok.access_token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
   ok('/mcp tools/list mit dem Token', mr.status === 200);

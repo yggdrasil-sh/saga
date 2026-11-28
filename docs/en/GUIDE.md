@@ -1677,8 +1677,9 @@ connector on claude.ai, Claude Desktop or the MCP Inspector:
    asks once more for your **password** (or a code from the authenticator app); SSO accounts need a sign-in from the
    last 5 minutes, otherwise choose **Sign in again**.
 3. The page **Connect app** shows which app is asking, your account, the Saga address, where you return to and what
-   the app may do (pages, databases, tasks, files, comments, calendar – reading and changing separately). Untick
-   what Claude shouldn't do and choose **Allow** – or **Decline**.
+   the app may do (pages, databases, tasks, files, comments, calendar – reading and changing separately – plus
+   **Memory**). Memory is the only one that is **not ticked**: tick it only if Claude should recall and add to your
+   memories. Untick what Claude shouldn't do and choose **Allow** – or **Decline**.
 
 The app can never do more than your account. Chats, calls and tasks for Saga stay off limits for it. The name on the
 page was chosen by the app itself: only allow an app you just set out to add yourself. Content of shared pages can

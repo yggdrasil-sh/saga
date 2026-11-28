@@ -39,7 +39,7 @@ router = APIRouter()
 PREFIX = "sga_"
 SCOPES = ("read:pages", "write:pages", "read:db", "write:db", "read:tasks", "write:tasks", "read:files", "write:files",
           "read:comments", "write:comments", "read:calendar", "write:calendar", "webhooks", "mcp",
-          "memory")       # 2.6 (Bugs-DB 2581): Gedaechtnis /api/v1/memory/..., MCP recall/remember (nie fuer Auftraege/OAuth)
+          "memory")       # 2.6 (Bugs-DB 2581): Gedaechtnis /api/v1/memory/..., MCP recall/remember (nie fuer Auftraege; OAuth nur abgewaehlt angeboten)
 ROOTS_MAX = 20
 NAME_MAX = 60
 DEFAULT_DAYS = 90
