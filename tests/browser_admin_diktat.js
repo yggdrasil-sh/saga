@@ -31,7 +31,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   // Ausschnitt: Ende der Embeddings bis Anfang der Auftraege (vorher/nachher vergleichbar)
   async function shot(p, name, hide) {
-    if (hide) await p.addStyleTag({ content: '#diktat{display:none!important}' });
+    if (hide) await p.evaluate(() => { document.getElementById('diktat').style.setProperty('display', 'none', 'important'); });   // CSSOM statt Inline-Stil (CSP)
     await p.evaluate(() => { const e = document.getElementById('embeddings'); if (e) e.scrollIntoView({ block: 'start' }); });
     await sleep(200);
     const box = await p.evaluate(() => {

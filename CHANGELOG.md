@@ -55,11 +55,18 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Gedächtnis: Spalte „Sensibel“, Block „Nickerchen“ (Zahl und letzter Schnappschuss, Hinweis bei fehlender Option) und
   „Schattenmodus (Probelauf)“ mit Schalter, Stand „n Verknüpfungen · m Spuren“, „Wird aufgebaut …“ und „Spuren löschen“.
   Reihen `tests/browser_graph_schatten.js`, `tests/browser_gedaechtnis.js`.
-- **Kollegin: Diktat (2274 K-F, `aistt1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §15):** Vertrag für Web und Apps –
-  `POST /api/ai/transcribe` (rohe Ogg/Opus- oder WAV-Aufnahme ≤ 60 s/2 MiB, nur Durchreiche an einen Whisper-kompatiblen
-  Dienst, Ton nie gespeichert), `GET /api/ai/status` `stt` mit Hinweis, wohin die Aufnahme geht, `POST /api/ai/jobs`
-  `input: "dictation"` mit Herkunft „Diktiert“ und Warnung bei Anweisungen an die KI, Entscheidung Gerät/Server/kein
-  Knopf, Mac-Hülle `dictate`; Vektoren `tests/vectors/stt_contract.json`.
+- **Kollegin: Diktat über den Server (2274 K-F, `aistt1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §15):** Admin ›
+  KI-Assistent › „Diktat“ trägt einen Whisper-kompatiblen Dienst ein (faster-whisper, whisper.cpp …; ab Werk aus, ohne
+  „Cloud erlauben“ nur Adressen im eigenen Netz, Cloud nur über https). `POST /api/ai/transcribe` nimmt eine rohe
+  Ogg/Opus- oder WAV-Aufnahme (≤ 60 s, 2 MiB) und reicht sie nur durch: im Speicher, nie auf der Platte, nie im Log, nie
+  im Verlauf; festgehaltene IPs (Schutz vor Umbiegen per DNS), keine Metadaten-Adressen, keine Weiterleitungen; je Person
+  1 gleichzeitig, 30/Stunde, 120/Tag, serverweit 2. Nur mit Fähigkeit `ai` und Einwilligung, nie mit API-Schlüssel;
+  Schalter „Diktat nur auf dem Gerät“ (`ai_prefs.dictation`) sperrt den Server-Weg. `GET /api/ai/status` → `stt` mit
+  fertigem Satz, wohin die Aufnahme geht (Heimnetz bzw. Internet mit Anbieter und Land, du/Sie). Diktierte Aufträge
+  (`POST /api/ai/jobs` `input: "dictation"`) tragen die Herkunft „Diktiert“, bei Anweisungen an die KI mit Warnung, und
+  lassen sich nie aus einer Mitteilung freigeben. Messwert im Pool `stt` (zählt nicht ins Kontingent). Vertrag für die
+  Apps inkl. Mac-Hülle `dictate`, Vektoren `tests/vectors/stt_contract.json`, Tests `tests/kollegin_diktat.py`.
+  **Hinter nginx** für `/api/ai/transcribe` `proxy_request_buffering off` setzen (Anleitung, Abschnitt Reverse-Proxy).
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im

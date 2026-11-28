@@ -667,6 +667,7 @@ def part_inproc():
        chk("8.8.4.4", "api.openai.com", 443) and not chk("169.254.169.254", "api.openai.com", 443) and not chk("8.8.4.4", "x.example", 443)
        and not chk("10.1.2.3", "api.openai.com", 443) and not chk_off("8.8.8.8", "api.openai.com", 443))
     # Admin-Regeln beim Speichern (nichts geht raus)
+    i18n.set_lang("de")
     n0 = wcount()[0]
     st1, o1 = ai_stt.admin_save(dict(STT0, url="https://8.8.8.8", cloud=False))
     st2, o2 = ai_stt.admin_save(dict(STT0, url="https://8.8.8.8", cloud=True))
