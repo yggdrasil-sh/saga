@@ -24,12 +24,14 @@ case $RN in
   mcp_oauth.py|mcp_oauth_proben.py) REIHE_ENV=(SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000) ;;
   # 2.6 (2516): Push-Relais der Reihe (Durchreicher 18630 im Namensraum, Domain-Nachweis mit saga.example.org)
   fakerelay.py)    REIHE_ENV=(SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org) ;;
+  # 2636: Testuhr (Drossel von Papierkorb-Frist und Grabstein-Aufraeumen eine Stunde vorstellen)
+  baum_sperre.py)  REIHE_ENV=(SAGA_TEST_HOOKS=1 SAGA_TEST_TOKEN=umg-nur-test-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')) ;;
   widget_push.py)  REIHE_ENV=(SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org SAGA_WIDGET_PUSH_GAP=6) ;;
 esac
 # Backups vor Migrationen: sonst aus (schneller); an fuer Reihen, die sie pruefen (versionen.py) oder mit UMG_BACKUP=1
 case $RN in versionen.py) UMG_BACKUP=${UMG_BACKUP:-1} ;; esac
 if [ "${UMG_BACKUP:-0}" = 1 ]; then unset SAGA_SKIP_BACKUP; else export SAGA_SKIP_BACKUP=1; fi
-[ ${#REIHE_ENV[@]} -gt 0 ] && { export "${REIHE_ENV[@]}"; echo "Variablen der Reihe (Server + Reihe): $(printf '%s ' "${REIHE_ENV[@]}" | sed 's/SECRET=[^ ]*/SECRET=.../g')"; }
+[ ${#REIHE_ENV[@]} -gt 0 ] && { export "${REIHE_ENV[@]}"; echo "Variablen der Reihe (Server + Reihe): $(printf '%s ' "${REIHE_ENV[@]}" | sed -E 's/(SECRET|TOKEN)=[^ ]*/\1=.../g')"; }
 echo "Backups vor Migrationen: $([ "${UMG_BACKUP:-0}" = 1 ] && echo an || echo aus) (UMG_BACKUP)"
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 export HOME=$UMG/home                                    # NSS-DB mit der Test-CA (Chromium), sonst nichts darin
