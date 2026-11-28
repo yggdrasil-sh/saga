@@ -25,7 +25,9 @@
    oben, Kennenlernen-Karte solange keine Einwilligung, danach Verlauf + Eingabe. static/saga.js fuellt alles; der Bereich
    #sg-cards ist der Einhaengepunkt fuer Plan-Karte/Rueckmeldung (Rolle kb, Ereignis "saga:turn").
    web-saga (UX §2/R3): Reiter Gespraech / Auftraege (#sg-tabs, nur mit Auftraegen); im Gespraech gibt der Umschalter
-   "Als Auftrag" (#sg-mode) die Bitte als Auftrag - Plan-Karte und Rueckmeldung (static/ai-jobs.js) stehen im Verlauf. #}
+   "Als Auftrag" (#sg-mode) die Bitte als Auftrag - Plan-Karte und Rueckmeldung (static/ai-jobs.js) stehen im Verlauf.
+   kf-web (2274 K-F): static/chat-voice.js fuer das Diktat (SagaVoice.record/recordWav, nur im Speicher); Knopf und Zeilen
+   legt static/saga.js an. #}
 <body class="has-side saga-page" data-v="{{ v }}" data-uid="{{ uid }}">
 <a class="skip-link" href="#saga" data-skip="saga">{{ _("Zum Inhalt") }}</a>
 <header class="np-head side-head">
@@ -78,6 +80,7 @@
 <script src="/static/firststeps.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>
 <script src="/static/ai-jobs.js?v={{ v }}"></script>
+<script src="/static/chat-voice.js?v={{ v }}"></script>
 <script src="/static/saga.js?v={{ v }}"></script>
 <script src="/static/contacts.js?v={{ v }}"></script>
 <script src="/static/gedaechtnis.js?v={{ v }}"></script>

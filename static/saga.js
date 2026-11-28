@@ -959,7 +959,7 @@
         headers: { 'X-Saga': '1', 'Content-Type': fmt === 'wav' ? 'audio/wav' : 'audio/ogg' }, body: res.blob })
         .then(function (rs) {
           return rs.json().catch(function () { return {}; }).then(function (d) { return { s: rs.status, d: d || {}, ra: parseInt(rs.headers.get('Retry-After'), 10) || 0 }; });
-        }).then(function (x) { clearTimeout(to); if (DI.seq === my) srvResult(x); }, function (e) {
+        }).then(function (x) { clearTimeout(to); x.limit = limit; if (DI.seq === my) srvResult(x); }, function () {
           clearTimeout(to);
           if (DI.seq !== my) return;
           dictReset(); dictErr(T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.'));
@@ -978,7 +978,7 @@
     dictReset();
     if (x.s === 200) {
       if (!dictInsert(d.text)) dictErr(T('Nichts verstanden – versuch es noch mal.'));
-      else dictSay('');
+      else dictSay(x.limit ? T('Höchstens 60 Sekunden') : '');   // warum die Aufnahme endete
       return;
     }
     if (x.s === 400 && code === 'empty') { dictErr(T('Nichts verstanden – versuch es noch mal.')); return; }
@@ -1078,9 +1078,12 @@
       .then(function (v) { return (v.features || []).indexOf('aistt1') >= 0; }).catch(function () { return false; });
     var mode = window.SagaVoice ? SagaVoice.mode().catch(function () { return null; }) : Promise.resolve(null);
     Promise.all([feat, api('GET', '/api/ai/prefs').catch(function () { return null; }), mode]).then(function (r) {
-      DI.feat = r[0]; DI.prefs = r[1]; DI.ogg = !!r[2]; dictPaint();
+      DI.feat = r[0]; DI.prefs = r[1]; DI.ogg = !!r[2]; DI.ready = true; dictPaint();
     });
   }
+  S.dictState = function () {                          // fuer Tests: Zustand ohne Ton
+    return { ready: !!DI.ready, st: DI.st, way: dictWay(), dictated: DI.dictated, feat: DI.feat, fmt: dictFmt(dictStt()), id: DI.id };
+  };
   function pageInit() {
     $('sg-ask').addEventListener('submit', function (e) { e.preventDefault(); submit(); });
     $('sg-ta').addEventListener('keydown', function (e) {
