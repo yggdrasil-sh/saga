@@ -13,6 +13,7 @@ from html import unescape as html_unescape
 from urllib.parse import quote, urlparse
 from db import connect as _db
 from saga.core import E, SECRET, STATE_DIR, _json_load, t
+from saga import testclock
 
 
 NOTE_TITLE_MAX, NOTE_BODY_MAX = 200, 20000
@@ -413,9 +414,10 @@ def _purge_old(c, uid, every=0):
     every > 0: hoechstens alle `every` Sekunden je Konto (Seitenbaum: dort sind Papierkorb-Seiten ohnehin unsichtbar,
     eine Stunde Verzug aendert nichts; die Papierkorb-Liste selbst prueft immer)."""
     now = time.time()
-    if every and now - _PURGED.get(uid, 0) < every:
+    tick = testclock.now()                 # Drossel nach der Testuhr (Tests: eine Stunde vorstellen); Frist nach der echten Zeit
+    if every and 0 <= tick - _PURGED.get(uid, 0) < every:     # zurueckgestellte Testuhr: wieder pruefen
         return
-    _PURGED[uid] = now
+    _PURGED[uid] = tick
     old = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL AND deleted_at < ?",
                                    (uid, now - TRASH_DAYS * 86400))]
     if old:

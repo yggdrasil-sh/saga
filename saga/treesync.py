@@ -19,6 +19,7 @@ Reihenfolge der uebrigen bleibt. Der Baum enthaelt nur eigene Seiten des Kontos 
 import re
 import time
 from db import connect as _db
+from saga import testclock
 from saga.notes import NOTE_META_COLS, _note_meta, _purge_old
 from saga.sharing import shared_ids, unread_notes
 
@@ -26,7 +27,8 @@ FIELDS = ("id", "title", "icon", "parent_id", "updated", "tags", "pinned", "temp
           "unread")
 TOMB_DAYS = 30                       # Grabsteine geloeschter Seiten: so lange kann ein Client per since nachholen
 _CURSOR = re.compile(r"([0-9a-f]{12})\.([0-9]{1,19})")
-_PRUNED = [0.0]
+_PRUNED = [0.0]                      # Testuhr (saga/testclock.py): Tests koennen eine Stunde vorstellen
+LOCK_WAIT = "2s"                     # _prune: so lange hoechstens auf fremde Sperren warten (Bugs-DB 2636)
 _COLS = f"{NOTE_META_COLS}, archived, locked"
 _KEY = "sort NULLS FIRST, created, id"
 SMALL = 2000                         # bis zu so vielen geaenderten Seiten: Freigabe/Kommentar-Punkt nur fuer diese pruefen
@@ -63,14 +65,22 @@ def _state(c):
 
 def _prune():
     """Alte Grabsteine entfernen (hoechstens stuendlich je Prozess, eigene Verbindung); die Grenze merkt sich die groesste
-    entfernte Transaktion - aeltere Stände bekommen danach full."""
-    now = time.time()
-    if now - _PRUNED[0] < 3600:
+    entfernte Transaktion - aeltere Stände bekommen danach full.
+    Bugs-DB 2636: tree() ruft das MITTEN in der Transaktion der Anfrage auf - deren _purge_old hat gerade Papierkorb-Seiten
+    endgueltig geloescht, der Trigger (db.py, TREE_SEQ_SQL) haelt deren Zeilen in note_tseq gesperrt, und genau diese
+    Grabsteine sind alt (im Papierkorb seit TRASH_DAYS). Ein Warten darauf waere eine Selbstsperre, die Postgres nicht
+    erkennt (zwei Verbindungen, ein Thread). Darum: gesperrte Zeilen ueberspringen (SKIP LOCKED - die kommen beim naechsten
+    Mal dran; die Grenze ist die groesste TATSAECHLICH entfernte Transaktion) und hoechstens kurz auf andere Sperren warten
+    (lock_timeout, z. B. die Grenze in note_tseq_meta bei einem zweiten Prozess) - dann Fehler, der Aufrufer ignoriert ihn."""
+    now = testclock.now()
+    if 0 <= now - _PRUNED[0] < 3600:
         return
     _PRUNED[0] = now
     with _db() as c, c:
-        r = c.execute("WITH d AS (DELETE FROM note_tseq WHERE gone=1 AND at < ? RETURNING xid) SELECT max(xid) FROM d",
-                      (now - TOMB_DAYS * 86400,)).fetchone()
+        c.execute(f"SET LOCAL lock_timeout = '{LOCK_WAIT}'")
+        r = c.execute("WITH d AS (DELETE FROM note_tseq WHERE (uid, id) IN (SELECT uid, id FROM note_tseq WHERE gone=1 AND at < ? "
+                      "FOR UPDATE SKIP LOCKED) RETURNING xid) SELECT max(xid) FROM d",
+                      (time.time() - TOMB_DAYS * 86400,)).fetchone()
         if r and r[0] is not None:
             c.execute("INSERT INTO note_tseq_meta (k, v) VALUES ('horizon', ?) ON CONFLICT (k) DO UPDATE "
                       "SET v = GREATEST(note_tseq_meta.v::bigint, EXCLUDED.v::bigint)::text", (str(r[0]),))
