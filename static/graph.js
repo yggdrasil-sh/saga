@@ -376,9 +376,9 @@
     var np = 0;
     pul.forEach(function (n) {
       var r = self.rr(n);
-      if (n.pr) {
-        ctx.globalAlpha = 0.95; ctx.lineWidth = 2.2 / k;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + 4 / k, 0, 6.2832); ctx.stroke(); return;
+      if (n.pr) {                                    // gestrichelt: nicht mit dem Ring "Offene Seite" verwechseln (Pruefer 2595)
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 2.2 / k; ctx.setLineDash([3 / k, 2.5 / k]);
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 4 / k, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); return;
       }
       np++;
       [0, 0.35].forEach(function (off) {
