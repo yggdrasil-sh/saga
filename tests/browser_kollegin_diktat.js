@@ -195,6 +195,7 @@ async function partA(br, name, BRK) {
   await gotoSaga(p, true);
   ok('nur wav im Dienst -> Format wav', (await st(p)).fmt === 'wav' && await micShown(p), await st(p));
   await shot(p, 'ort-dunkel');
+  await p.emulateMedia({ colorScheme: 'light' }); await shot(p, 'ort-hell'); await p.emulateMedia({ colorScheme: 'dark' });
 
   // --- Hinweis vor der ersten Aufnahme (15.4) ---
   M.stt = clone(V.status.home);
