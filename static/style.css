@@ -2422,6 +2422,10 @@ body.gr-open{overflow:hidden}
 .gr-lg i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .gr-lg-cur i{background:var(--accent);box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--accent)}
 .gr-lg-mem i{background:var(--gr-row);box-shadow:0 0 0 2px color-mix(in srgb,var(--gr-mem) 55%,transparent),0 0 6px 3px color-mix(in srgb,var(--gr-mem) 45%,transparent)}   /* 2595: kuerzlich abgerufen */
+/* 2601/2603 (docs/MEMORY.md 10.4): gerade bewusst (Ring), Verknuepfung (Linie), waere aufgetaucht (gestrichelter Ring) */
+.gr-lg-aware i{background:var(--gr-row);box-shadow:0 0 0 1.5px var(--bg),0 0 0 3px var(--gr-mem)}
+.gr-lg-mlink i{width:16px;height:3px;border-radius:2px;background:var(--gr-mlink)}
+.gr-lg-shadow i{background:transparent;border:1.5px dashed var(--gr-shadow);width:11px;height:11px;box-sizing:border-box}
 .gr-card{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:.8rem;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.55rem .55rem .55rem 1rem;box-shadow:0 8px 28px rgba(0,0,0,.22);max-width:calc(100% - 24px);z-index:2}
 .gr-card-tx{display:flex;flex-direction:column;min-width:0;flex:1}
 .gr-card-t{font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -6,14 +6,19 @@
 // Text blendet je nach Zoom ein, gezogene Knoten ziehen ihre Nachbarn mit. prefers-reduced-motion: ohne Uebergaenge.
 // 2.6 (Bugs-DB 2595, docs/MEMORY.md 10): mit gebundenem Gedaechtnis wachsen oft abgerufene Erinnerungen, kuerzlich
 // abgerufene gluehen (klingt ueber 24 h ab), ein recall laesst sie live pulsieren (memory.recalled); Schalter "mem".
+// Stufe 3 (Bugs-DB 2601/2603, docs/MEMORY.md 10.4): Ich-Kern und gerade abgerufene Erinnerungen sind "bewusst" (voll, Ring),
+// der Rest "unterbewusst" (blasser), Schnappschuesse gedimmt; im Schattenmodus Verknuepfungen (Kanten-Art m, Breite/Deckkraft
+// nach Gewicht, "gemeinsam" gestrichelt) und Schatten-Treffer der letzten 24 h (gestrichelter Ring, live nach recall).
 (function () {
   'use strict';
   if (!window.HK || !document.body.classList.contains('notes-page')) return;
   var HK = window.HK, el = HK.el, T = window.T;
   var KEY = 'saga-graph';
   var DEF = { link: true, child: true, rel: true, tags: false, orphans: true, rows: true, arrows: false, labels: 1.1,
-              size: 1, width: 1, center: 0.5, repel: 0.6, spring: 0.5, dist: 0.5, groups: [], depth: 1, panel: false, mem: true };
-  var RESET = ['link', 'child', 'rel', 'tags', 'orphans', 'rows', 'arrows', 'labels', 'size', 'width', 'center', 'repel', 'spring', 'dist', 'mem'];
+              size: 1, width: 1, center: 0.5, repel: 0.6, spring: 0.5, dist: 0.5, groups: [], depth: 1, panel: false, mem: true,
+              memlinks: true, memshadow: true };
+  var RESET = ['link', 'child', 'rel', 'tags', 'orphans', 'rows', 'arrows', 'labels', 'size', 'width', 'center', 'repel', 'spring', 'dist', 'mem',
+               'memlinks', 'memshadow'];
   function prefs() {
     var p = {}; try { p = JSON.parse(HK.store(KEY) || '{}') || {}; } catch (e) { p = {}; }
     var o = {}; Object.keys(DEF).forEach(function (k) { o[k] = p[k] != null ? p[k] : DEF[k]; });
@@ -28,6 +33,8 @@
   function now() { return window.performance ? performance.now() : Date.now(); }
   // Gedaechtnis (2595): Groesse wie der Faktor freq (docs/MEMORY.md 4.1), Gluehen (1 - dt/24 h)^2, Puls ~1,6 s
   var DAY = 86400, PULSE = 1600, RM_RING = 4000, GLOW_MAX = 400;
+  // Stufe 3: "bewusst" = Ich-Kern, letzter Abruf hoechstens AKTIV_S her (Serverzeit) oder gerade pulsierend; Schatten-Ring live 1,2 s
+  var AKTIV_S = 1800, SH_PULSE = 1200, MBANDS = 5;
   function memF(h) { return h > 0 ? Math.min(1, Math.log(1 + h) / Math.log(21)) : 0; }
   function glowOf(lh, t) { if (!lh) return 0; var d = Math.max(0, t - lh); if (d >= DAY) return 0; var x = 1 - d / DAY; return x * x; }
   function rgba(c, a) {                              // '#rgb' / '#rrggbb' / 'rgb(...)' -> rgba mit Deckkraft a
@@ -52,21 +59,28 @@
   }
   function serverNow() { return Date.now() / 1000 + SKEW; }
   // recall (MCP/REST) lieferte Erinnerungen: Zaehler hier nachfuehren (ohne Neuladen), offene Ansicht pulst
-  function recalled(ids) {
-    if (!Array.isArray(ids) || !ids.length) return;
+  // 2603: "schatten" = Zeilen, die nur dank Verknuepfung aufgetaucht waeren (nur bei eingeschaltetem Schattenmodus; ids kann dann leer sein)
+  function recalled(ids, sch) {
+    ids = Array.isArray(ids) ? ids.filter(function (x) { return typeof x === 'number'; }) : [];
+    sch = Array.isArray(sch) ? sch.filter(function (x) { return typeof x === 'number'; }) : [];
+    if (!ids.length && !sch.length) return;
     if (!DATA || !DATA.mem) { DATA_T = 0; return; }        // gerade erst gebunden: beim naechsten Oeffnen neu laden
-    var t = Math.floor(serverNow()), by = {};
-    DATA.mem.rows.forEach(function (r) { by[r[0]] = r; });
+    var t = Math.floor(serverNow()), by = {}, m = DATA.mem;
+    m.rows.forEach(function (r) { by[r[0]] = r; });
     ids.forEach(function (id) {
-      if (typeof id !== 'number') return;
-      if (by[id]) { by[id][1]++; by[id][2] = t; } else { by[id] = [id, 1, t]; DATA.mem.rows.push(by[id]); }
+      if (by[id]) { by[id][1]++; by[id][2] = t; } else { by[id] = [id, 1, t]; m.rows.push(by[id]); }
     });
-    if (FULL && FULL.pulse) FULL.pulse(ids, t);
+    if (sch.length && m.shadow) {
+      var hb = {}; m.hits24 = m.hits24 || [];
+      m.hits24.forEach(function (r) { hb[r[0]] = r; });
+      sch.forEach(function (id) { if (hb[id]) { hb[id][1]++; hb[id][2] = t; } else { hb[id] = [id, 1, t]; m.hits24.push(hb[id]); } });
+    }
+    if (FULL && FULL.pulse) FULL.pulse(ids, t, sch);
   }
   document.addEventListener('hk-live', function (e) {
     var d = e.detail; if (!d) return;
     if (d.type === 'notes.tree') DATA_T = 0;
-    else if (d.type === 'memory.recalled') recalled(d.data && d.data.ids);
+    else if (d.type === 'memory.recalled') recalled(d.data && d.data.ids, d.data && d.data.schatten);
   });
 
   // Farben aus dem Stylesheet (hell/dunkel); werden je Ansicht zwischengespeichert, nicht je Bild abgefragt
@@ -75,23 +89,36 @@
     function v(n, fb) { return s.getPropertyValue(n).trim() || fb; }
     return { fg: v('--fg', '#ddd'), bg: v('--bg', '#111'), acc: v('--accent', '#c9a45c'), line: v('--gr-line', '#8b97a8'),
              page: v('--gr-node', '#9aa6b8'), db: v('--gr-db', '#b39ddb'), row: v('--gr-row', '#7fb0e0'), tag: v('--gr-tag', '#6cc48a'),
-             mem: v('--gr-mem', '#f5c25c'), lineA: parseFloat(v('--gr-line-a', '0.35')) || 0.35 };
+             mem: v('--gr-mem', '#f5c25c'), mlink: v('--gr-mlink', '#d9a23f'), shadow: v('--gr-shadow', '#5fd3d6'), lineA: parseFloat(v('--gr-line-a', '0.35')) || 0.35 };
   }
 
   // Graph fuer die Anzeige bauen: Filter, Tag-Knoten, Gruppenfarben, lokal (BFS ab einer Seite)
   function build(d, p, opt) {
-    var byId = {}, nodes = [], edges = [], mh = {};
-    if (d.mem && p.mem) (d.mem.rows || []).forEach(function (r) { mh[r[0]] = r; });   // nur eigene Gedaechtnis-Zeilen (Server)
+    var byId = {}, nodes = [], edges = [], mh = {}, M = d.mem, sn = {}, h24 = {};
+    if (M && p.mem) (M.rows || []).forEach(function (r) { mh[r[0]] = r; });   // nur eigene Gedaechtnis-Zeilen (Server)
+    if (M && p.mem) (M.snap || []).forEach(function (id) { sn[id] = true; });
+    if (M && M.shadow && p.memshadow) (M.hits24 || []).forEach(function (r) { h24[r[0]] = r; });
     d.nodes.forEach(function (n) {
       if (!p.rows && n[3] === 'row' && !(opt && opt.focus === n[0])) return;
       var o = { id: n[0], title: n[1] || T('Unbenannt'), icon: n[2], kind: n[3], own: !!n[4], parent: n[5], deg: 0, tags: [] };
       var mr = mh[o.id];
       if (mr && o.own) { o.hits = mr[1] || 0; o.lh = mr[2] || 0; o.mf = memF(o.hits); }
+      if (M && p.mem && o.own) {                             // Stufe 3: Gedaechtnis-Knoten, Ich-Kern, Schnappschuesse
+        if (o.parent === M.db) o.memn = true;
+        if (M.core != null && o.id === M.core) o.core = true;
+        if (sn[o.id]) o.snap = true;
+      }
+      var hr = h24[o.id]; if (hr && o.own) { o.sh = hr[1] || 0; o.shl = hr[2] || 0; }
       byId[o.id] = o; nodes.push(o);
     });
-    function add(a, b, k) { if (byId[a] && byId[b] && a !== b) { edges.push({ s: byId[a], t: byId[b], k: k }); } }
+    function add(a, b, k) { if (byId[a] && byId[b] && a !== b) { var e = { s: byId[a], t: byId[b], k: k }; edges.push(e); return e; } return null; }
     d.edges.forEach(function (e) {
       if ((e[2] === 'l' && p.link) || (e[2] === 'c' && p.child) || (e[2] === 'r' && p.rel)) add(e[0], e[1], e[2]);
+    });
+    // 2603: Verknuepfungen (nur Schattenmodus): [a, b, gewicht, herkunft a|g|h, gepinnt]; zaehlen zum Grad, Feder nach Gewicht
+    if (M && M.shadow && p.memlinks) (M.links || []).forEach(function (l) {
+      var e = add(l[0], l[1], 'm'); if (!e) return;
+      e.w = Math.max(0, Math.min(1, +l[2] || 0)); e.her = l[3]; e.pin = !!l[4];
     });
     (d.tags || []).forEach(function (tg) {
       tg[1].forEach(function (id) { if (byId[id]) byId[id].tags.push(tg[0]); });
@@ -225,7 +252,7 @@
     var edges = this.edges;
     for (i = 0; i < edges.length; i++) {
       var e = edges[i], dx = e.t.x - e.s.x, dy = e.t.y - e.s.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
-      var f = (d - len) / d * spring * a, bs = e.s.deg / (e.s.deg + e.t.deg);
+      var f = (d - len) / d * (e.k === 'm' ? spring * 0.3 * e.w : spring) * a, bs = e.s.deg / (e.s.deg + e.t.deg);
       e.t.vx -= dx * f * bs; e.t.vy -= dy * f * bs; e.s.vx += dx * f * (1 - bs); e.s.vy += dy * f * (1 - bs);
     }
     var drag = this.drag && this.drag.node;
@@ -257,6 +284,7 @@
   };
   View.prototype.rad = function (n) {
     var m = n.mf ? 1 + 0.8 * n.mf : 1;               // Gedaechtnis: oft abgerufen = groesser, hoechstens x1,8
+    if (n.core) m *= 1.15; else if (n.snap) m *= 0.7; // Stufe 3: Ich-Kern etwas groesser, Schnappschuesse kleiner
     return Math.max((2.5 + Math.sqrt(n.deg) * 1.6) * this.p.size * (n.tag ? 0.85 : 1) * m, 2.5 / this.k);
   };
   // Puls nach recall: zwei Ringe (~1,6 s); weniger Bewegung: ruhiger Ring fuer 4 s, ein Bild davor und danach
@@ -273,6 +301,32 @@
       this.rmT = setTimeout(function () { if (self.c.isConnected) self.draw(); }, RM_RING + 50);
     } else this.loop();
     return true;
+  };
+  // 2603: Schatten-Treffer live - gestrichelter Ring dehnt sich in 1,2 s aus; weniger Bewegung: ruhiger Ring fuer 4 s
+  View.prototype.shadowPulse = function (ids, t) {
+    var self = this, any = false, tn = now();
+    (ids || []).forEach(function (id) {
+      var n = self.byId(id); if (!n || !n.own) return;
+      n.sh = (n.sh || 0) + 1; n.shl = t; any = true;
+      if (RM.matches) n.sr = tn + RM_RING; else n.sz = tn;
+    });
+    if (!any) return false;
+    if (RM.matches) {
+      this.draw(); clearTimeout(this.rmS);
+      this.rmS = setTimeout(function () { if (self.c.isConnected) self.draw(); }, RM_RING + 50);
+    } else this.loop();
+    return true;
+  };
+  // Stufe 3: "bewusst" = Ich-Kern, zuletzt vor hoechstens AKTIV_S abgerufen (Serverzeit) oder gerade pulsierend
+  View.prototype.aware = function (n, tS) {
+    return !!(n.memn || n.core) && !n.snap && !!(n.core || n.pz || n.pr || (n.lh && tS - n.lh <= AKTIV_S));
+  };
+  // Deckkraft der Fuellung: geteilte 0,7; Gedaechtnis: bewusst 1, unterbewusst 0,55, Schnappschuss 0,4
+  View.prototype.fillA = function (n, tS) {
+    if (!n.own) return 0.7;
+    if (n.snap) return 0.4;
+    if (n.memn && !this.aware(n, tS)) return 0.55;
+    return 1;
   };
   // gezeichneter Radius: waechst beim Ueberfahren um 35 % und auf mind. 5 px (Bildschirm), auch weit herausgezoomt
   View.prototype.rr = function (n) { var g = ease(n.g || 0), r = this.rad(n); return g ? Math.max(r * (1 + 0.35 * g), (2.5 + 2.5 * g) / this.k) : r; };
@@ -310,11 +364,35 @@
     ctx.setLineDash([]);
     if (arrows) {
       ctx.beginPath();
-      for (i = 0; i < this.edges.length; i++) { e = this.edges[i]; if (e.k !== 't' && !e.e && evis(e)) this.arrow(e, lw); }
+      for (i = 0; i < this.edges.length; i++) { e = this.edges[i]; if (e.k !== 't' && e.k !== 'm' && !e.e && evis(e)) this.arrow(e, lw); }
       ctx.globalAlpha = Math.min(1, base * 1.6); ctx.fillStyle = P.line; ctx.fill();
     }
+    // 2603: Verknuepfungen in 5 Gewichtsbaendern (je Band und Strichart ein Pfad): Breite lw*(0.6 + 2.4 w), Deckkraft
+    // 0.15 + 0.6 w (w = Mitte des Bandes), Herkunft "gemeinsam" gestrichelt; ueberfahrene einzeln in voller Staerke
+    var mb = {}, mbase = 1 - 0.8 * D;
+    for (i = 0; i < this.edges.length; i++) {
+      e = this.edges[i];
+      if (e.k !== 'm' || !evis(e)) continue;
+      if (e.e > 0) { hi.push(e); continue; }
+      var bk = Math.min(MBANDS - 1, Math.floor(e.w * MBANDS)) + (e.her === 'g' ? 'g' : '');
+      (mb[bk] = mb[bk] || []).push(e);
+    }
+    Object.keys(mb).forEach(function (bk) {
+      var w = (parseInt(bk, 10) + 0.5) / MBANDS;
+      ctx.beginPath();
+      mb[bk].forEach(function (e) { ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); });
+      ctx.setLineDash(bk.slice(-1) === 'g' ? [2 / k, 3 / k] : []);
+      ctx.lineWidth = lw * (0.6 + 2.4 * w); ctx.globalAlpha = (0.15 + 0.6 * w) * mbase; ctx.strokeStyle = P.mlink; ctx.stroke();
+    });
+    ctx.setLineDash([]); ctx.lineWidth = lw;
     hi.forEach(function (e) {
       var a = ease(e.e);
+      if (e.k === 'm') {
+        ctx.setLineDash(e.her === 'g' ? [2 / k, 3 / k] : []);
+        ctx.lineWidth = lw * (0.6 + 2.4 * e.w) * (1 + 0.3 * a); ctx.strokeStyle = P.mlink;
+        ctx.globalAlpha = Math.min(1, (0.15 + 0.6 * e.w) * mbase * (1 - a) + 0.95 * a);
+        ctx.beginPath(); ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); ctx.stroke(); return;
+      }
       ctx.setLineDash(e.k === 'r' ? [3 / k, 3 / k] : []);
       ctx.lineWidth = lw * (1 + 0.8 * a);
       ctx.globalAlpha = base * (1 - a); ctx.strokeStyle = P.line;
@@ -325,21 +403,27 @@
     ctx.setLineDash([]); ctx.lineWidth = lw;
     // Knoten: unbeteiligte je Farbe gebuendelt, hervorgehobene einzeln (wachsen, Akzentfarbe beim ueberfahrenen)
     var dimA = 1 - 0.85 * D, batches = {}, hiN = [], lab = [], thr = this.p.labels * 1.6, few = this.nodes.length <= 40;
-    var glow = [], pul = [], tS = serverNow(), tP = now();
+    var glow = [], pul = [], aw = [], shr = [], tS = serverNow(), tP = now(), memOn = this.p.mem;
     for (i = 0; i < this.nodes.length; i++) {
       n = this.nodes[i];
       var r = this.rad(n);
       if (n.pz && tP - n.pz > PULSE * 1.35) n.pz = 0;
       if (n.pr && tP > n.pr) n.pr = 0;
+      if (n.sz && tP - n.sz > SH_PULSE) n.sz = 0;
+      if (n.sr && tP > n.sr) n.sr = 0;
+      n.aw = memOn && this.aware(n, tS);
       if (!vis(n.x, n.y, r * 3)) continue;
-      if (n.lh) { var gw = glowOf(n.lh, tS); if (gw > 0.004) glow.push([n, gw]); }
+      if (n.lh) { var gw = glowOf(n.lh, tS); if (gw > 0.004 && !n.aw) glow.push([n, gw]); else if (gw > 0.004) glow.push([n, gw, 1]); }
       if (n.pz || n.pr) pul.push(n);
+      if (n.aw) aw.push(n);
+      if (n.sh || n.sz || n.sr) shr.push(n);
       if (!vis(n.x, n.y, r * 1.4)) continue;
+      n.fa = this.fillA(n, tS);
       if (n.e > 0 || n.g > 0 || n.id === this.focus) hiN.push(n);
-      else { var key = this.color(n) + (n.own ? '' : '|s'); (batches[key] = batches[key] || []).push(n); }
+      else { var key = this.color(n) + '|' + n.fa; (batches[key] = batches[key] || []).push(n); }
       // Text: weich je Zoom (wie Obsidian), Nachbarn des ueberfahrenen Knotens immer
       var z = k * (1 + Math.sqrt(n.deg) * 0.3), za = few ? 1 : Math.max(0, Math.min(1, (z - thr * 0.72) / (thr * 0.28)));
-      var la = Math.max(za * dimA, ease(n.e || 0));
+      var la = n.snap ? ease(n.e || 0) : Math.max(za * dimA, ease(n.e || 0));   // Schnappschuss: Text nur beim Ueberfahren
       if (m && !m[n.id]) la = Math.min(la, za * dimA);
       if (la > 0.03) lab.push([n, la]);
     }
@@ -355,11 +439,11 @@
     Object.keys(batches).forEach(function (key) {
       var list = batches[key]; ctx.beginPath();
       list.forEach(function (n) { var r = self.rad(n); ctx.moveTo(n.x + r, n.y); ctx.arc(n.x, n.y, r, 0, 6.2832); });
-      ctx.globalAlpha = dimA * (key.slice(-2) === '|s' ? 0.7 : 1); ctx.fillStyle = key.split('|')[0]; ctx.fill();
+      var kp = key.split('|'); ctx.globalAlpha = dimA * parseFloat(kp[1]); ctx.fillStyle = kp[0]; ctx.fill();
     });
     hiN.forEach(function (n) {
       var a = ease(n.e || 0), g = ease(n.g || 0), r = self.rr(n), cur = n.id === self.focus;
-      ctx.globalAlpha = (dimA + (1 - dimA) * a) * (n.own ? 1 : 0.7);
+      ctx.globalAlpha = (dimA + (1 - dimA) * a) * (n.fa || 1);
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 6.2832); ctx.fillStyle = cur ? P.acc : self.color(n); ctx.fill();
       if (g > 0 && !cur) { ctx.globalAlpha = g; ctx.fillStyle = P.acc; ctx.fill(); }
       if (cur) {                                     // offene Seite: Ring mit Abstand ("du bist hier")
@@ -370,8 +454,15 @@
     // Gedaechtnis: Kontur fuer gluehende Knoten (auch im hellen Schema klar), Puls bzw. ruhiger Ring nach recall
     ctx.strokeStyle = P.mem;
     glow.forEach(function (x) {
+      if (x[2]) return;                              // bewusst: eigener Ring (unten)
       var n = x[0]; ctx.globalAlpha = Math.min(1, 0.25 + 0.75 * x[1]) * Math.max(dimA, ease(n.e || 0));
       ctx.lineWidth = (1 + 0.8 * x[1]) / k; ctx.beginPath(); ctx.arc(n.x, n.y, self.rr(n) + 1.2 / k, 0, 6.2832); ctx.stroke();
+    });
+    // Stufe 3: bewusst = durchgehender Ring 1,5 px in --gr-mem
+    ctx.lineWidth = 1.5 / k;
+    aw.forEach(function (n) {
+      ctx.globalAlpha = Math.max(dimA, ease(n.e || 0));
+      ctx.beginPath(); ctx.arc(n.x, n.y, self.rr(n) + 1.2 / k, 0, 6.2832); ctx.stroke();
     });
     var np = 0;
     pul.forEach(function (n) {
@@ -388,6 +479,26 @@
         ctx.beginPath(); ctx.arc(n.x, n.y, r + (3 + 24 * e2) / k, 0, 6.2832); ctx.stroke();
       });
     });
+    // 2603: Schatten-Treffer (24 h) - ruhiger gestrichelter Ring in --gr-shadow; live: Ring dehnt sich 1,2 s aus
+    ctx.strokeStyle = P.shadow;
+    shr.forEach(function (n) {
+      var r = self.rr(n), da = Math.max(dimA, ease(n.e || 0));
+      ctx.setLineDash([2.5 / k, 2 / k]);
+      if (n.sh) {
+        ctx.globalAlpha = (0.4 + 0.12 * Math.min(5, n.sh)) * da; ctx.lineWidth = 1.4 / k;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 3 / k, 0, 6.2832); ctx.stroke();
+      }
+      if (n.sr) {
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 2.2 / k;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 6 / k, 0, 6.2832); ctx.stroke();
+      } else if (n.sz) {
+        np++;
+        var q = Math.min(1, (tP - n.sz) / SH_PULSE), e3 = 1 - (1 - q) * (1 - q);
+        ctx.globalAlpha = 0.95 * (1 - q); ctx.lineWidth = (2.4 - 1.2 * q) / k;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + (3 + 20 * e3) / k, 0, 6.2832); ctx.stroke();
+      }
+    });
+    ctx.setLineDash([]);
     this.npulse = np;
     ctx.lineWidth = lw;
     // Beschriftungen: feste Bildschirmgroesse, Rand in Hintergrundfarbe; hervorgehobene zuletzt (oben)
@@ -651,8 +762,13 @@
     }
     function describe(n) {
       if (!n) return '';
-      var c = (view.adj[n.id] ? Object.keys(view.adj[n.id]).length : 0);
-      return T('{n} {n:Verbindung|Verbindungen}', { n: c }) + (n.hits ? ' · ' + T('{n} {n:Abruf|Abrufe}', { n: n.hits }) : '');
+      var nb = {}, mk = 0;                           // Verbindungen ohne Verknuepfungen (die zaehlen eigens, 2603)
+      view.edges.forEach(function (e) {
+        if (e.s !== n && e.t !== n) return;
+        if (e.k === 'm') mk++; else nb[(e.s === n ? e.t : e.s).id] = true;
+      });
+      return T('{n} {n:Verbindung|Verbindungen}', { n: Object.keys(nb).length }) + (n.hits ? ' · ' + T('{n} {n:Abruf|Abrufe}', { n: n.hits }) : '')
+        + (n.sh ? ' · ' + T('{n}× wäre aufgetaucht (24 h)', { n: n.sh }) : '') + (mk ? ' · ' + T('{n} {n:Verknüpfung|Verknüpfungen}', { n: mk }) : '');
     }
     var view = new View(cv, {
       onOpen: openNode,
@@ -726,6 +842,11 @@
     var dsp = sec(T('Anzeige'), false);
     var memL = check(dsp, 'mem', T('Gedächtnis hervorheben')); memL.hidden = true;   // nur mit gebundenem Gedaechtnis (2595)
     memL.title = T('Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten');
+    // 2603: nur mit eingeschaltetem Schattenmodus (mem.shadow)
+    var mlL = check(dsp, 'memlinks', T('Verknüpfungen (Schattenmodus)')); mlL.hidden = true;
+    mlL.title = T('Verknüpfungen zwischen Erinnerungen: dicker = stärker, gestrichelt = oft gemeinsam abgerufen');
+    var mshL = check(dsp, 'memshadow', T('Schatten-Treffer')); mshL.hidden = true;
+    mshL.title = T('Erinnerungen, die in den letzten 24 Stunden nur dank einer Verknüpfung aufgetaucht wären');
     check(dsp, 'arrows', T('Pfeile'));
     slider(dsp, 'labels', T('Text einblenden ab Zoomstufe'), 0.2, 3, 0.1);
     slider(dsp, 'size', T('Knotengröße'), 0.4, 3, 0.1);
@@ -784,6 +905,11 @@
       if (P.mem && gph.nodes.some(function (n) { return n.lh && glowOf(n.lh, tS) > 0.004; })) {
         var sm = el('span', 'gr-lg gr-lg-mem'); sm.appendChild(el('i')); sm.appendChild(document.createTextNode(T('Kürzlich abgerufen'))); legend.appendChild(sm);
       }
+      // Stufe 3: nur, wenn es solche Knoten/Kanten gibt
+      function lg(cls, txt) { var x = el('span', 'gr-lg ' + cls); x.appendChild(el('i')); x.appendChild(document.createTextNode(txt)); legend.appendChild(x); }
+      if (P.mem && gph.nodes.some(function (n) { return view.aware(n, tS); })) lg('gr-lg-aware', T('Gerade bewusst'));
+      if (gph.edges.some(function (e) { return e.k === 'm'; })) lg('gr-lg-mlink', T('Verknüpfung'));
+      if (gph.nodes.some(function (n) { return n.sh > 0; })) lg('gr-lg-shadow', T('Wäre aufgetaucht'));
       legend.hidden = legend.childNodes.length < 2;
     }
     function paintMode() {
@@ -797,11 +923,13 @@
       var loc = S.mode === 'local';
       var gph = build(DATA, P, loc ? { focus: S.id, depth: parseInt(dep.value, 10) || 1 } : null);
       memL.hidden = !DATA.mem;
+      mlL.hidden = mshL.hidden = !(DATA.mem && DATA.mem.shadow);
       view.focus = S.id;
       view.set(gph, keep);
       S.g = gph; drawLegend(gph);
-      var nm = gph.nodes.length, ed = gph.edges.length;
-      var counts = T('{n} {n:Seite|Seiten}', { n: nm }) + ' · ' + T('{n} {n:Verbindung|Verbindungen}', { n: ed });
+      var nm = gph.nodes.length, mk = gph.edges.filter(function (e) { return e.k === 'm'; }).length, ed = gph.edges.length - mk;
+      var counts = T('{n} {n:Seite|Seiten}', { n: nm }) + ' · ' + T('{n} {n:Verbindung|Verbindungen}', { n: ed })
+        + (mk ? ' · ' + T('{n} {n:Verknüpfung|Verknüpfungen}', { n: mk }) : '');
       stat.textContent = (loc ? '' : counts) + (DATA.truncated && !loc ? ' · ' + T('gekürzt') : '');
       if (loc) { stat.textContent = ''; stat.appendChild(el('b', null, title(S.id))); stat.appendChild(document.createTextNode(' · ' + counts)); }
       cv.setAttribute('aria-label', loc ? T('Lokaler Graph von „{name}“: {n} verbundene {n:Seite|Seiten}', { name: title(S.id), n: Math.max(0, nm - 1) })
@@ -850,7 +978,11 @@
     x.addEventListener('click', close);
     fitB.addEventListener('click', function () { view.user(); view.fit(); });
     FULL = { show: show, close: close, view: view,
-             pulse: function (ids, t) { if (P.mem && view.pulse(ids, t) && S.g) drawLegend(S.g); } };
+             pulse: function (ids, t, sch) {
+               var a = P.mem && ids.length && view.pulse(ids, t);
+               var b = P.memshadow && sch && sch.length && DATA && DATA.mem && DATA.mem.shadow && view.shadowPulse(sch, t);
+               if ((a || b) && S.g) drawLegend(S.g);
+             } };
     paintMode();
     view.resize();
     function start(force) {
