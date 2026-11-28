@@ -381,17 +381,18 @@
       var w = (parseInt(bk, 10) + 0.5) / MBANDS;
       ctx.beginPath();
       mb[bk].forEach(function (e) { ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); });
-      ctx.setLineDash(bk.slice(-1) === 'g' ? [2 / k, 3 / k] : []);
+      var dash = bk.slice(-1) === 'g';                 // gestrichelt ohne runde Enden (sonst laufen die Luecken zu)
+      ctx.setLineDash(dash ? [2 / k, 3 / k] : []); ctx.lineCap = dash ? 'butt' : 'round';
       ctx.lineWidth = lw * (0.6 + 2.4 * w); ctx.globalAlpha = (0.15 + 0.6 * w) * mbase; ctx.strokeStyle = P.mlink; ctx.stroke();
     });
-    ctx.setLineDash([]); ctx.lineWidth = lw;
+    ctx.setLineDash([]); ctx.lineWidth = lw; ctx.lineCap = 'round';
     hi.forEach(function (e) {
       var a = ease(e.e);
       if (e.k === 'm') {
-        ctx.setLineDash(e.her === 'g' ? [2 / k, 3 / k] : []);
+        ctx.setLineDash(e.her === 'g' ? [2 / k, 3 / k] : []); ctx.lineCap = e.her === 'g' ? 'butt' : 'round';
         ctx.lineWidth = lw * (0.6 + 2.4 * e.w) * (1 + 0.3 * a); ctx.strokeStyle = P.mlink;
         ctx.globalAlpha = Math.min(1, (0.15 + 0.6 * e.w) * mbase * (1 - a) + 0.95 * a);
-        ctx.beginPath(); ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); ctx.stroke(); return;
+        ctx.beginPath(); ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); ctx.stroke(); ctx.lineCap = 'round'; return;
       }
       ctx.setLineDash(e.k === 'r' ? [3 / k, 3 / k] : []);
       ctx.lineWidth = lw * (1 + 0.8 * a);

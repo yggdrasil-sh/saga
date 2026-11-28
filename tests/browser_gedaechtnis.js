@@ -8,18 +8,25 @@
 // nicht erreichbar (Test und Konto-Stand); danach Stand "n von m Erinnerungen vorbereitet" bis alles vorbereitet ist, "Jetzt
 // vorbereiten" (bei totem Dienst ehrliche Meldung), Rueckfrage beim Wechsel der Datenbank, Ich-Kern-Suche, Nachfragen ohne
 // Neuaufbau. Ohne Skriptfehler, hell/dunkel, breit/schmal (390 px, kein waagrechtes Scrollen). Chromium und Firefox (BR=firefox).
+// Stufe 3 (2601/2603): Spalte „Sensibel“ (fehlt, ⓘ), Nickerchen-Stand (Hinweis ohne Option „Schnappschuss“, danach Zahl
+// und letzter), Schattenmodus-Schalter (an/aus, Server), Stand „n Verknüpfungen · m Spuren“, „Spuren löschen“ mit Rückfrage.
 // Voraussetzung: tests/gedaechtnis_web_rig.py setup; tests/fakeai.py laeuft auf FAKE_PORT; auf DEAD_PORT lauscht nichts.
 //   SAGA_BASE=http://127.0.0.1:8910 SAGA_ADMIN=http://127.0.0.1:8911 SAGA_ADMIN_COOKIE=... SAGA_USER=gw-web SAGA_PASS=...
 //   FAKE_PORT=8915 DEAD_PORT=8919 [SHOTS=/tmp/x] [PRE=nachher] [VORHER=1] [BR=firefox] node tests/browser_gedaechtnis.js
 // VORHER=1: nur Bilder vom Stand ohne Gedaechtnis-Oberflaeche (Einstellungen > Saga, Admin > KI-Assistent).
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const { execFileSync } = require('child_process');
 const E = process.env, BASE = E.SAGA_BASE, ADM = E.SAGA_ADMIN, USER = E.SAGA_USER, PASS = E.SAGA_PASS, SHOTS = E.SHOTS || '';
 const FF = E.BR === 'firefox', SFX = FF ? '-firefox' : '', PRE = E.PRE || (E.VORHER ? 'vorher' : 'nachher');
 const FAKE = E.FAKE_PORT || '8915', DEAD = E.DEAD_PORT || '8919';
 if (!BASE || !ADM || !USER || !PASS || !E.SAGA_ADMIN_COOKIE) { console.error('SAGA_BASE, SAGA_ADMIN, SAGA_ADMIN_COOKIE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const R = []; const ok = (n, c, x) => { R.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' ' + JSON.stringify(x === undefined ? '' : x).slice(0, 900))); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function rig(a) {                                   // tests/gedaechtnis_web_rig.py nap|spuren (gleiche DB wie der Server)
+  const out = execFileSync('python', ['tests/gedaechtnis_web_rig.py', a], { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONPATH: 'tests/pgshim:.' }) });
+  try { return JSON.parse(out.trim().split('\n').pop()); } catch (e) { return out; }
+}
 async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await fn(); if (v || Date.now() - t0 > (ms || 8000)) return v; await sleep(200); } }
 
 (async () => {
@@ -340,6 +347,73 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   const sc = await until(() => p.evaluate(() => { const pane = document.getElementById('hk-pane-api'); if (!pane) return null;
     const ls = [...pane.querySelectorAll('label')].map((l) => l.textContent.trim()); return ls.length ? ls : null; }), 6000);
   ok('API-Token: Bereich „memory“ beschriftet als „Gedächtnis“', sc && sc.indexOf('Gedächtnis') >= 0 && sc.indexOf('memory') < 0, sc);
+
+  // --- 10. Stufe 3: Sensibel, Nickerchen, Schattenmodus (2601/2603) --------------------------------------------------------
+  const msgOf = () => p.evaluate(() => (document.querySelector('#hk-pane-memory .hk-status') || {}).textContent || '');
+  const z = () => p.evaluate(() => {
+    const li = document.querySelector('.hk-mem-col[data-f=sensibel]'), nap = document.getElementById('hk-mem-nap'), sw = document.getElementById('hk-mem-shadow');
+    const sst = document.getElementById('hk-mem-shadow-state'), fg = document.getElementById('hk-mem-forget');
+    return { sens: li && { cls: li.className, name: li.querySelector('.hk-mem-cn').textContent, st: li.querySelector('.hk-mem-cs').textContent },
+      nap: nap && nap.textContent, napWarn: !!nap && nap.classList.contains('hk-mem-warn'), sw: sw && sw.checked, swRole: sw && sw.getAttribute('role'),
+      sst: sst && sst.textContent, sstHid: !sst || sst.hidden, fgHid: !fg || fg.closest('.hk-actions').hidden,
+      run: !!document.querySelector('.hk-mem-shadow-run:not([hidden])'), h4: [...document.querySelectorAll('#hk-pane-memory h4')].map((h) => h.textContent) };
+  });
+  await openSet(p, 'memory');
+  await until(() => p.evaluate(() => !!document.getElementById('hk-mem-nap')), 8000);
+  const z0 = await z();
+  ok('Stufe 3: Abschnitte „Nickerchen“ und „Schattenmodus (Probelauf)“', z0.h4.indexOf('Nickerchen') > 0 && z0.h4.indexOf('Schattenmodus (Probelauf)') > z0.h4.indexOf('Nickerchen'), z0.h4);
+  ok('Spalte „Sensibel“: fehlt (kein Fehler)', z0.sens && z0.sens.name === 'Sensibel' && z0.sens.st === 'fehlt' && /miss/.test(z0.sens.cls), z0.sens);
+  await p.click('.hk-mem-col[data-f=sensibel] .hk-mem-ib');
+  const si = await p.evaluate(() => { const li = document.querySelector('.hk-mem-col[data-f=sensibel]'), bx = li.querySelector('.hk-mem-ibox');
+    return { hid: bx.hidden, t: bx.textContent, lab: li.querySelector('.hk-mem-ib').getAttribute('aria-label') }; });
+  ok('ⓘ an „Sensibel“: Kontrollkästchen, „nur, wenn direkt danach gefragt wird – nie über Verknüpfungen“', !si.hid && /Kontrollkästchen/.test(si.t) && /direkt danach gefragt/.test(si.t) && /nie über Verknüpfungen/.test(si.t) && si.lab === 'Wozu „Sensibel“?', si);
+  await p.click('.hk-mem-col[data-f=sensibel] .hk-mem-ib');
+  ok('Nickerchen ohne Option: Hinweis „Lege in der Spalte „Art“ die Option „Schnappschuss“ an …“', z0.napWarn && /^Lege in der Spalte „Art“ die Option „Schnappschuss“ an, damit dein Assistent Schnappschüsse ablegen kann\.$/.test(z0.nap), z0);
+  ok('Schattenmodus ab Werk aus (role=switch), kein Stand, kein „Spuren löschen“', z0.sw === false && z0.swRole === 'switch' && z0.sstHid && z0.fgHid, z0);
+  await shot(p, 'einstellungen-gedaechtnis-stufe3-hell', { el: '#hk-pane-memory' });
+  const rn = rig('nap');
+  ok('Rig: Option „Schnappschuss“ + ein Schnappschuss', rn && rn.status === 201, rn);
+  await openSet(p, 'memory');
+  await until(() => p.evaluate(() => !!document.getElementById('hk-mem-nap')), 8000);
+  const z1 = await z();
+  ok('Nickerchen: „1 Schnappschuss · zuletzt …“ (ohne Hinweis)', !z1.napWarn && /^1 Schnappschuss · zuletzt \S/.test(z1.nap), z1.nap);
+  // Schattenmodus an
+  await p.click('label[for=hk-mem-shadow]');
+  ok('Einschalten: „✓ Schattenmodus an – Saga baut die Verknüpfungen auf.“', !!await until(async () => /✓ Schattenmodus an/.test(await msgOf()), 6000), await msgOf());
+  const sh1 = (await api(p, 'GET', '/api/account/memory')).d.shadow;
+  ok('Server: Schattenmodus an (since gesetzt)', sh1 && sh1.on === true && !!sh1.since, sh1);
+  ok('Fokus bleibt auf dem Schalter', await until(() => p.evaluate(() => document.activeElement && document.activeElement.id === 'hk-mem-shadow'), 3000));
+  const built = await until(async () => { const x = await z(); const d = (await api(p, 'GET', '/api/account/memory')).d.shadow; return !x.run && !d.running && x; }, 20000);
+  ok('Stand nach dem Aufbau: „n Verknüpfungen · 0 Spuren (30 Tage)“, „Wird aufgebaut …“ weg', built && /^\d+ Verknüpfung(en)? · 0 Spuren \(30 Tage\)$/.test(built.sst) && !built.sstHid && built.fgHid, built);
+  const links1 = (await api(p, 'GET', '/api/account/memory')).d.shadow.links;
+  rig('spuren');
+  await openSet(p, 'memory');
+  await until(() => p.evaluate(() => !!document.getElementById('hk-mem-shadow-state')), 8000);
+  const z2 = await z();
+  ok('Mit Spuren: „… · 2 Spuren (30 Tage)“, Knopf „Spuren löschen“ sichtbar', z2.sw === true && / · 2 Spuren \(30 Tage\)$/.test(z2.sst) && !z2.fgHid, z2);
+  await shot(p, 'einstellungen-gedaechtnis-schatten-hell', { el: '#hk-pane-memory' });
+  await p.click('#hk-mem-forget');
+  const fa = await until(() => p.evaluate(() => { const b = document.querySelector('.hk-ask .hk-ask-box'); return b && b.textContent; }), 4000);
+  ok('„Spuren löschen“: Rückfrage „2 Spuren des Schattenmodus jetzt löschen? Die Verknüpfungen bleiben.“', fa && /Spuren löschen\?/.test(fa) && /2 Spuren des Schattenmodus jetzt löschen\? Die Verknüpfungen bleiben\./.test(fa), fa);
+  await shot(p, 'einstellungen-gedaechtnis-spuren-rueckfrage-hell');
+  await p.click('.hk-ask .hk-ask-bar button:not(.btn-destr)'); await sleep(500);
+  ok('Abbrechen: Spuren bleiben', (await api(p, 'GET', '/api/account/memory')).d.shadow.traces === 2);
+  await p.click('#hk-mem-forget');
+  await until(() => p.evaluate(() => !!document.querySelector('.hk-ask .btn-destr')), 4000);
+  await p.click('.hk-ask .hk-ask-bar .btn-destr');
+  ok('Löschen: „✓ Spuren gelöscht“', !!await until(async () => /✓ Spuren gelöscht/.test(await msgOf()), 6000), await msgOf());
+  const sh2 = (await api(p, 'GET', '/api/account/memory')).d.shadow, z3 = await z();
+  ok('Server: 0 Spuren, Verknüpfungen bleiben, Modus bleibt an; Knopf weg', sh2.traces === 0 && sh2.links === links1 && sh2.on && / · 0 Spuren/.test(z3.sst) && z3.fgHid, [sh2, z3]);
+  // aus
+  await p.click('label[for=hk-mem-shadow]');
+  ok('Ausschalten: „✓ Schattenmodus aus – Verknüpfungen und Spuren bleiben.“', !!await until(async () => /✓ Schattenmodus aus/.test(await msgOf()), 6000), await msgOf());
+  const sh3 = (await api(p, 'GET', '/api/account/memory')).d.shadow;
+  ok('Server: aus, Verknüpfungen bleiben', sh3.on === false && sh3.links === links1, sh3);
+  ok('Klartext Stufe 3: kein „Embedding“/„Vektor“ außerhalb von ⓘ', await p.evaluate(() => {
+    const pane = document.getElementById('hk-pane-memory').cloneNode(true);
+    pane.querySelectorAll('.hk-mem-ibox').forEach((x) => x.remove());
+    return !/Embedding|Vektor|einbett|eingebettet/i.test(pane.textContent);
+  }));
 
   // --- Aufraeumen der Bindung ------------------------------------------------------------------------------------------------
   await api(p, 'PUT', '/api/account/memory', { db: null, core: null });

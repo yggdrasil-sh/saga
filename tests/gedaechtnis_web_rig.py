@@ -5,6 +5,8 @@ Erfundene Testdaten, keine echten Namen.
   PYTHONPATH=tests/pgshim:. GW_PASS=... HK_FAKEAI_PORT=8915 python tests/gedaechtnis_web_rig.py setup
   PYTHONPATH=tests/pgshim:. python tests/gedaechtnis_web_rig.py admin-cookie     -> Wert fuer das Cookie hk_admin
   PYTHONPATH=tests/pgshim:. python tests/gedaechtnis_web_rig.py clean
+  PYTHONPATH=tests/pgshim:. python tests/gedaechtnis_web_rig.py nap      -> Option "Schnappschuss" in "Art" + ein Schnappschuss (2601)
+  PYTHONPATH=tests/pgshim:. python tests/gedaechtnis_web_rig.py spuren   -> zwei Schatten-Spuren (mem_trace, 2603) fuer gw-web
 Datenbanken: "Erinnerungen (Web-Test)" - Inhalt, Schlagworte, Projekt, Art, Wichtigkeit, Datum, Letzter Abruf passen;
 Valenz/Erregung fehlen; "Abrufe" ist Text (falscher Typ). "Lesezeichen (Web-Test)" ohne Spalte "Inhalt".
 """
@@ -78,6 +80,28 @@ def admin_cookie():
     print(sa.sign(base64.b64encode(json.dumps({"aid": ADMIN, "ep": time.time() + 5, "csrf": "gw-csrf-token"}).encode())).decode())
 
 
+def nap():
+    """2601: Option "Schnappschuss" in "Art" der gebundenen Datenbank ergaenzen und einen Schnappschuss ablegen."""
+    from saga import api_struct, memory
+    tk = _tok(USER)
+    mem = memory.binding(USER)["db"]
+    if not mem:
+        sys.exit("nicht gebunden")
+    api_struct.schema_update(tk, mem, {"add_options": [{"property": "Art", "options": ["Schnappschuss"]}]})
+    st, out = memory.nap(USER, {"stimmung": "ruhig", "gedanke": "Morgen weiter mit dem Garten."}, tk)
+    print(json.dumps({"rig": "nap", "status": st, "id": out.get("id")}))
+
+
+def spuren():
+    """2603: zwei Spuren der letzten Stunde (ohne Fragetext, nur Testwerte)."""
+    now = time.time()
+    with db.connect() as c, c:
+        for h in (0.2, 0.6):
+            c.execute("INSERT INTO mem_trace (uid, at, quelle, frage_hash, stichworte, lim, treffer, neu) VALUES "
+                      "(?, ?, 'trigramm', 'rig', 'rig', 5, CAST('[]' AS JSONB), CAST('[]' AS JSONB))", (USER, now - h * 3600))
+    print(json.dumps({"rig": "spuren", "n": 2}))
+
+
 def clean(quiet=False):
     from saga.userdata import delete_user_data
     for u in (USER, ADMIN):
@@ -90,4 +114,4 @@ def clean(quiet=False):
 
 if __name__ == "__main__":
     a = sys.argv[1] if len(sys.argv) > 1 else "setup"
-    {"setup": setup, "clean": clean, "admin-cookie": admin_cookie}[a]()
+    {"setup": setup, "clean": clean, "admin-cookie": admin_cookie, "nap": nap, "spuren": spuren}[a]()
