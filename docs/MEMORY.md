@@ -186,7 +186,9 @@ die Postgres-Erweiterung). Ohne Schlüsselwort: keine Treffer.
 ## 5. REST (`/api/v1/memory/…`, Bearer `sga_…` mit Bereich `memory`)
 
 Rechte: nur die gebundene Datenbank bzw. Ich-Kern-Seite **des Token-Besitzers**, zusätzlich Seitenbäume (`roots`)
-und Rolle wie bei `query_database` (außerhalb: 404). Ohne Bereich `memory` → 403 `insufficient_scope`.
+und Rolle wie bei `query_database` (außerhalb: 404) – das gilt auch für `nap`, `wake`, `recall_used` und
+`shadow`. Einzige Ausnahme: `wake` nennt zusätzlich geänderte Seiten des Kontos und den Tagessatz (§11.3; mit `roots`
+nur Seiten darin, Tagessatz `null`). Ohne Bereich `memory` → 403 `insufficient_scope`.
 Der Bereich `memory` reicht allein (kein `read:db`/`write:db` nötig) und steht in `GET /api/account/api-tokens`
 unter `scopes` (Beschriftung im Web: „Gedächtnis“). Verbundene Apps per OAuth (`sgo_`) bekommen ihn nur,
 wenn die Person ihn auf der Zustimmungsseite **ausdrücklich anhakt** – „Gedächtnis“ steht dort als einziger Bereich
@@ -426,6 +428,9 @@ ausgeschlossen. Schnappschüsse werden trotzdem eingebettet („n von m eingebet
   die gebundene Gedächtnis-Datenbank und alle ihre Zeilen; die Ich-Kern-Seite zählt mit. `seiten` = die 5 zuletzt
   geänderten. Ohne Schnappschuss `null`. Token mit Seitenbäumen (`roots`): nur Seiten innerhalb der `roots` (`n` über
   höchstens die 2 000 zuletzt geänderten).
+- **Bewusst über die Gedächtnis-Datenbank hinaus:** für Tokens ohne `roots` liefert `wake` die Titel der 5 zuletzt
+  geänderten Seiten des ganzen Kontos und den Tagessatz (nennt Aufgaben/Termine); der Bereich `memory` reicht dafür
+  (kein `read:pages`/`read:tasks`/`read:calendar` nötig).
 - `heute` = `sentence` aus `/api/ai/today` (Konto-Zeitzone und -sprache, ohne Modell); ohne Fähigkeit „ai“, bei
   einem Fehler oder für Token mit `roots` (der Satz nennt Aufgaben/Termine des ganzen Kontos) `null`. Ein Fehler in
   einem Teil macht nur diesen Teil `null`.
@@ -463,6 +468,9 @@ Gültige ids = Zeilen der gebundenen Datenbank, die in einer Spur des Kontos der
 (beide nicht sensibel, keine Schnappschüsse): Link vorhanden → `w = w_eff(t)`, `g' = w + 0,2·(1 − w)`,
 `u' = min(0,5, u + 0,05, g')`, treffer + 1, zuletzt = t (`verstaerkt`); kein Link → neu mit Herkunft gemeinsam, g = 0,30,
 u = 0,10, treffer 1 (`neu`). Modus aus: 200 mit `schatten: false`, keine Wirkung. Nur das verstärkt Gewichte.
+**Je Spur und Paar höchstens einmal:** stehen beide ids schon unter `genutzt` ihrer (jüngsten passenden) Spur, wird das
+Paar übersprungen – fünf gleiche Meldungen wirken wie eine; `genutzt` bleibt ohne Doppel. Ein neuer recall mit denselben
+Treffern ist eine neue Spur und darf wieder verstärken.
 
 ### 12.5 Ausbreitung und Gesamtwert (je gezähltem recall bei an)
 - Seeds S = Kandidaten mit rel ≥ Tor (`rel_min` bzw. `rel_min_trgm`), höchstens 50, ohne sensible.
@@ -522,6 +530,10 @@ Papierkorb bleiben verknüpft, werden aber ignoriert).
   `neu`-Einträge am häufigsten kamen, `anteil` = Anteil der Spuren; `ausreisser` (≤ 5, in dieser Reihenfolge):
   Zeilen in ≥ 25 % der Schatten-Mengen (erst ab 4 Spuren mit Schatten-Menge), Kanten mit w_eff ≥ 0,9 ohne Pin, Spuren
   mit Kappung. `sensibel` = Anzahl lebender sensibler Zeilen.
+- **Sensible Zeilen erscheinen nie mit Titel oder Vorschau** (auch wenn sie erst später sensibel wurden): `hubs`,
+  `oft_feuernd` (Kante mit sensiblem Ende), `ausreisser` (Zeile bzw. Kante mit sensiblem Ende) und `stichproben`
+  (`treffer`, `waere` samt Einträgen, deren `ueber` sensibel ist) lassen sie aus; sie zählen nur in `sensibel`.
+  Stichproben stammen nur aus Spuren mit mindestens einem zeigbaren `neu`-Eintrag.
 - `stichproben`: aus den m Spuren mit `neu` gleichmäßig verteilt (Index `round(i·(m−1)/(n−1))`, n = min(stichproben, m);
   n = 1 → die erste), älteste zuerst, deterministisch. Titel und Vorschau (120 Zeichen) kommen live aus der Datenbank,
   gelöschte Zeilen heißen „(gelöscht)“. Die ganze Ausgabe ≤ 15 000 Zeichen (sonst fallen hintere Stichproben weg).

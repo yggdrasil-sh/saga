@@ -429,6 +429,11 @@ def part_used():
        and not [k for k in L if ids["Geheim"] in k and k not in L0], d)
     x = traces(U)[-1]
     ok("recall_used: in der juengsten passenden Spur unter genutzt vermerkt", set(x[8]) >= {a, b, c3}, x[8])
+    # je Spur und Paar hoechstens einmal (Pruefung pruef-mem3): 4 weitere gleiche Meldungen -> Gewichte wie nach einer
+    rep = [msh.used(U, [a, b, c3], now=t0 + 1 + k) for k in range(4)]
+    ok("recall_used 5x gleich zur selben Spur: Gewichte wie nach einer Meldung, verstaerkt/neu 0, genutzt ohne Doppel",
+       links(U) == L and all(r_["verstaerkt"] == 0 and r_["neu"] == 0 and r_["ignoriert"] == [] for r_ in rep)
+       and sorted(traces(U)[-1][8]) == sorted(set(traces(U)[-1][8])), (rep[-1], traces(U)[-1][8]))
     pg("UPDATE mem_trace SET at = at - 3 * 3600 WHERE uid=?", (U,))
     d = msh.used(U, [a, b])
     ok("recall_used: Spur aelter als 2 h -> ignoriert, keine Wirkung", d["ignoriert"] == [a, b] and d["verstaerkt"] == 0 and links(U) == L, d)
@@ -636,6 +641,26 @@ def part_report():
     ok("Bericht: waere mit titel/vorschau (<= 120)/rel/akt/gesamt/ueber; geloeschte „(gelöscht)“",
        allw and all(set(w) == {"id", "titel", "vorschau", "rel", "akt", "gesamt", "ueber"} and len(w["vorschau"]) <= 120 for w in allw)
        and any(w["id"] == gone and w["titel"] == "(gelöscht)" for w in allw) and all(w["ueber"]["id"] == ids[0] for w in allw), allw[:2])
+    # sensible Zeile (ids[7], spaeter sensibel): nie mit Titel/Vorschau - nicht in hubs/oft_feuernd/ausreisser/stichproben
+    pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) VALUES (?,?,?,0.97,0.05,0,?,?,'aehnlich')",
+       (*sorted((ids[5], ids[7])), R, now, now))
+    pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) VALUES (?,?,?,0.3,0.05,0,?,?,'aehnlich')",
+       (*sorted((ids[6], ids[7])), R, now, now))
+    for k in range(12):
+        dt = {"w": {"tor": 0.45, "score_min": 0.375}, "projekt": False, "basis": [[ids[7], 0.6, 0.6]],
+              "schatten": [[ids[7], 0.6, 0.0, 0.6, None, 0], [ids[5], 0.3, 0.2, 0.5, ids[7], 1], [ids[7] if k % 2 else ids[6], 0.3, 0.2, 0.5, ids[0], 1]],
+              "neu_limit": [], "verdraengt": [], "ms": 1.0}
+        pg("INSERT INTO mem_trace (uid, at, quelle, frage_hash, stichworte, lim, treffer, neu, genutzt, gekappt, zeichen, daten) "
+           "VALUES (?,?,'embeddings','h',?,5,CAST(? AS JSONB),CAST(? AS JSONB),'[]'::jsonb,0,900,CAST(? AS JSONB))",
+           (R, now - 1800 + k, f"sens{k}", json.dumps([ids[7]]), json.dumps([ids[5], ids[7] if k % 2 else ids[6]]), json.dumps(dt)))
+    msh.forget(R)
+    ds = msh.report(R, 14, 20)
+    sj = json.dumps({k: ds[k] for k in ("hubs", "oft_feuernd", "ausreisser", "stichproben")}, ensure_ascii=False)
+    refs = [w for x in ds["stichproben"] for w in x["waere"]] + [t_ for x in ds["stichproben"] for t_ in x["treffer"]]
+    ok("Bericht: sensible Zeile nie mit Titel/Vorschau (hubs, oft_feuernd, ausreisser, stichproben treffer/waere/ueber), nur gezaehlt",
+       "Zeile 7" not in sj and "inhalt nummer 7" not in sj and all(r_["id"] != ids[7] and (r_.get("ueber") or {}).get("id") != ids[7] for r_ in refs)
+       and not any(a_.get("id") == ids[7] or ids[7] in ((a_.get("a") or {}).get("id"), (a_.get("b") or {}).get("id")) for a_ in ds["ausreisser"])
+       and any(w["id"] == ids[6] for x in ds["stichproben"] for w in x["waere"]) and ds["sensibel"] == 1, sj[:400])
     ok("Bericht: <= 15 000 Zeichen", len(json.dumps(msh.report(R, 30, 20), ensure_ascii=False)) <= 15000)
     for a, kw in (("tage", {"tage": 0}), ("tage", {"tage": 31}), ("stichproben", {"stichproben": 21}), ("tage", {"tage": "x"})):
         f = fail_of(memory.shadow_report, R, kw.get("tage"), kw.get("stichproben"))

@@ -682,15 +682,18 @@ def used(uid, ids, now=None):
                            (uid, now - USED_WINDOW)).fetchall()
             tr = [(t_, (h if isinstance(h, list) else json.loads(h or "[]")), (g if isinstance(g, list) else json.loads(g or "[]")))
                   for t_, h, g in tr]
-            valid, ign, mark = [], [], {}
+            valid, ign, mark, hit_of = [], [], {}, {}
             for i in ids:
                 hit = next((t_ for t_, h, _g in tr if i in h), None) if i in alive else None
                 if hit is None:
                     ign.append(i)
                     continue
                 valid.append(i)
+                hit_of[i] = hit
                 mark.setdefault(hit, []).append(i)
             gn = {t_: g for t_, _h, g in tr}
+            # je Spur und Paar hoechstens einmal verstaerken: beide ids schon unter genutzt ihrer Spur -> Paar uebersprungen
+            prev = {i for i in valid if i in gn[hit_of[i]]}
             for t_, lst in mark.items():
                 c.execute("UPDATE mem_trace SET genutzt=CAST(? AS JSONB) WHERE id=?", (json.dumps(list(dict.fromkeys(gn[t_] + lst))), t_))
             pv = sorted(i for i in valid if i not in sens and i not in snaps)
@@ -698,6 +701,8 @@ def used(uid, ids, now=None):
             done = []
             for k, a in enumerate(pv):
                 for b_ in pv[k + 1:]:
+                    if a in prev and b_ in prev:
+                        continue
                     r = c.execute("SELECT gewicht, untergrenze, treffer, zuletzt, gepinnt FROM mem_link WHERE a=? AND b=? AND uid=? FOR UPDATE",
                                   (a, b_, uid)).fetchone()
                     if r:
@@ -844,14 +849,16 @@ def _report(uid, tage, n, now=None):
         valid = np.isin(G.ids, list(live - set(snaps) - set(sens))) if len(G.ids) and live else np.zeros(len(G.ids), dtype=bool)
         deg = degrees(G, valid) if len(G.ids) else np.zeros(0)
         nrows = len(live - set(snaps))
-        hubs = sorted(((int(deg[k]), int(G.ids[k])) for k in np.nonzero(deg > 0)[0]), key=lambda z: (-z[0], z[1]))[:5]
+        sx = set(sens)                   # sensible Zeilen: nie mit Titel/Vorschau im Bericht (nur in "sensibel" gezaehlt)
+        hubs = sorted(((int(deg[k]), int(G.ids[k])) for k in np.nonzero(deg > 0)[0] if int(G.ids[k]) not in sx),
+                      key=lambda z: (-z[0], z[1]))[:5]
         # oft feuernde Kanten (via, id) aus neu-Eintraegen
         fire = {}
         for x in tr:
             ent = {e[0]: e for e in x[8].get("schatten") or []}
             for i in x[4]:
                 e = ent.get(i)
-                if e and e[4] is not None:
+                if e and e[4] is not None and e[4] not in sx and i not in sx:
                     fire[(e[4], i)] = fire.get((e[4], i), 0) + 1
         top_f = sorted(fire.items(), key=lambda z: (-z[1], z[0]))[:5]
         # Ausreisser
@@ -863,9 +870,10 @@ def _report(uid, tage, n, now=None):
                 for i in set(s):
                     cnt[i] = cnt.get(i, 0) + 1
             for i, k in sorted(cnt.items(), key=lambda z: (-z[1], z[0])):
-                if k / len(sets) >= 0.25 and len(aus) < 5:
+                if k / len(sets) >= 0.25 and len(aus) < 5 and i not in sx:
                     aus.append({"art": "dauerbrenner", "id": i, "anteil": round(k / len(sets), 4)})
-        strong = [(float(we[j]), int(G.ids[G.ai[k]]), int(G.ids[G.bi[k]])) for j, k in enumerate(idx) if we[j] >= 0.9 and not G.pin[k]]
+        strong = [(float(we[j]), int(G.ids[G.ai[k]]), int(G.ids[G.bi[k]])) for j, k in enumerate(idx) if we[j] >= 0.9 and not G.pin[k]
+                  and int(G.ids[G.ai[k]]) not in sx and int(G.ids[G.bi[k]]) not in sx]
         for wv, a, b in sorted(strong, key=lambda z: (-z[0], z[1], z[2])):
             if len(aus) < 5:
                 aus.append({"art": "starke_kante", "a": a, "b": b, "gewicht": round(wv, 4)})
@@ -874,7 +882,10 @@ def _report(uid, tage, n, now=None):
                 aus.append({"art": "gekappt", "am": memory._iso(x[1]), "gekappt": x[6], "zeichen": x[7]})
         out["sensibel"] = len(sens)
         # Stichproben
-        with_neu = [x for x in tr if x[4]]
+        def shown(x, i):                 # Eintrag "waere": weder die Zeile noch ihr Vorgaenger sensibel
+            e = next((e for e in x[8].get("schatten") or [] if e[0] == i), None)
+            return i not in sx and not (e and e[4] in sx)
+        with_neu = [x for x in tr if any(shown(x, i) for i in x[4])]
         samp = [with_neu[i] for i in sample_idx(len(with_neu), n)]
         need = set()
         for _w, i in hubs:
@@ -884,8 +895,8 @@ def _report(uid, tage, n, now=None):
         for a in aus:
             need |= {a.get("id"), a.get("a"), a.get("b")} - {None}
         for x in samp:
-            need |= {e[0] for e in x[8].get("basis") or []} | set(x[4])
-            need |= {e[4] for e in x[8].get("schatten") or [] if e[0] in x[4] and e[4] is not None}
+            need |= {e[0] for e in x[8].get("basis") or [] if e[0] not in sx} | {i for i in x[4] if shown(x, i)}
+            need |= {e[4] for e in x[8].get("schatten") or [] if e[0] in x[4] and e[4] is not None and shown(x, e[0])}
         info = {}
         if need:
             for nid, title, props in c.execute("SELECT id, title, props FROM note WHERE uid=? AND id = ANY(?) AND deleted_at IS NULL",
@@ -918,11 +929,14 @@ def _report(uid, tage, n, now=None):
         ent = {e[0]: e for e in x[8].get("schatten") or []}
         waere = []
         for i in x[4]:
+            if not shown(x, i):
+                continue
             e = ent.get(i) or [i, 0, 0, 0, None, 0]
             waere.append({"id": i, "titel": ti(i), "vorschau": (info[i][1][:120] if i in info else ""), "rel": e[1], "akt": e[2],
                           "gesamt": e[3], "ueber": ref(e[4])})
         st.append({"am": memory._iso(x[1]), "stichworte": x[2],
-                   "treffer": [{"id": e[0], "titel": ti(e[0]), "rel": e[1], "score": e[2]} for e in x[8].get("basis") or []],
+                   "treffer": [{"id": e[0], "titel": ti(e[0]), "rel": e[1], "score": e[2]} for e in x[8].get("basis") or []
+                               if e[0] not in sx],
                    "waere": waere})
     out["stichproben"] = st
     while st and len(json.dumps(out, ensure_ascii=False)) > REPORT_MAX:

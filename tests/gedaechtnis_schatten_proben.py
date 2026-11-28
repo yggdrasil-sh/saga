@@ -7,7 +7,7 @@ B) Fehler im Schattenteil, die den Fragetext tragen (stichworte, graph_of, _geme
    nicht in der Ausgabe, keine halbe Spur
 C) Fragetext nirgends in mem_trace (alle Spalten), mem_link, user_kv, Server-Log; HMAC geschluesselt
 D) Rahmen: nap mit Rahmen-Tags in den Feldern -> MCP wake/shadow_report entschaerft
-E) recall_used mehrfach mit denselben ids (nur INFO: jede Meldung verstaerkt erneut)
+E) recall_used mehrfach mit denselben ids: nur die erste Meldung je Spur verstaerkt
 Aufruf (saga-test): tools/testumgebung/umgebung.sh lauf server <slot> gedaechtnis_schatten_proben.py"""
 import contextlib
 import hashlib
@@ -178,7 +178,7 @@ def main():
             for _ in range(5):
                 memory.recall_used(P, hit)
                 ws.append(links(P)[tuple(sorted(hit))][0])
-            note(f"E recall_used 5x mit denselben ids nach einem recall: Gewichte {ws}")
+            ok("E recall_used 5x mit denselben ids zur selben Spur: Gewicht bleibt wie nach der ersten Meldung", len(set(ws)) == 1, ws)
     finally:
         fk.terminate()
         from saga.userdata import delete_user_data
