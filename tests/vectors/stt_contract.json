@@ -46,6 +46,9 @@
    "granule_rate": 48000
   },
   "read_s": 20,
+  "read_s_base": 20,
+  "read_rate_min": 32768,
+  "read_s_max": 60,
   "rate_hour": 30,
   "rate_day": 120,
   "per_user": 1,
@@ -397,6 +400,42 @@
    "note": "Koerper nicht innerhalb von 20 s ganz da (troepfelnder/haengender Upload) - Platz sofort wieder frei"
   },
   {
+   "name": "gross_langsam_ok",
+   "query": "lang=de",
+   "type": "audio/wav",
+   "audio": {
+    "wav": {
+     "rate": 16000,
+     "s": 30.0
+    }
+   },
+   "drip": {
+    "rate_bytes_s": 40960
+   },
+   "status": 200,
+   "code": null,
+   "sent": 1,
+   "note": "960 044 Bytes mit Content-Length ueber ~23 s: Frist 20 + 960044/32768 = 49,3 s - geht"
+  },
+  {
+   "name": "gross_zu_langsam",
+   "query": "lang=de",
+   "type": "audio/wav",
+   "audio": {
+    "wav": {
+     "rate": 16000,
+     "s": 58.0
+    }
+   },
+   "drip": {
+    "rate_bytes_s": 16384
+   },
+   "status": 408,
+   "code": "slow",
+   "sent": 0,
+   "note": "1 856 044 Bytes mit Content-Length, 16 KB/s (unter 32 KB/s): Frist min(60, 20 + 56,6) = 60 s - 408 nach 60 s"
+  },
+  {
    "name": "nur_wav_dienst_ogg",
    "query": "lang=de",
    "type": "audio/ogg",
@@ -687,6 +726,9 @@
     "error": "Die Aufnahme kam zu langsam an – versuch es noch mal.",
     "code": "slow"
    }
+  },
+  "slow_zaehlt": {
+   "note": "jede 408 slow zaehlt in 30/h und 120/Tag wie ein gesendeter Versuch: nach 30x slow ist der 31. Versuch 429 rate"
   },
   "rate": {
    "status": 429,

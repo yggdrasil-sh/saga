@@ -208,14 +208,17 @@ def stt(cookie, body, ctype="audio/ogg", query="lang=de", chunked=False, hdr=Non
 
 
 # --- im Prozess (zweiter Endpunkt, gleiche Datenbank) --------------------------------------------------------------------
-def local(uid, body, ctype="audio/ogg", query="lang=de"):
+def local(uid, body, ctype="audio/ogg", query="lang=de", drip=0.0, clen=True):
+    """drip: Sekunden Pause vor jedem Stueck (65 536 Byte) - troepfelnder Upload; clen=False: ohne Content-Length (chunked)."""
     from starlette.requests import Request
     chunks = [body[i:i + 65536] for i in range(0, len(body), 65536)] or [b""]
     msgs = [{"type": "http.request", "body": c, "more_body": i < len(chunks) - 1} for i, c in enumerate(chunks)]
 
     async def receive():
+        if drip and msgs:
+            await asyncio.sleep(drip)
         return msgs.pop(0) if msgs else {"type": "http.disconnect"}
-    headers = [(b"content-type", ctype.encode()), (b"content-length", str(len(body)).encode()), (b"x-saga", b"1")]
+    headers = [(b"content-type", ctype.encode()), (b"x-saga", b"1")] + ([(b"content-length", str(len(body)).encode())] if clen else [])
     scope = {"type": "http", "method": "POST", "path": "/api/ai/transcribe", "raw_path": b"/api/ai/transcribe",
              "query_string": query.encode(), "headers": headers, "session": {"uid": uid, "pwc": time.time() + 5},
              "client": ("127.0.0.1", 1), "server": ("127.0.0.1", 80), "scheme": "http", "root_path": "", "http_version": "1.1"}
@@ -424,6 +427,49 @@ def part_slow():
     sq, dq, _ = stt(K.ck(P2), ogg(1.0))
     ok(f"nach der Frist blockiert niemand mehr: andere Person und dieselben Personen sofort wieder ({sa}, {sp}, {sq}, {time.time() - t2:.1f} s)",
        (sa, sp, sq) == (200, 200, 200) and time.time() - t2 < 10, (da, dp, dq))
+
+
+def part_rate_slow_big(cA):
+    """Nachschaerfung: Frist waechst mit Content-Length (>= ~32 KB/s, hoechstens 60 s); jede 408 slow zaehlt in 30/h."""
+    r = next(x for x in VEC["requests"] if x["name"] == "gross_langsam_ok")
+    lim = VEC["limits"]
+    ok("limits: read_s_base 20, read_rate_min 32768, read_s_max 60 = Server",
+       (lim["read_s_base"], lim["read_rate_min"], lim["read_s_max"]) == (ai_stt.READ_S, ai_stt.READ_RATE, ai_stt.READ_MAX)
+       and ai_stt.read_limit(0) == 20 and abs(ai_stt.read_limit(1856044) - 60) < 1e-9 and abs(ai_stt.read_limit(960044) - (20 + 960044 / 32768)) < 1e-9)
+    body = audio_of(r["audio"])
+    rate = r["drip"]["rate_bytes_s"]
+    n0 = wcount()[0]
+    t0 = time.time()
+    h = open_post(K.ck(P2), r["type"], r["query"], len(body))
+    step = 32768
+    for i in range(0, len(body), step):
+        send_part(h, body[i:i + step], False)
+        time.sleep(step / rate)
+    s, d, _ = finish(h, False)
+    ok(f"Vektor gross_langsam_ok: 960 KB in {time.time() - t0:.1f} s mit Content-Length (ueber 20 s) -> 200 ({s})",
+       s == 200 and time.time() - t0 > 21 and wcount()[0] - n0 == 1, d)
+    # im Prozess mit verkleinerten Fristen (gleiche Formel): grosse Laenge verlaengert, chunked nicht, Hoechstwert greift
+    saved = (ai_stt.READ_S, ai_stt.READ_RATE, ai_stt.READ_MAX)
+    big = audio_of(next(x for x in VEC["requests"] if x["name"] == "gross_zu_langsam")["audio"])
+    try:
+        ai_stt.READ_S, ai_stt.READ_RATE, ai_stt.READ_MAX = 0.3, 1000000, 1.5
+        t0 = time.time()
+        s1, d1, _ = local(P2, big, "audio/wav", drip=0.1)                    # 29 Stuecke x 0,1 s > Frist min(1,5, 0,3 + 1,86)
+        e1 = time.time() - t0
+        t0 = time.time()
+        s2, d2, _ = local(P2, big, "audio/wav", drip=0.1, clen=False)       # ohne Laenge: Grundfrist 0,3 s
+        e2 = time.time() - t0
+        s3, d3, _ = local(P2, audio_of(r["audio"]), "audio/wav", drip=0.04)  # 15 x 0,04 s < min(1,5, 0,3 + 0,96)
+        ok(f"Vektor gross_zu_langsam (skaliert): 408 slow nach dem Hoechstwert ({e1:.1f} s), chunked nach der Grundfrist ({e2:.1f} s), "
+           f"schnell genug -> 200 ({s1}, {s2}, {s3})", s1 == 408 and d1.get("code") == "slow" and 1.3 <= e1 < 2.6
+           and s2 == 408 and e2 < 1.0 and s3 == 200, (d1, d2, d3))
+        ai_stt.READ_S = 0.05
+        sts = [local(P1, ogg(1.0), drip=0.2, clen=False)[0] for _ in range(ai_stt.RATE_H)]
+        s, d, hd = local(P1, ogg(1.0))
+        ok(f"jede 408 slow zaehlt in 30/h: nach 30x slow -> 429 rate ({sts.count(408)} x 408, {s})",
+           sts.count(408) == ai_stt.RATE_H and s == 429 and d.get("code") == "rate" and int(hd.get("retry-after") or 0) > 0, (sts[-3:], d))
+    finally:
+        ai_stt.READ_S, ai_stt.READ_RATE, ai_stt.READ_MAX = saved
 
 
 def part_token():
@@ -917,6 +963,7 @@ def main():
         part_keys(cA)
         part_limits()
         part_slow()
+        part_rate_slow_big(cA)
         part_token()
         part_disk(cA)
         part_units(cA)

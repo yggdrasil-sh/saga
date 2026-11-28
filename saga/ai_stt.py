@@ -52,7 +52,14 @@ RATE_H, RATE_D = 30, 120                            # Diktate je Person und Stun
 PER_USER, SERVER_MAX = 1, 2                         # gleichzeitig je Person / serverweit
 FULL_RETRY = 5                                      # Retry-After bei 503 full (s)
 STALE = 180                                         # s: ein belegter Platz gilt danach als verwaist
-READ_S = 20.0                                       # s: Gesamtfrist fuers Lesen des Koerpers (sonst 408 slow)
+READ_S = 20.0                                       # s: Gesamtfrist fuers Lesen des Koerpers (sonst 408 slow), Grundwert
+READ_RATE = 32768                                   # Byte/s: mit Content-Length waechst die Frist um Laenge/READ_RATE ...
+READ_MAX = 60.0                                     # ... bis hoechstens READ_MAX s (1,9 MB WAV -> ~58 s); chunked: READ_S
+
+
+def read_limit(length):
+    """Gesamtfrist fuers Lesen -> s: mit Content-Length min(READ_MAX, READ_S + Laenge/READ_RATE), sonst READ_S."""
+    return min(READ_MAX, READ_S + length / READ_RATE) if length else READ_S
 TIMEOUT_DEF, TIMEOUT_MIN, TIMEOUT_MAX = 30, 5, 60
 INPUTS = ("text", "dictation")                      # POST /api/ai/jobs input
 PATH = "/v1/audio/transcriptions"
@@ -576,7 +583,8 @@ async def api_transcribe(request: Request):
     if fmt is None:
         return _err(400, "format")
     try:
-        if int(request.headers.get("content-length") or 0) > MAX_BYTES:
+        clen = int(request.headers.get("content-length") or 0)
+        if clen > MAX_BYTES:
             return _err(413, "too_big")
     except ValueError:
         return _err(400, "format")
@@ -596,9 +604,11 @@ async def api_transcribe(request: Request):
         return True
     try:
         try:
-            whole = await asyncio.wait_for(read(), READ_S)          # Gesamtfrist: ein troepfelnder Upload haelt keinen Platz
+            limit = read_limit(max(0, clen))
+            whole = await asyncio.wait_for(read(), limit)           # Gesamtfrist: ein troepfelnder Upload haelt keinen Platz
         except asyncio.TimeoutError:
-            print(f"stt: 408 slow {round(len(buf) / 1024)} KB in {READ_S:g} s", flush=True)
+            note_sent(uid)                                          # zaehlt wie ein Versuch (30/h, 120/Tag): kein Dauerblockieren
+            print(f"stt: 408 slow {round(len(buf) / 1024)} KB in {limit:.0f} s", flush=True)
             return _err(408, "slow", headers={"Connection": "close"})
         if not whole:
             return _err(413, "too_big")

@@ -60,8 +60,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   „Cloud erlauben“ nur Adressen im eigenen Netz, Cloud nur über https). `POST /api/ai/transcribe` nimmt eine rohe
   Ogg/Opus- oder WAV-Aufnahme (≤ 60 s, 2 MiB) und reicht sie nur durch: im Speicher, nie auf der Platte, nie im Log, nie
   im Verlauf; festgehaltene IPs (Schutz vor Umbiegen per DNS), keine Metadaten-Adressen, keine Weiterleitungen; je Person
-  1 gleichzeitig, 30/Stunde, 120/Tag, serverweit 2; kommt der Körper nicht binnen 20 s ganz an, 408 `slow` (ein
-  hängender Upload hält keinen Platz). Nur mit Fähigkeit `ai` und Einwilligung, nie mit API-Schlüssel;
+  1 gleichzeitig, 30/Stunde, 120/Tag, serverweit 2; kommt der Körper nicht in der Lesefrist ganz an (20 s, mit
+  `Content-Length` bis 60 s bei mindestens ~32 KB/s), 408 `slow` – zählt wie ein Versuch, ein hängender Upload hält keinen Platz. Nur mit Fähigkeit `ai` und Einwilligung, nie mit API-Schlüssel;
   Schalter „Diktat nur auf dem Gerät“ (`ai_prefs.dictation`) sperrt den Server-Weg. `GET /api/ai/status` → `stt` mit
   fertigem Satz, wohin die Aufnahme geht (Heimnetz bzw. Internet mit Anbieter und Land, du/Sie). Diktierte Aufträge
   (`POST /api/ai/jobs` `input: "dictation"`) tragen die Herkunft „Diktiert“, bei Anweisungen an die KI mit Warnung, und
