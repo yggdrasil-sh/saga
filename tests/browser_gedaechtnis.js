@@ -158,6 +158,12 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   await until(async () => ((await api(p, 'GET', '/api/account/memory')).d.core || {}).id === +coreId, 5000);
   const b2 = (await api(p, 'GET', '/api/account/memory')).d;
   ok('Ich-Kern gebunden (Server) und in der Auswahl', b2.core && b2.core.id === +coreId && await p.evaluate((v) => document.getElementById('hk-mem-core').value === v, coreId), b2.core);
+  // 2588: passt nur der gebundene Ich-Kern zur Suche, darf nicht „Keine Seite passt“ dastehen
+  await p.fill('#hk-mem-core-q', 'xyzxyz');
+  await p.fill('#hk-mem-core-q', 'Marin');
+  await new Promise((r) => setTimeout(r, 400));
+  const hint2588 = await p.evaluate(() => document.querySelector('.hk-mem-coren').textContent);
+  ok('Suche nach dem gebundenen Ich-Kern: kein „Keine Seite passt“ (2588)', !/Keine Seite passt/.test(hint2588), hint2588);
   await shot(p, 'einstellungen-gedaechtnis-hell');
 
   // --- 3. Wechseln: Rueckfrage (Pfeiltaste wechselt sofort), dann Datenbank ohne Spalte "Inhalt" -------------------------

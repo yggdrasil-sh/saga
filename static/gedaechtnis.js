@@ -150,7 +150,10 @@
         var q = norm(cq.value.trim()), all = pages || [], hit = 0;
         cs.textContent = '';
         cs.appendChild(option('', T('– keine –')));
-        if (d.core) cs.appendChild(option(d.core.id, d.core.title || T('Unbenannt')));
+        if (d.core) {
+          cs.appendChild(option(d.core.id, d.core.title || T('Unbenannt')));
+          if (q && norm(d.core.title).indexOf(q) >= 0) hit++;   // 2588: der gebundene Ich-Kern zaehlt als Treffer
+        }
         all.forEach(function (p) {
           if ((d.core && p.id === d.core.id) || (q && norm(p.title).indexOf(q) < 0)) return;
           if (++hit <= SHOW) cs.appendChild(option(p.id, (p.title || T('Unbenannt'))));
