@@ -370,6 +370,14 @@ def part_wake():
         note(f"wake (61 Schnappschuesse, mit Tagessatz): {ms:.1f} ms")
         ok("wake: heute mit Faehigkeit ai = Satz aus /api/ai/today (ohne Modell)", isinstance(w3["heute"], str) and w3["heute"], w3["heute"])
         ok("Leistung: wake <= 50 ms", ms <= 50, ms)
+        # Pruefer (pruef-mem3): Token mit roots sieht nur geaenderte Seiten in seinen Seitenbaeumen, keinen Tagessatz
+        trt = apitok.Tok(10 ** 9 + 26019, A, "gs", "sga_gs", apitok.SCOPES, [S["db"], p_new[5]], None)
+        wr = memory.wake(A, trt, now=now)
+        ok("wake mit roots [DB, eine Seite]: geaendert nur diese Seite (n 1), heute null, Schnappschuss da",
+           wr["geaendert"] == {"n": 1, "seiten": [{"id": p_new[5], "titel": "Neu 5"}]} and wr["heute"] is None
+           and wr["schnappschuss"]["id"] == newest and wr["text"].endswith("Seitdem 1 Seite geändert."), wr)
+        ok("wake mit roots ohne die Gedaechtnis-DB: None",
+           memory.wake(A, apitok.Tok(10 ** 9 + 26018, A, "gs", "sga_gs", apitok.SCOPES, [p_new[5]], None), now=now) is None)
         wb = memory.wake(B, tok_obj(B, 1), now=now)
         ok("wake Konto ohne Faehigkeit: heute null", wb is not None and wb["heute"] is None, wb)
     finally:

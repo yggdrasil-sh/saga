@@ -461,6 +461,19 @@ def part_used():
     L3 = links(U)
     ok("Auftauchen: 2x kein Link, 3x Link „gemeinsam“ (g 0,15, u 0,05)", not two and p in L3 and L3[p][4] == "gemeinsam"
        and L3[p][:2] == (0.15, 0.05), (two, L3.get(p)))
+    # Pruefer (pruef-mem3): Token mit roots ohne die Gedaechtnis-Datenbank - wie recall 404, keine Titel, keine Wirkung
+    other = api_v1.page_create(tok_obj(U), {"title": "Anderswo", "markdown": "x"})[1]["id"]
+    tro = apitok.Tok(10 ** 9 + 26091, U, "gx", "sga_gx", apitok.SCOPES, [other], None)
+    f1 = fail_of(memory.mcp_shadow_report, tro, {})
+    L4, n4 = links(U), len(traces(U))
+    f2 = fail_of(memory.mcp_recall_used, tro, {"ids": list(p)})
+    f3 = fail_of(memory.recall, U, q, tok=tro)
+    ok("roots ohne Gedaechtnis-DB: shadow_report und recall_used 404 not_found wie recall, nichts veraendert",
+       f1 and f1.status == 404 and f2 and f2.status == 404 and f3 and f3.status == 404 and links(U) == L4 and len(traces(U)) == n4,
+       (f1 and f1.status, f2 and f2.status, f3 and f3.status))
+    tri = apitok.Tok(10 ** 9 + 26092, U, "gx", "sga_gx", apitok.SCOPES, [S["db"]], None)
+    ok("roots mit Gedaechtnis-DB: shadow_report geht", memory.mcp_shadow_report(tri, {}).count("saga-data") >= 1)
+    api_v1.page_delete(tok_obj(U), other)
 
 
 def part_sens_lazy_err():

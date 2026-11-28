@@ -424,9 +424,11 @@ ausgeschlossen. Schnappschüsse werden trotzdem eingebettet („n von m eingebet
   (ohne `geaendert`: nur der erste Satz; ohne Schnappschuss „Noch kein Nickerchen.“). Vektoren `memory_nap.json`.
 - `geaendert`: eigene Seiten (Konto), `updated > since`, nicht im Papierkorb, nicht archiviert, keine Vorlage, **ohne**
   die gebundene Gedächtnis-Datenbank und alle ihre Zeilen; die Ich-Kern-Seite zählt mit. `seiten` = die 5 zuletzt
-  geänderten. Ohne Schnappschuss `null`.
-- `heute` = `sentence` aus `/api/ai/today` (Konto-Zeitzone und -sprache, ohne Modell); ohne Fähigkeit „ai“ oder bei
-  einem Fehler `null`. Ein Fehler in einem Teil macht nur diesen Teil `null`.
+  geänderten. Ohne Schnappschuss `null`. Token mit Seitenbäumen (`roots`): nur Seiten innerhalb der `roots` (`n` über
+  höchstens die 2 000 zuletzt geänderten).
+- `heute` = `sentence` aus `/api/ai/today` (Konto-Zeitzone und -sprache, ohne Modell); ohne Fähigkeit „ai“, bei
+  einem Fehler oder für Token mit `roots` (der Satz nennt Aufgaben/Termine des ganzen Kontos) `null`. Ein Fehler in
+  einem Teil macht nur diesen Teil `null`.
 - `kontext` von `/core`: Rahmen `memory:core` mit `# Titel`, Markdown, dann `## Aufwachen` mit `text`, `heute` und dem
   `inhalt` des Schnappschusses. Die Hooks geben ihn unverändert weiter.
 

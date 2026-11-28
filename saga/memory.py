@@ -1467,6 +1467,12 @@ def remember(uid, a, tok=None):
 NAP_LIM = {"stimmung": 40, "gedanke": 240, "ort": 100, "faden": 130, "faeden": 5, "zeichen": 1200, "zeilen": 10}
 _COMMA = ("de", "es", "ru")
 CHANGED_MAX = 5
+CHANGED_ROOTS_MAX = 2000         # Token mit roots: so viele zuletzt geaenderte Seiten werden gegen die roots gefiltert (n hoechstens so)
+
+
+def _roots_of(tok):
+    """roots des Tokens fuer das Lesen (None = keine Einschraenkung, auch ohne Token)."""
+    return None if tok is None else getattr(tok, "read_roots", tok.roots)
 
 
 def _norm_ws(v):
@@ -1709,17 +1715,26 @@ def wake(uid, tok=None, now=None):
             out["schnappschuss"] = {"id": last[0], "titel": f["titel"], "inhalt": f["inhalt"][:CONTENT_MAX], "valenz": f["valenz"],
                                     "erregung": f["erregung"], "datum": f["datum"]}
             try:
+                lim_roots = _roots_of(tok) is not None
                 rows = c.execute(
                     "SELECT id, title, count(*) OVER () FROM note WHERE uid=? AND updated > ? AND deleted_at IS NULL AND archived IS NULL "
                     "AND is_template=0 AND id <> ? AND (parent_id IS NULL OR parent_id <> ?) ORDER BY updated DESC, id DESC LIMIT ?",
-                    (uid, since, b["db"], b["db"], CHANGED_MAX)).fetchall()
-                out["geaendert"] = {"n": int(rows[0][2]) if rows else 0, "seiten": [{"id": r[0], "titel": r[1] or ""} for r in rows]}
+                    (uid, since, b["db"], b["db"], CHANGED_ROOTS_MAX if lim_roots else CHANGED_MAX)).fetchall()
+                if lim_roots:                    # pruef-mem3: Token mit roots - nur Seiten in seinen Seitenbaeumen (docs/MEMORY.md 5)
+                    from saga.apitok import visible_ids_filter
+                    vis = visible_ids_filter(c, tok, uid, [r[0] for r in rows])
+                    rows = [r for r in rows if r[0] in vis]
+                    out["geaendert"] = {"n": len(rows), "seiten": [{"id": r[0], "titel": r[1] or ""} for r in rows[:CHANGED_MAX]]}
+                else:
+                    out["geaendert"] = {"n": int(rows[0][2]) if rows else 0, "seiten": [{"id": r[0], "titel": r[1] or ""} for r in rows]}
             except Exception as ex:  # noqa: BLE001 - nur dieser Teil
                 print(f"gedaechtnis: Aufwachen {type(ex).__name__}", flush=True)
         try:
-            from saga import ai_today
-            d = ai_today.compute(uid, tz=zone, lang=lang, conn=c)
-            out["heute"] = d.get("sentence") or None if isinstance(d, dict) else None
+            # pruef-mem3: der Tagessatz nennt Aufgaben/Termine des ganzen Kontos - fuer Tokens mit roots nicht (null)
+            if _roots_of(tok) is None:
+                from saga import ai_today
+                d = ai_today.compute(uid, tz=zone, lang=lang, conn=c)
+                out["heute"] = d.get("sentence") or None if isinstance(d, dict) else None
         except Exception as ex:  # noqa: BLE001 - nur dieser Teil
             print(f"gedaechtnis: Aufwachen heute {type(ex).__name__}", flush=True)
     out["text"] = wake_text(out["seit_s"], (out["geaendert"] or {}).get("n") if out["geaendert"] is not None else None, lang)
@@ -1867,7 +1882,7 @@ async def v1_recall_used(request: Request):
         return _resp(400, {"error": t("ungültige Anfrage"), "code": "bad_request"})
     try:
         _rate(tok)
-        d = await run_in_threadpool(recall_used, tok.uid, b.get("ids"))
+        d = await run_in_threadpool(recall_used, tok.uid, b.get("ids"), tok)
     except Fail as f:
         return _fail(f)
     return _resp(200, d)
@@ -1882,7 +1897,7 @@ async def v1_shadow(request: Request):
     try:
         _rate_report(tok)
         q = request.query_params
-        d = await run_in_threadpool(shadow_report, tok.uid, q.get("tage"), q.get("stichproben"))
+        d = await run_in_threadpool(shadow_report, tok.uid, q.get("tage"), q.get("stichproben"), tok)
     except Fail as f:
         return _fail(f)
     return _resp(200, d)
@@ -1950,12 +1965,12 @@ def mcp_wake(tok, a):
 
 def mcp_recall_used(tok, a):
     _rate(tok)
-    return frame(recall_used(tok.uid, a.get("ids")))
+    return frame(recall_used(tok.uid, a.get("ids"), tok))
 
 
 def mcp_shadow_report(tok, a):
     _rate_report(tok)
-    return frame(shadow_report(tok.uid, a.get("tage"), a.get("stichproben")), "memory:report")
+    return frame(shadow_report(tok.uid, a.get("tage"), a.get("stichproben"), tok), "memory:report")
 
 
 REPORT_RATE = 6                  # Auswertung je Token und Minute
@@ -1992,17 +2007,29 @@ def _ids_arg(ids):
     return list(dict.fromkeys(ids))
 
 
-def recall_used(uid, ids):
+def _check_bound(uid, tok):
+    """Token-Rechte (roots, Rolle) auf die gebundene Datenbank wie bei recall (docs/MEMORY.md 5) - ohne Bindung nichts."""
+    if tok is None:
+        return
+    with _db() as c:
+        b = binding(uid, c)
+        if b["db"]:
+            _check(c, tok, uid, b["db"], "view")
+
+
+def recall_used(uid, ids, tok=None):
     """recall_used (2603, docs/MEMORY.md 12.4) - Schattenmodus: saga/memory_shadow.py."""
     ids = _ids_arg(ids)
+    _check_bound(uid, tok)
     from saga import memory_shadow
     return memory_shadow.used(uid, ids)
 
 
-def shadow_report(uid, tage=None, stichproben=None):
+def shadow_report(uid, tage=None, stichproben=None, tok=None):
     """Auswertung (2603, docs/MEMORY.md 13)."""
     tage = _int_arg(tage, "tage", 1, 30, 14)
     n = _int_arg(stichproben, "stichproben", 0, 20, 8)
+    _check_bound(uid, tok)                       # pruef-mem3: Titel/Vorschau der Zeilen nur mit Recht auf die Datenbank
     from saga import memory_shadow
     return memory_shadow.report(uid, tage, n)
 
