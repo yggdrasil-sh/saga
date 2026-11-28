@@ -102,9 +102,9 @@ def part_registry():
     ok("gesperrt: Papierkorb, Archiv, Ersetzen, Bloecke, Widget, Schema, Termine aendern/loeschen, Kommentar, Bild",
        not kol & {"trash_page", "archive_page", "replace_page_content", "update_block", "update_widget", "update_database_schema",
                   "update_event", "delete_event", "add_comment", "get_image"})
-    # recall (2581) = Gedaechtnis: genau dieser Name ausgenommen (nicht jedes "...recall...")
-    bad = [x.name for x in tools.REGISTRY if x.name != "recall" and re.search(r"share|invite|role|call|tel", x.name)]
-    ok("RT-01: kein Werkzeug share|invite|role|call|tel (recall = Gedaechtnis)", not bad, bad)
+    # recall (2581), recall_used (2603) = Gedaechtnis: genau diese Namen ausgenommen (nicht jedes "...recall...")
+    bad = [x.name for x in tools.REGISTRY if x.name not in ("recall", "recall_used") and re.search(r"share|invite|role|call|tel", x.name)]
+    ok("RT-01: kein Werkzeug share|invite|role|call|tel (recall/recall_used = Gedaechtnis)", not bad, bad)
     ok("Klassen: Lesen = nicht schreibend, Kollegin nur read/own (nach aussen in K-A: keine)",
        all((x.klass == "read") == (not x.write) for x in tools.REGISTRY) and all(x.klass in ("read", "own") for x in tools.for_kollegin()))
     ok("Rueckgaengig-Klasse je schreibendem Werkzeug (undo|delete_only|final), Lesen ohne",

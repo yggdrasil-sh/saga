@@ -673,6 +673,13 @@ def excluded(c, uid, dbid, cols, mp):
     return sn, se
 
 
+def rows_count(uid):
+    """Lebende Zeilen (mit Schnappschuessen) aus dem Stempel von excluded() - None, wenn nicht zwischengespeichert."""
+    with _xlock:
+        x = _xcache.get(uid)
+    return x[0][1] if x else None
+
+
 def trgm_rel(x, q):
     """-> {zeilen-index: rel} (nur > 0)."""
     kws = keywords(q)
@@ -1229,7 +1236,7 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
             sh = memory_shadow.evaluate(c, uid, {
                 "w": w, "quelle": quelle, "now": now, "projekt": projekt, "lim": limit, "text": text, "db": b["db"], "cols": cols,
                 "snaps": snaps, "sens": sens, "cand": cand, "scored": scored, "top": top, "v": v, "rel": rel, "x": x, "rr": rr,
-                "n_rows": _rows_stamp(c, uid, b["db"])[1], "t_shadow": tsh})
+                "n_rows": rows_count(uid), "t_shadow": tsh})
             ms["schatten"] = (time.perf_counter() - tsh) * 1000
         # 2.6 (Bugs-DB 2595): offene Graph-Ansichten der Besitzerin lassen die Treffer kurz pulsieren - nach dem Commit,
         # nur an ihre eigenen Verbindungen, nur IDs (nie Titel/Inhalte; docs/MEMORY.md 10); 2603: + "schatten" (nur neu)

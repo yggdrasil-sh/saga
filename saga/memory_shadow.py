@@ -262,18 +262,29 @@ def _lstamp(c, uid):
     return (int(r[0]), float(r[1]), float(r[2]))
 
 
-def graph_of(c, uid):
+LINK_CHECK_S = 5.0               # Stempel der Links hoechstens so oft pruefen (eigene Schreibzugriffe verwerfen sofort)
+_lchecked = {}
+
+
+def graph_of(c, uid, fresh=False):
+    with _llock:
+        G = _lcache.get(uid)
+        if G is not None and not fresh and time.time() - _lchecked.get(uid, 0) < LINK_CHECK_S:
+            _lcache.move_to_end(uid)
+            return G
     st = _lstamp(c, uid)
     with _llock:
         G = _lcache.get(uid)
         if G is not None and G.stamp == st:
             _lcache.move_to_end(uid)
+            _lchecked[uid] = time.time()
             return G
     rows = c.execute("SELECT a, b, gewicht, untergrenze, zuletzt, gepinnt, herkunft, treffer FROM mem_link WHERE uid=? ORDER BY a, b",
                      (uid,)).fetchall()
     G = Graph(rows, st)
     from saga import memory
     with _llock:
+        _lchecked[uid] = time.time()
         _lcache[uid] = G
         _lcache.move_to_end(uid)
         total = sum(x.nbytes() for x in _lcache.values()) + memory.cache_total()[0]
@@ -287,8 +298,10 @@ def forget(uid=None):
     with _llock:
         if uid is None:
             _lcache.clear()
+            _lchecked.clear()
         else:
             _lcache.pop(uid, None)
+            _lchecked.pop(uid, None)
 
 
 def cache_bytes():
@@ -320,27 +333,32 @@ def _evaluate(c, uid, x):
     snaps, sens = x["snaps"], x["sens"]
     bad = snaps | sens
     cand, scored = x["cand"], x["scored"]
-    # lebende Zeilen (Index der Suche) und exakte rel fuer Nicht-Kandidaten
+    G = graph_of(c, uid)
+    nodes = G.ids
+    # lebende Zeilen (Index der Suche) und exakte rel je Knoten des Graphen (vektorisiert)
+    relg = np.zeros(len(nodes))
     if quelle == "embeddings":
         v, rel = x["v"], x["rel"]
         live = v.ids
-
-        def rel_of(nid):
-            i = int(np.searchsorted(v.ids, nid))
-            return max(0.0, float(rel[i])) if i < len(v.ids) and int(v.ids[i]) == nid else 0.0
+        if len(nodes) and len(v.ids):
+            i = np.minimum(np.searchsorted(v.ids, nodes), len(v.ids) - 1)
+            hitm = v.ids[i] == nodes
+            relg[hitm] = np.maximum(0.0, rel[i[hitm]])
+        n_live = len(v.ids) - (int(np.isin(v.ids, np.fromiter(snaps, dtype=np.int64, count=len(snaps))).sum()) if snaps else 0)
     else:
         wi, rr = x["x"], x["rr"]
         live = np.asarray(sorted(wi.ids), dtype=np.int64)
-        pos = wi.pos
-
-        def rel_of(nid):
-            i = pos.get(nid)
-            return max(0.0, float(rr.get(i, 0.0))) if i is not None else 0.0
-    n_rows = max(0, x["n_rows"] - len(snaps))
-    G = graph_of(c, uid)
-    nodes = G.ids
+        if rr and len(nodes):
+            ri = list(rr)
+            k = G.idx([wi.ids[i] for i in ri])
+            for kk, i in zip(k, ri):
+                if kk >= 0:
+                    relg[kk] = max(0.0, float(rr[i]))
+        n_live = len(wi.ids)
+    n_rows = max(0, x["n_rows"] - len(snaps)) if x.get("n_rows") is not None else n_live
     A = via = hop = None
     akt = {}
+    reach = set()
     if len(nodes):
         alive = np.isin(nodes, live)
         badarr = np.isin(nodes, np.fromiter(bad, dtype=np.int64, count=len(bad))) if bad else np.zeros(len(nodes), dtype=bool)
@@ -355,12 +373,14 @@ def _evaluate(c, uid, x):
             if k >= 0 and valid[k]:
                 seed_rel[k] = r
         A, via, hop = spread(G, t, valid, seed_rel)
-        for k in np.nonzero(A > 0)[0]:
-            akt[int(nodes[k])] = (float(A[k]), int(via[k]), int(hop[k]))
-    # Elemente: Kandidaten + erreichte Zeilen
-    reach = {i for i in akt if i not in cand and i not in snaps}
-    rels = {i: rel_of(i) for i in reach}
-    reach = {i for i in reach if min(1.0, rels[i] + akt[i][0]) >= gate}
+        need = np.nonzero((A > 0) & (np.minimum(1.0, relg + A) >= gate))[0]
+        ci = G.idx(list(cand))
+        need = np.union1d(need, ci[ci >= 0]).astype(np.int64)
+        for k in need:
+            if A[k] > 0:
+                akt[int(nodes[k])] = (float(A[k]), int(via[k]), int(hop[k]))
+        reach = {int(nodes[k]) for k in need if A[k] > 0} - set(cand) - set(snaps)
+    rels = {i: float(relg[int(G.idx([i])[0])]) for i in reach}
     rows = {}
     if reach:
         for nid, title, props, created, hits, lh in c.execute(
@@ -410,7 +430,8 @@ def _evaluate(c, uid, x):
                   "VALUES (?,?,?,?,?,?,CAST(? AS JSONB),CAST(? AS JSONB),'[]'::jsonb,?,?,CAST(? AS JSONB))",
                   (uid, now, quelle, frage_hash(uid, text), stichworte(text), int(x["lim"]), json.dumps(basis), json.dumps(neu),
                    min(cut, 32767), int(total), json.dumps(daten)))
-        _gemeinsam(c, uid, [i for i in basis if i not in bad], now)
+        if _gemeinsam(c, uid, [i for i in basis if i not in bad], now):
+            forget(uid)
     return {"neu": neu}
 
 
@@ -525,6 +546,8 @@ def _insert_pairs(uid, pairs, now=None):
             for (a, b), g in items[s:s + 500]:
                 n += c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
                                "VALUES (?,?,?,?,?,0,?,?,'aehnlich') ON CONFLICT DO NOTHING", (a, b, uid, g, U0, now, now)).rowcount
+    if n:
+        forget(uid)
     return n
 
 
@@ -632,6 +655,8 @@ def used(uid, ids, now=None):
                         nn += c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
                                         "VALUES (?,?,?,?,?,?,?,?,'gemeinsam') ON CONFLICT DO NOTHING",
                                         (a, b_, uid, x["g"], x["u"], x["treffer"], now, now)).rowcount
+    if nv or nn:
+        forget(uid)
     return {"ok": True, "schatten": True, "verstaerkt": nv, "neu": nn, "ignoriert": ign}
 
 
@@ -645,6 +670,8 @@ def cleanup(now=None, links=False):
         if links:
             nl = c.execute("DELETE FROM mem_link l WHERE NOT EXISTS (SELECT 1 FROM note n WHERE n.id = l.a) "
                            "OR NOT EXISTS (SELECT 1 FROM note n WHERE n.id = l.b)").rowcount
+    if nl:
+        forget()
     if nt or nl:
         print(f"gedaechtnis: Schatten aufgeraeumt - {nt} Spuren, {nl} Links", flush=True)
     return nt, nl
@@ -698,6 +725,14 @@ def sample_idx(m, n):
 
 
 def report(uid, tage, n, now=None):
+    """Auswertung (docs/MEMORY.md 13) - Texte ("(gelöscht)") in der Kontosprache."""
+    from saga import memory
+    from saga.core import account_lang
+    with memory._in_lang(account_lang(uid)):
+        return _report(uid, tage, n, now)
+
+
+def _report(uid, tage, n, now=None):
     from saga import memory
     from saga.core import t
     now = now or time.time()
@@ -706,7 +741,7 @@ def report(uid, tage, n, now=None):
         cx = _ctx(c, uid)
         tr = c.execute("SELECT id, at, stichworte, treffer, neu, genutzt, gekappt, zeichen, daten FROM mem_trace WHERE uid=? AND at >= ? "
                        "ORDER BY at, id", (uid, now - tage * 86400)).fetchall()
-        G = graph_of(c, uid)
+        G = graph_of(c, uid, fresh=True)
         sens = cx[3] if cx else frozenset()
         snaps = cx[2] if cx else frozenset()
         live = set()
