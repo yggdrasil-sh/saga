@@ -252,7 +252,8 @@ _RAW = [
     # tools/list ohne Bereich "memory" bleibt byteweise wie bisher (tests/mcp_gold.py)
     ("recall", "memory", "Erinnerungen aus dem eigenen Gedächtnis holen (gebundene Datenbank, Einstellungen › "
      "Gedächtnis): die bis zu 5 passendsten Einträge zu text – nach Bedeutung (Embeddings) bzw. Wortähnlichkeit, gewichtet "
-     "mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm.",
+     "mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm. "
+     "Danach mit recall_used melden, was geholfen hat.",
      {"text": _s("string", "Worum es geht (Frage, Stichworte oder Gesprächsausschnitt, höchstens 4000 Zeichen)"),
       "projekt": _s("string", "Projekt (passende Einträge bekommen einen Bonus)"),
       "limit": _s("integer", "Höchstzahl Treffer (1-5)", minimum=1, maximum=5)}, ["text"], True),
@@ -265,7 +266,30 @@ _RAW = [
       "wichtigkeit": _s("number", "Wichtigkeit 0-10", minimum=0, maximum=10),
       "valenz": _s("number", "Gefühlston -1 (negativ) bis 1 (positiv)", minimum=-1, maximum=1),
       "erregung": _s("number", "Erregung 0 (ruhig) bis 1 (aufgewühlt)", minimum=0, maximum=1),
-      "datum": _s("string", "Datum (JJJJ-MM-TT, Standard heute)")}, ["titel", "inhalt"], True),
+      "datum": _s("string", "Datum (JJJJ-MM-TT, Standard heute)"),
+      "sensibel": _s("boolean", "Sensibel: kommt nur, wenn direkt danach gefragt wird – nie über Verknüpfungen")},
+     ["titel", "inhalt"], True),
+    # 2.6 (Bugs-DB 2601/2603, docs/MEMORY.md 11-13): Nickerchen/Aufwachen und Schattenmodus - ebenfalls nur mit "memory"
+    ("nap", "memory", "Nickerchen: den eigenen Zustand als Schnappschuss im Gedächtnis ablegen (Art „Schnappschuss“) – bei der "
+     "Verabschiedung und nach großen Runden. stimmung (ein Wort) und gedanke (ein Satz) sind Pflicht, dazu bis zu 5 offene "
+     "Fäden und der Ort. Nichts wird gelöscht; wake liefert beim nächsten Mal den neuesten Schnappschuss.",
+     {"stimmung": _s("string", "Stimmung in einem Wort (höchstens 40 Zeichen)"),
+      "gedanke": _s("string", "Letzter Gedanke in einem Satz (höchstens 240 Zeichen)"),
+      "valenz": _s("number", "Gefühlston -1 (negativ) bis 1 (positiv)", minimum=-1, maximum=1),
+      "erregung": _s("number", "Erregung 0 (ruhig) bis 1 (aufgewühlt)", minimum=0, maximum=1),
+      "faeden": _s("array", "Offene Fäden, je eine Zeile (höchstens 5, je 130 Zeichen)", items={"type": "string"}, maxItems=5),
+      "ort": _s("string", "Ort: Projekt/Ordner bzw. Chat (höchstens 100 Zeichen)"),
+      "projekt": _s("string", "Projekt (vorhandene Option)")}, ["stimmung", "gedanke"], True),
+    ("wake", "memory", "Aufwachen: Ich-Kern, Zeit seit dem letzten Nickerchen, der neueste Schnappschuss (Stimmung, offene "
+     "Fäden, letzter Gedanke), der Tagessatz und welche Seiten sich seitdem geändert haben. Zu Beginn eines Gesprächs aufrufen.",
+     {}, [], False),
+    ("recall_used", "memory", "Nach der Antwort melden, welche Erinnerungen aus recall wirklich geholfen haben (ids aus treffer). "
+     "Nur das stärkt Verknüpfungen im Schattenmodus; ist er aus, hat es keine Wirkung.",
+     {"ids": _s("array", "IDs der hilfreichen Treffer (1-10)", items={"type": "integer"}, minItems=1, maxItems=10)}, ["ids"], True),
+    ("shadow_report", "memory", "Auswertung des Schattenmodus (Probelauf): verdichtete Zahlen zu Verknüpfungen und Gewichten, "
+     "Ausreißer und Stichproben von Erinnerungen, die zusätzlich aufgetaucht wären – mit Relevanz und Gesamtwert. Ändert nichts.",
+     {"tage": _s("integer", "Zeitraum in Tagen (1-30, Standard 14)", minimum=1, maximum=30),
+      "stichproben": _s("integer", "Anzahl Stichproben (0-20, Standard 8)", minimum=0, maximum=20)}, [], False),
 ]
 
 
@@ -341,6 +365,11 @@ _META = {
     # 2.6 (Bugs-DB 2581): Gedaechtnis gehoert der Person bzw. ihrem eigenen Assistenten - nie die Kollegin (F10)
     "recall": ("own", "final", False, _fixed("memory")),
     "remember": ("own", "delete_only", False, _fixed("memory")),
+    # 2.6 (Bugs-DB 2601/2603): Nickerchen/Aufwachen, Schattenmodus - nie die Kollegin
+    "nap": ("own", "delete_only", False, _fixed("memory")),
+    "wake": ("read", None, False, _fixed("memory")),
+    "recall_used": ("own", "final", False, _fixed("memory")),
+    "shadow_report": ("read", None, False, _fixed("memory")),
 }
 
 REGISTRY = []
@@ -665,6 +694,9 @@ def _dispatch(tok, name, a):
     if name == "remember":
         from saga import memory
         return memory.mcp_remember(tok, a)
+    if name in ("nap", "wake", "recall_used", "shadow_report"):     # 2.6 (Bugs-DB 2601/2603)
+        from saga import memory
+        return getattr(memory, "mcp_" + name)(tok, a)
     if name == "add_comment":
         _, d = api_v1.comment_create(tok, _int(a, "page_id"), {"text": a.get("text"), "block_id": ""})
         return t("Kommentar gespeichert (ID {id}).", id=d["id"])

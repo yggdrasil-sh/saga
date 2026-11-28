@@ -20,6 +20,16 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Gedächtnis Stufe 3: Nickerchen und Aufwachen (2601, `memory2`, [docs/MEMORY.md](docs/MEMORY.md) §11):** das Modell
+  legt bei der Verabschiedung und nach großen Runden mit `nap` (MCP und `POST /api/v1/memory/nap`) einen Schnappschuss
+  ab – eine Zeile mit der Art-Option „Schnappschuss“ (Saga legt sie nie an; fehlt sie: `unknown_option`, nichts
+  angelegt): Stimmung mit Valenz/Erregung, bis zu 5 offene Fäden, letzter Gedanke, Ort, in der Kontosprache, höchstens
+  1 200 Zeichen. Nichts wird gelöscht. `wake` (MCP und `GET /api/v1/memory/wake`, dazu `wake` in `GET /api/v1/memory/core`)
+  sagt „Letztes Nickerchen: vor 2 Tagen, 5 Stunden. Seitdem 7 Seiten geändert.“, liefert den neuesten Schnappschuss und
+  den Tagessatz aus „Heute“; der `kontext` für den SessionStart-Hook enthält den Aufwach-Teil (Skript unverändert).
+  Schnappschüsse sind aus recall, `aehnlich` und dem Schattenmodus ausgeschlossen – schon vor der Kandidaten-Grenze.
+  Neue Spalte „Sensibel“ (Kontrollkästchen, `remember` nimmt `sensibel`). Vektoren `tests/vectors/memory_nap.json`,
+  Reihe `tests/gedaechtnis_schlaf.py`.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im

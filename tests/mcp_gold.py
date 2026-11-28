@@ -9,8 +9,9 @@ Vorlage tests/vectors/mcp_tools_list.json (erzeugt auf dem Stand VOR dem Umbau):
 Geprueft wird im Prozess (mcp.handle, alle 729 Kombinationen) und ueber HTTP gegen den laufenden Test-Server (echte
 sga_-Tokens: Antwort-Bytes == im Prozess gerendert == Vorlage).
 
-2.6 (Bugs-DB 2581, Gedaechtnis): Abschnitt "memory" - recall/remember nur mit Bereich "memory", am Ende der Liste.
-  tools  die beiden Werkzeuge (lesbar); only {sha256, names} von tools/list mit ["mcp", "memory"];
+2.6 (Bugs-DB 2581, Gedaechtnis): Abschnitt "memory" - die Gedaechtnis-Werkzeuge nur mit Bereich "memory", am Ende der
+  Liste (2581: recall/remember; 2601/2603: + nap, wake, recall_used, shadow_report - neu erzeugt nur dieser Abschnitt).
+  tools  die Gedaechtnis-Werkzeuge (lesbar); only {sha256, names} von tools/list mit ["mcp", "memory"];
   full   {sha256, names} mit allen Datenbereichen + "memory" (= full + tools, byteweise).
   Die 729 Kombinationen ohne "memory" bleiben unveraendert (Beleg: neue Werkzeuge aendern bestehende Listen nicht).
 
@@ -93,9 +94,9 @@ def compare(gold, ok):
     ok("Goldvorlage: jede Bereichs-Kombination byteweise gleich", not bad, bad[:5])
     mem = build_memory()
     gm = gold.get("memory") or {}
-    ok("Goldvorlage (2581): recall/remember gleich (Inhalt)", mem["tools"] == gm.get("tools"), [x["name"] for x in mem["tools"]])
-    ok("Goldvorlage (2581): nur mcp+memory byteweise gleich", mem["only"] == gm.get("only"), mem["only"])
-    ok("Goldvorlage (2581): alle Bereiche + memory = volle Liste + recall/remember am Ende (Bytes)",
+    ok("Goldvorlage (2581/2601/2603): Gedächtnis-Werkzeuge gleich (Inhalt)", mem["tools"] == gm.get("tools"), [x["name"] for x in mem["tools"]])
+    ok("Goldvorlage (2581/2601/2603): nur mcp+memory byteweise gleich", mem["only"] == gm.get("only"), mem["only"])
+    ok("Goldvorlage (2581/2601/2603): alle Bereiche + memory = volle Liste + Gedächtnis-Werkzeuge am Ende (Bytes)",
        mem["full"] == gm.get("full") and mem["full"]["names"] == [x["name"] for x in gold["full"]] + mem["only"]["names"]
        and render({"jsonrpc": "2.0", "id": 1, "result": {"tools": gold["full"] + gm.get("tools", [])}}) == render(listing(FULL_SCOPES + ["memory"])),
        mem["full"]["names"][-3:])

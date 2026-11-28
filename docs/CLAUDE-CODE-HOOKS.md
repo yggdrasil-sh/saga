@@ -98,3 +98,18 @@ Anweisungen**. Claude Code begrenzt den Text auf 10 000 Zeichen; ein längerer I
 - In claude.ai-Chats gibt es keine Hooks – dort ruft das Modell `recall` über den MCP-Connector auf. Dafür beim
   Verbinden auf der Zustimmungsseite **„Gedächtnis“ anhaken** (nicht vorausgewählt; eine bestehende Verbindung einmal
   trennen und neu verbinden) – oder ein `sga_`-Token mit `mcp` + `memory`.
+
+## 6. Aufwachen und Nickerchen (Stufe 3, Bugs-DB 2601)
+
+- **SessionStart zeigt das Aufwachen:** `GET /api/v1/memory/core` liefert seit Stufe 3 im `kontext` nach dem Ich-Kern
+  einen Teil „## Aufwachen“ – Zeit seit dem letzten Nickerchen („vor 2 Tagen, 5 Stunden“), wie viele Seiten sich
+  seitdem geändert haben, den Tagessatz aus „Heute“ und den letzten Schnappschuss (Stimmung, offene Fäden, letzter
+  Gedanke). Das Skript bleibt unverändert; der Matcher `startup|resume|clear|compact` sorgt dafür, dass das Aufwachen
+  auch nach einer Verdichtung (`compact`) wieder im Kontext steht. Voraussetzung: in der Gedächtnis-Datenbank hat die
+  Spalte „Art“ die Option **„Schnappschuss“** (Saga legt sie nicht selbst an; Einstellungen › Gedächtnis zeigt den Stand).
+- **Das Nickerchen schreibt das Modell selbst** über MCP (`nap`: Stimmung, offene Fäden, letzter Gedanke, Ort) – bei der
+  Verabschiedung und nach großen Runden. In claude.ai bzw. der Claude-App ist das der einzige Weg (dort gibt es keine
+  Hooks); `wake` liefert dort das Aufwachen.
+- **Warum kein PreCompact/SessionEnd-Hook:** Ein Hook hat kein Modell – er wüsste weder Stimmung noch offene Fäden und
+  könnte nur einen maschinellen Schnappschuss schreiben. Der wäre dann „der neueste“ und würde beim Aufwachen den echten
+  verdrängen. Deshalb schreiben Hooks nie Schnappschüsse.

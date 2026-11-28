@@ -20,7 +20,10 @@ auf Trigramm-Aehnlichkeit, Ich-Kern als Markdown fuer Claude-Code-Hooks.
   gilt auch fuer https, keine Weiterleitungen. Ollama: native /api/embed mit keep_alive (kein Warmhalten ab Werk).
 - Datenschutz: keine Fragen/Inhalte im Log (nur Zahlen und ein Kurz-Hash des Kontos).
 REST /api/v1/memory/{core,recall,remember} (Bereich "memory"), Web /api/account/memory, Admin ueber admin.py
-(/api/ai/embed...). MCP-Werkzeuge recall/remember in saga/tools.py."""
+(/api/ai/embed...). MCP-Werkzeuge recall/remember in saga/tools.py.
+Stufe 3 (Bugs-DB 2601/2603, Feature memory2, docs/MEMORY.md 11-13): Nickerchen (nap: Schnappschuss-Zeile mit Art-Option
+"Schnappschuss", wake: Aufwachen), Ausschluss der Schnappschuesse aus recall/aehnlich (vor CAND_MAX), Spalte "Sensibel",
+Schattenmodus Phase 1 (saga/memory_shadow.py: Verknuepfungen mem_link, Spuren mem_trace - recall-Antworten unveraendert)."""
 import hashlib
 import ipaddress
 import json
@@ -30,6 +33,7 @@ import threading
 import time
 import unicodedata
 from collections import OrderedDict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -47,13 +51,16 @@ from saga.core import CA_FILE, TZ, _api_guard, _body, _json_load, t
 
 router = APIRouter()
 
-FIELDS = ("inhalt", "schlagworte", "projekt", "art", "wichtigkeit", "valenz", "erregung", "datum", "letzter_abruf", "abrufe")
+FIELDS = ("inhalt", "schlagworte", "projekt", "art", "wichtigkeit", "valenz", "erregung", "datum", "letzter_abruf", "abrufe",
+          "sensibel")
+# 2601: "schnappschuss" ist keine Spalte, sondern der Optionsname in "Art", der einen Schnappschuss kennzeichnet
+MAP_KEYS = FIELDS + ("schnappschuss",)
 DEFAULT_MAP = {"inhalt": "Inhalt", "schlagworte": "Schlagworte", "projekt": "Projekt", "art": "Art",
                "wichtigkeit": "Wichtigkeit", "valenz": "Valenz", "erregung": "Erregung", "datum": "Datum",
-               "letzter_abruf": "Letzter Abruf", "abrufe": "Abrufe"}
+               "letzter_abruf": "Letzter Abruf", "abrufe": "Abrufe", "sensibel": "Sensibel", "schnappschuss": "Schnappschuss"}
 TYPES = {"inhalt": ("text",), "schlagworte": ("multi_select", "text"), "projekt": ("select",), "art": ("select",),
          "wichtigkeit": ("number",), "valenz": ("number",), "erregung": ("number",), "datum": ("date",),
-         "letzter_abruf": ("date",), "abrufe": ("number",)}
+         "letzter_abruf": ("date",), "abrufe": ("number",), "sensibel": ("checkbox",)}
 WEIGHTS = {"rel": 0.55, "fresh": 0.15, "freq": 0.10, "imp": 0.20, "proj": 0.10, "rel_min": 0.45, "rel_min_trgm": 0.25,
            "score_min": 0.375, "half_life_days": 30}
 # score_min 0,375 statt 0,50 (Spec F4): Kalibrierung mit bge-m3 (tools/evals/gedaechtnis_kalibrieren.py, 48 Fragen) -
@@ -171,7 +178,7 @@ def binding(uid, c=None):
     mraw = _json_load(kv.get("memory.map"), {})
     wraw = _json_load(kv.get("memory.weights"), {})
     mp = dict(DEFAULT_MAP)
-    mp.update({k: str(v)[:100] for k, v in mraw.items() if k in FIELDS and isinstance(v, str) and v.strip()})
+    mp.update({k: str(v)[:100] for k, v in mraw.items() if k in MAP_KEYS and isinstance(v, str) and v.strip()})
     return {"db": _int_or_none(kv.get("memory.db")), "core": _int_or_none(kv.get("memory.core")), "map": mp, "map_raw": mraw,
             "weights": weights(wraw), "weights_raw": wraw}
 
@@ -248,6 +255,7 @@ def fields_of(cols, title, props):
     for f in ("datum", "letzter_abruf"):
         v = val(f)
         out[f] = v if isinstance(v, str) else None
+    out["sensibel"] = val("sensibel") is True
     return out
 
 
@@ -591,8 +599,9 @@ def _rows_stamp(c, uid, dbid):
     return (dbid, int(r[0]), float(r[1]))
 
 
-def word_index(c, uid, dbid, cols):
-    st = _rows_stamp(c, uid, dbid) + (json.dumps({k: (v or {}).get("id") for k, v in cols.items()}),)
+def word_index(c, uid, dbid, cols, snap=None):
+    """Trigramm-Index der lebenden Zeilen - ohne Schnappschuesse (snap = Options-ID in "Art", 2601: vor CAND_MAX)."""
+    st = _rows_stamp(c, uid, dbid) + (json.dumps({k: (v or {}).get("id") for k, v in cols.items()}), snap)
     with _wlock:
         x = _wcache.get(uid)
         if x is not None and x.stamp == st:
@@ -600,10 +609,14 @@ def word_index(c, uid, dbid, cols):
             return x
     x = _Words()
     x.ids, x.word_rows, x.tri_words, x.wtri, x.stamp = [], {}, {}, {}, st
+    art = (cols.get("art") or {}).get("id") if snap else None
     for nid, title, props, _cr in c.execute(_ROWS_SQL, (uid, dbid)).fetchall():
+        pv = _json_load(props, {})
+        if art and isinstance(pv, dict) and pv.get(art) == snap:
+            continue
         i = len(x.ids)
         x.ids.append(nid)
-        for w in set(words(embed_text(fields_of(cols, title, _json_load(props, {}))))):
+        for w in set(words(embed_text(fields_of(cols, title, pv)))):
             x.word_rows.setdefault(w, set()).add(i)
             if w not in x.wtri:
                 x.wtri[w] = trigrams(w)
@@ -615,6 +628,44 @@ def word_index(c, uid, dbid, cols):
         while len(_wcache) > WCACHE_MAX:
             _wcache.popitem(last=False)
     return x
+
+
+# --- Ausschluss: Schnappschuesse und sensible Zeilen (2601/2603, docs/MEMORY.md 11.2/12.6) ------------------------------
+_xcache = OrderedDict()          # uid -> (stempel, schnappschuss-ids, sensible ids)
+_xlock = threading.Lock()
+
+
+def snap_option(cols, mp):
+    """Options-ID der Schnappschuss-Option in "Art" (None: Spalte oder Option fehlt)."""
+    return _opt_match(cols["art"], mp.get("schnappschuss") or DEFAULT_MAP["schnappschuss"]) if cols.get("art") else None
+
+
+def excluded(c, uid, dbid, cols, mp):
+    """-> (schnappschuss-ids, sensible ids) als frozensets der lebenden Zeilen. Zwischengespeichert nach Zeilen-Stempel
+    (Art/Sensibel aendern updated; die Zaehler-Spiegelung aendert nur Abrufe/Letzter Abruf) und Spalten/Option."""
+    snap = snap_option(cols, mp)
+    art, sens = (cols.get("art") or {}).get("id"), (cols.get("sensibel") or {}).get("id")
+    if not snap and not sens:
+        return frozenset(), frozenset()
+    st = _rows_stamp(c, uid, dbid) + (art, snap, sens)
+    with _xlock:
+        x = _xcache.get(uid)
+        if x is not None and x[0] == st:
+            _xcache.move_to_end(uid)
+            return x[1], x[2]
+    sel = ("(saga_jsonb(props)->>?) = ?" if snap else "FALSE") + ", " + ("(saga_jsonb(props)->?) = 'true'::jsonb" if sens else "FALSE")
+    conds = (["(saga_jsonb(props)->>?) = ?"] if snap else []) + (["(saga_jsonb(props)->?) = 'true'::jsonb"] if sens else [])
+    pa = ([art, str(snap)] if snap else []) + ([sens] if sens else [])
+    rows = c.execute(f"SELECT id, {sel} FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL "
+                     f"AND is_template=0 AND ({' OR '.join(conds)})", tuple(pa + [uid, dbid] + pa)).fetchall()
+    sn = frozenset(r[0] for r in rows if r[1])
+    se = frozenset(r[0] for r in rows if r[2] and not r[1])
+    with _xlock:
+        _xcache[uid] = (st, sn, se)
+        _xcache.move_to_end(uid)
+        while len(_xcache) > WCACHE_MAX:
+            _xcache.popitem(last=False)
+    return sn, se
 
 
 def trgm_rel(x, q):
@@ -1047,6 +1098,8 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
         if st is None:
             raise _db_gone()
         cols, _info = columns(st[0], b["map"])
+        snaps, sens = excluded(c, uid, b["db"], cols, b["map"])
+        snap_oid = snap_option(cols, b["map"])
         fill_rows, more = [], False
         if model:
             fill = _missing(c, uid, b["db"], model, RECALL_FILL + 1)
@@ -1086,21 +1139,24 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
     with _db() as c:
         ts = time.perf_counter()
         cand = {}
+        v = rel = x = rr = None
         if qv is not None:
             v = vectors(c, uid, model)
             if len(v.ids) and v.mat.shape[1] == qv.shape[0]:
                 quelle = "embeddings"
                 rel = v.mat @ qv
+                if snaps:                        # 2601: Schnappschuesse vor CAND_MAX ausschliessen
+                    rel[np.isin(v.ids, np.fromiter(snaps, dtype=np.int64, count=len(snaps)))] = -1.0
                 idx = np.nonzero(rel >= w["rel_min"])[0]
                 if len(idx) > CAND_MAX:
                     idx = idx[np.argsort(-rel[idx])[:CAND_MAX]]
                 cand = {int(v.ids[i]): float(rel[i]) for i in idx}
         if quelle == "trigramm":
-            x = word_index(c, uid, b["db"], cols)
+            x = word_index(c, uid, b["db"], cols, snap_oid)
             rr = trgm_rel(x, text)
             best = sorted(((s, i) for i, s in rr.items() if s >= w["rel_min_trgm"]), reverse=True)[:CAND_MAX]
             cand = {x.ids[i]: s for s, i in best}
-        items = []
+        items, scored = [], {}
         if cand:
             for nid, title, props, created, hits, lh in c.execute(
                     "SELECT n.id, n.title, n.props, n.created, v.hits, v.last_hit FROM note n LEFT JOIN mem_vec v ON v.note_id = n.id "
@@ -1111,6 +1167,7 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
                 fa = factors(cand[nid], now, created, h, lh, f["letzter_abruf"], f["datum"], f["wichtigkeit"], projekt,
                              f["projekt"], w)
                 s = score(fa, w)
+                scored[nid] = (s, fa, f, created, h, lh)
                 if is_hit(fa, s, w, quelle):
                     items.append((s, fa["rel"], nid, fa, f, hits is not None))
         top = rank(items, limit)
@@ -1172,6 +1229,23 @@ def _opt_match(p, v):
 
 def _opt_names(p):
     return [str(o.get("name") or "") for o in p.get("options") or [] if isinstance(o, dict)][:100]
+
+
+def _create_row(uid, dbid, titel, props, tok=None):
+    """Zeile in der gebundenen Datenbank anlegen (remember, nap) -> id. Mit Token: Bereich "memory" reicht fuer genau diese
+    Zeile (Rechte/roots pruefte _check, die Zeilen-Pruefungen von row_create laufen mit write:db fuer diesen einen Aufruf)."""
+    if tok is not None:
+        from saga import apitok
+        wt = apitok.Tok(tok.id, tok.uid, tok.name, tok.prefix, set(tok.scopes) | {"read:db", "write:db"}, tok.roots, tok.expires,
+                        grant_id=getattr(tok, "grant_id", None))
+        _st, d2 = api_v1.row_create(wt, dbid, {"title": titel, "properties": props})
+        return d2["id"]
+    from saga.pages import note_create
+    r = note_create(uid, {"title": titel, "parent_id": dbid, "props": props})
+    dd = json.loads(r.body)
+    if r.status_code >= 400:
+        raise Fail(r.status_code, dd.get("error") or "error")
+    return dd["id"]
 
 
 def remember(uid, a, tok=None):
@@ -1257,26 +1331,20 @@ def remember(uid, a, tok=None):
         props[cols["datum"]["id"]] = d or datetime.now(TZ).date().isoformat()
     elif d is not None:
         ignored.append("datum")
+    sv = a.get("sensibel")                       # 2603: Kontrollkaestchen "Sensibel"
+    if sv is not None:
+        if not isinstance(sv, bool):
+            raise Fail(400, t("ungültige Angabe") + " (sensibel)")
+        if not cols.get("sensibel"):
+            ignored.append("sensibel")
+        elif sv:
+            props[cols["sensibel"]["id"]] = True
     if cols.get("abrufe"):
         props[cols["abrufe"]["id"]] = 0
     if unknown:
         raise Fail(400, t("Unbekannte Auswahl-Werte – Saga legt keine neuen an. Bitte einen vorhandenen Wert nehmen oder weglassen."),
                    "unknown_option", extra={"unbekannt": unknown, "optionen": options})
-    if tok is not None:
-        # Bereich "memory" reicht fuer genau diese Zeile in der gebundenen Datenbank (Rechte/roots pruefte _check, die
-        # Zeilen-Pruefungen von row_create laufen mit write:db fuer diesen einen Aufruf)
-        from saga import apitok
-        wt = apitok.Tok(tok.id, tok.uid, tok.name, tok.prefix, set(tok.scopes) | {"read:db", "write:db"}, tok.roots, tok.expires,
-                        grant_id=getattr(tok, "grant_id", None))
-        _st, d2 = api_v1.row_create(wt, b["db"], {"title": titel, "properties": props})
-        nid = d2["id"]
-    else:
-        from saga.pages import note_create
-        r = note_create(uid, {"title": titel, "parent_id": b["db"], "props": props})
-        dd = json.loads(r.body)
-        if r.status_code >= 400:
-            raise Fail(r.status_code, dd.get("error") or "error")
-        nid = dd["id"]
+    nid = _create_row(uid, b["db"], titel, props, tok)
     ec = ecfg()
     model = model_key(ec)
     out = {"id": nid, "eingebettet": False, "aehnlich": []}
@@ -1286,6 +1354,8 @@ def remember(uid, a, tok=None):
         return 201, out
     nid_, txt, h, f = row[0]
     sims = []
+    with _db() as c:
+        snaps, _sens = excluded(c, uid, b["db"], cols, b["map"])
     if model:
         try:
             mat = embed([txt], ec)
@@ -1296,14 +1366,15 @@ def remember(uid, a, tok=None):
                 v = vectors(c, uid, model)
             if len(v.ids) and v.mat.shape[1] == mat.shape[1]:
                 rel = v.mat @ mat[0]
-                sims = [(float(rel[i]), int(v.ids[i])) for i in np.nonzero(rel >= SIMILAR)[0] if int(v.ids[i]) != nid]
+                sims = [(float(rel[i]), int(v.ids[i])) for i in np.nonzero(rel >= SIMILAR)[0]
+                        if int(v.ids[i]) != nid and int(v.ids[i]) not in snaps]
         except EmbedError as ex:
             print(f"gedaechtnis: Konto {_uh(uid)}: Einbetten neuer Erinnerung gescheitert ({ex.code})", flush=True)
             _note_error(uid, ex)
             schedule(uid, [nid], delay=30)
     else:
         with _db() as c:
-            x = word_index(c, uid, b["db"], cols)
+            x = word_index(c, uid, b["db"], cols, snap_option(cols, b["map"]))
         sims = [(s, x.ids[i]) for i, s in trgm_rel(x, txt).items() if s >= SIMILAR and x.ids[i] != nid]
     sims = sorted(sims, key=lambda z: (-z[0], z[1]))[:5]
     if sims:
@@ -1315,6 +1386,283 @@ def remember(uid, a, tok=None):
     if ignored:
         out["ignoriert"] = ignored
     return 201, out
+
+
+# --- Nickerchen und Aufwachen (2601, docs/MEMORY.md 11) -----------------------------------------------------------------
+NAP_LIM = {"stimmung": 40, "gedanke": 240, "ort": 100, "faden": 130, "faeden": 5, "zeichen": 1200, "zeilen": 10}
+_COMMA = ("de", "es", "ru")
+CHANGED_MAX = 5
+
+
+def _norm_ws(v):
+    return " ".join(str(v).split())
+
+
+def _nap_num(v, lang, sign=False):
+    r = round(float(v), 1)
+    s_ = f"{abs(r):.1f}"
+    if lang in _COMMA:
+        s_ = s_.replace(".", ",")
+    if r == 0:
+        return s_
+    return ("-" if r < 0 else "+" if sign else "") + s_
+
+
+def nap_fields(a):
+    """Angaben von nap pruefen und normalisieren -> dict (Fail 400 mit Feldname; nichts wird gekuerzt)."""
+    if not isinstance(a, dict):
+        raise Fail(400, t("ungültige Angabe"))
+    out = {}
+    for k in ("stimmung", "gedanke", "ort"):
+        v = a.get(k)
+        if v is not None and not isinstance(v, str):
+            raise Fail(400, t("ungültige Angabe") + f" ({k})")
+        v = _norm_ws(v or "")
+        if k != "ort" and not v:
+            raise Fail(400, t("„{k}“ fehlt.", k=k))
+        lim = NAP_LIM[k]
+        if len(v) > lim:
+            raise Fail(400, t("„{k}“: höchstens {n} Zeichen.", k=k, n=lim))
+        out[k] = v
+    fd = a.get("faeden")
+    if fd is None:
+        fd = []
+    if not isinstance(fd, list) or not all(isinstance(x, str) for x in fd):
+        raise Fail(400, t("ungültige Angabe") + " (faeden)")
+    fd = [y for y in (_norm_ws(x) for x in fd) if y]
+    if len(fd) > NAP_LIM["faeden"]:
+        raise Fail(400, t("„{k}“: höchstens {n} Einträge.", k="faeden", n=NAP_LIM["faeden"]))
+    if any(len(x) > NAP_LIM["faden"] for x in fd):
+        raise Fail(400, t("„{k}“: höchstens {n} Zeichen.", k="faeden", n=NAP_LIM["faden"]))
+    out["faeden"] = fd
+    for k, lo, hi in (("valenz", -1, 1), ("erregung", 0, 1)):
+        v = a.get(k)
+        if v is None:
+            out[k] = None
+            continue
+        x = _num(v)
+        if x is None or not lo <= x <= hi:
+            raise Fail(400, t("„{k}“: Zahl von {a} bis {b}.", k=k, a=lo, b=hi))
+        out[k] = int(x) if x == int(x) else x
+    pr = a.get("projekt")
+    if pr not in (None, "") and not isinstance(pr, str):
+        raise Fail(400, t("ungültige Angabe") + " (projekt)")
+    out["projekt"] = pr.strip() if isinstance(pr, str) and pr.strip() else None
+    return out
+
+
+@contextmanager
+def _in_lang(lang):
+    """t() in der Sprache lang (Kontosprache; Texte werden gespeichert bzw. an das Modell gegeben)."""
+    from saga import i18n
+    tok = i18n.set_lang(lang)
+    try:
+        yield
+    finally:
+        i18n._cur.reset(tok)
+
+
+def nap_text(f, lang):
+    """Schnappschuss-Text in der Sprache lang (docs/MEMORY.md 11.1, Vektoren tests/vectors/memory_nap.json)."""
+    with _in_lang(lang):
+        return _nap_text(f, lang)
+
+
+def _nap_text(f, lang):
+    nums = []
+    if f.get("valenz") is not None:
+        nums.append(t("Valenz {v}", v=_nap_num(f["valenz"], lang, True)))
+    if f.get("erregung") is not None:
+        nums.append(t("Erregung {v}", v=_nap_num(f["erregung"], lang)))
+    lines = [t("Stimmung: {s}", s=f["stimmung"]) + (" (" + " · ".join(nums) + ")" if nums else "")]
+    if f.get("ort"):
+        lines.append(t("Ort: {s}", s=f["ort"]))
+    if f.get("faeden"):
+        lines.append(t("Offene Fäden:"))
+        lines += ["- " + x for x in f["faeden"]]
+    lines.append(t("Letzter Gedanke: {s}", s=f["gedanke"]))
+    return "\n".join(lines)
+
+
+def _acct(c, uid):
+    """-> (sprache, zeitzone) des Kontos (Konto > Server-Standard; Zeitzone wie "Heute")."""
+    from saga import ai_today
+    from saga.core import account_lang
+    try:
+        z = ai_today._zone(c, uid, None)
+    except Exception:  # noqa: BLE001 - Zeitzone unbekannt: Server-Zeitzone
+        z = TZ
+    return account_lang(uid), z
+
+
+def nap_title(oname, ts_, zone):
+    """Titel eines Schnappschusses: "<Optionsname> JJJJ-MM-TT HH:MM" in der Konto-Zeitzone."""
+    return f"{oname} {datetime.fromtimestamp(ts_, zone):%Y-%m-%d %H:%M}"
+
+
+def nap(uid, a, tok=None):
+    """Schnappschuss anlegen -> (201, {"id", "titel", "zeilen", "zeichen", "ignoriert"?}). Nichts geloescht, kein aehnlich,
+    keine Verknuepfung; eingebettet wird im Hintergrund."""
+    f = nap_fields(a)
+    with _db() as c:
+        b = binding(uid, c)
+        if not b["db"]:
+            raise _not_bound()
+        _check(c, tok, uid, b["db"], "edit")
+        st = _db_state(c, uid, b["db"])
+        if st is None:
+            raise _db_gone()
+        lang, zone = _acct(c, uid)
+    cols, _info = columns(st[0], b["map"])
+    for k in ("art", "inhalt"):
+        if not cols.get(k):
+            raise Fail(400, t("Die Gedächtnis-Datenbank hat keine passende Spalte „{name}“.", name=b["map"][k]), "missing_column")
+    txt = nap_text(f, lang)
+    n_lines = txt.count("\n") + 1
+    if len(txt) > NAP_LIM["zeichen"] or n_lines > NAP_LIM["zeilen"]:
+        raise Fail(400, t("„{k}“: höchstens {n} Zeichen.", k="text", n=NAP_LIM["zeichen"]))
+    unknown, options, ignored = {}, {}, []
+    oname = b["map"].get("schnappschuss") or DEFAULT_MAP["schnappschuss"]
+    oid = snap_option(cols, b["map"])
+    if oid is None:
+        unknown["art"] = [oname]
+        options["art"] = _opt_names(cols["art"])
+    else:
+        oname = _opt_name(cols["art"], oid) or oname
+    props = {cols["inhalt"]["id"]: txt}
+    if oid is not None:
+        props[cols["art"]["id"]] = oid
+    if f["projekt"]:
+        if not cols.get("projekt"):
+            ignored.append("projekt")
+        else:
+            pid = _opt_match(cols["projekt"], f["projekt"])
+            if pid is None:
+                unknown["projekt"] = [f["projekt"][:100]]
+                options["projekt"] = _opt_names(cols["projekt"])
+            else:
+                props[cols["projekt"]["id"]] = pid
+    for k in ("valenz", "erregung"):
+        if f[k] is None:
+            continue
+        if cols.get(k):
+            props[cols[k]["id"]] = f[k]
+        else:
+            ignored.append(k)
+    if cols.get("datum"):
+        props[cols["datum"]["id"]] = datetime.now(TZ).date().isoformat()
+    if cols.get("abrufe"):
+        props[cols["abrufe"]["id"]] = 0
+    if unknown:
+        raise Fail(400, t("Unbekannte Auswahl-Werte – Saga legt keine neuen an. Bitte einen vorhandenen Wert nehmen oder weglassen."),
+                   "unknown_option", extra={"unbekannt": unknown, "optionen": options})
+    titel = nap_title(oname, time.time(), zone)
+    nid = _create_row(uid, b["db"], titel, props, tok)
+    schedule(uid, [nid])
+    print(f"gedaechtnis: Konto {_uh(uid)}: Nickerchen ({n_lines} Zeilen)", flush=True)
+    out = {"id": nid, "titel": titel, "zeilen": n_lines, "zeichen": len(txt)}
+    if ignored:
+        out["ignoriert"] = ignored
+    return 201, out
+
+
+def ago_text(sec, lang):
+    """Zeit seit dem letzten Nickerchen, abgerundet, hoechstens 2 Einheiten (docs/MEMORY.md 11.3)."""
+    with _in_lang(lang):
+        return _ago(sec)
+
+
+def _ago(sec):
+    s_ = max(0, int(sec))
+    if s_ < 60:
+        return t("gerade eben")
+    if s_ < 3600:
+        return t("vor {m} {m:Minute|Minuten}", m=s_ // 60)
+    if s_ < 86400:
+        h, m = s_ // 3600, (s_ % 3600) // 60
+        if m:
+            return t("vor {h} {h:Stunde|Stunden}, {m} {m:Minute|Minuten}", h=h, m=m)
+        return t("vor {h} {h:Stunde|Stunden}", h=h)
+    d, h = s_ // 86400, (s_ % 86400) // 3600
+    if s_ < 7 * 86400 and h:
+        return t("vor {d} {d:Tag|Tagen}, {h} {h:Stunde|Stunden}", d=d, h=h)
+    return t("vor {d} {d:Tag|Tagen}", d=d)
+
+
+def wake_text(sec, n, lang):
+    with _in_lang(lang):
+        if sec is None:
+            return t("Noch kein Nickerchen.")
+        out = t("Letztes Nickerchen: {wann}.", wann=_ago(sec))
+        if n is not None:
+            out += " " + t("Seitdem {n} {n:Seite|Seiten} geändert.", n=n)
+        return out
+
+
+def wake(uid, tok=None, now=None):
+    """Aufwachen (docs/MEMORY.md 11.3) -> dict oder None (keine gebundene/erreichbare Datenbank). Ein Fehler in einem Teil
+    macht nur diesen Teil null. Wartet nie auf Kalender (ai_today nimmt nur calendars.cached)."""
+    now = time.time() if now is None else now
+    with _db() as c:
+        b = binding(uid, c)
+        if not b["db"]:
+            return None
+        try:
+            _check(c, tok, uid, b["db"], "view")
+        except Fail:
+            return None
+        st = _db_state(c, uid, b["db"])
+        if st is None:
+            return None
+        lang, zone = _acct(c, uid)
+        cols, _info = columns(st[0], b["map"])
+        snaps, _sens = excluded(c, uid, b["db"], cols, b["map"])
+        oid = snap_option(cols, b["map"])
+        out = {"since": None, "seit_s": None, "text": "", "schnappschuss": None, "anzahl": len(snaps), "heute": None,
+               "geaendert": None}
+        if oid is None:
+            out["hinweis"] = "no_snapshot_option"
+        last = None
+        if snaps:
+            last = c.execute("SELECT id, title, props, created FROM note WHERE uid=? AND id = ANY(?) ORDER BY created DESC, id DESC "
+                             "LIMIT 1", (uid, sorted(snaps))).fetchone()
+        if last:
+            f = fields_of(cols, last[1], _json_load(last[2], {}))
+            since = float(last[3] or 0)
+            out["since"] = datetime.fromtimestamp(since, zone).isoformat(timespec="minutes")
+            out["seit_s"] = max(0, int(now - since))
+            out["schnappschuss"] = {"id": last[0], "titel": f["titel"], "inhalt": f["inhalt"][:CONTENT_MAX], "valenz": f["valenz"],
+                                    "erregung": f["erregung"], "datum": f["datum"]}
+            try:
+                rows = c.execute(
+                    "SELECT id, title, count(*) OVER () FROM note WHERE uid=? AND updated > ? AND deleted_at IS NULL AND archived IS NULL "
+                    "AND is_template=0 AND id <> ? AND (parent_id IS NULL OR parent_id <> ?) ORDER BY updated DESC, id DESC LIMIT ?",
+                    (uid, since, b["db"], b["db"], CHANGED_MAX)).fetchall()
+                out["geaendert"] = {"n": int(rows[0][2]) if rows else 0, "seiten": [{"id": r[0], "titel": r[1] or ""} for r in rows]}
+            except Exception as ex:  # noqa: BLE001 - nur dieser Teil
+                print(f"gedaechtnis: Aufwachen {type(ex).__name__}", flush=True)
+        try:
+            from saga import ai_today
+            d = ai_today.compute(uid, tz=zone, lang=lang, conn=c)
+            out["heute"] = d.get("sentence") or None if isinstance(d, dict) else None
+        except Exception as ex:  # noqa: BLE001 - nur dieser Teil
+            print(f"gedaechtnis: Aufwachen heute {type(ex).__name__}", flush=True)
+    out["text"] = wake_text(out["seit_s"], (out["geaendert"] or {}).get("n") if out["geaendert"] is not None else None, lang)
+    return out
+
+
+def wake_all(uid, tok=None):
+    """GET /api/v1/memory/wake, MCP wake -> {"kern", "wake"}; ohne memory.db und memory.core -> 409 not_bound."""
+    b = binding(uid)
+    if not b["db"] and not b["core"]:
+        raise _not_bound()
+    kern = None
+    if b["core"]:
+        try:
+            kern = core(uid, tok)
+        except Fail:
+            kern = None
+    return {"kern": kern, "wake": wake(uid, tok)}
 
 
 def core(uid, tok=None):
@@ -1357,8 +1705,14 @@ def recall_context(res):
     return frame("\n".join(lines))
 
 
-def core_context(d):
-    return frame(f"# {d['title']}\n\n{d['markdown']}", "memory:core")
+def core_context(d, wk=None):
+    """Ich-Kern (+ Aufwach-Teil, 2601) im saga-data-Rahmen fuer Hooks."""
+    body = f"# {d['title']}\n\n{d['markdown']}"
+    if wk:
+        part = [x for x in (wk.get("text"), wk.get("heute")) if x]
+        snap = (wk.get("schnappschuss") or {}).get("inhalt")
+        body += "\n\n## " + t("Aufwachen") + "\n\n" + "\n".join(part) + (f"\n\n{snap}" if snap else "")
+    return frame(body, "memory:core")
 
 
 # --- REST /api/v1/memory -----------------------------------------------------------------------------------------------
@@ -1384,7 +1738,78 @@ async def v1_core(request: Request):
         d = await run_in_threadpool(core, tok.uid, tok)
     except Fail as f:
         return _fail(f)
-    d["kontext"] = core_context(d)
+    d["wake"] = await run_in_threadpool(_wake_safe, tok.uid, tok)
+    d["kontext"] = core_context(d, d["wake"])
+    return _resp(200, d)
+
+
+def _wake_safe(uid, tok):
+    try:
+        return wake(uid, tok)
+    except Exception as ex:  # noqa: BLE001 - der Ich-Kern kommt auch ohne Aufwachen
+        print(f"gedaechtnis: Aufwachen {type(ex).__name__}", flush=True)
+        return None
+
+
+@router.get("/api/v1/memory/wake")
+async def v1_wake(request: Request):
+    from saga.apitok import authed
+    tok, err = authed(request, scope="memory")
+    if err is not None:
+        return err
+    try:
+        d = await run_in_threadpool(wake_all, tok.uid, tok)
+    except Fail as f:
+        return _fail(f)
+    return _resp(200, d)
+
+
+@router.post("/api/v1/memory/nap")
+async def v1_nap(request: Request):
+    from saga.apitok import authed
+    tok, err = authed(request, write=True, scope="memory")
+    if err is not None:
+        return err
+    b = await _body(request)
+    if b is None:
+        return _resp(400, {"error": t("ungültige Anfrage"), "code": "bad_request"})
+    try:
+        _rate(tok)
+        st, d = await run_in_threadpool(nap, tok.uid, b, tok)
+    except Fail as f:
+        return _fail(f)
+    return _resp(st, d)
+
+
+@router.post("/api/v1/memory/recall_used")
+async def v1_recall_used(request: Request):
+    from saga.apitok import authed
+    tok, err = authed(request, write=True, scope="memory")
+    if err is not None:
+        return err
+    b = await _body(request)
+    if b is None:
+        return _resp(400, {"error": t("ungültige Anfrage"), "code": "bad_request"})
+    try:
+        _rate(tok)
+        d = await run_in_threadpool(recall_used, tok.uid, b.get("ids"))
+    except Fail as f:
+        return _fail(f)
+    return _resp(200, d)
+
+
+@router.get("/api/v1/memory/shadow")
+async def v1_shadow(request: Request):
+    from saga.apitok import authed
+    tok, err = authed(request, scope="memory")
+    if err is not None:
+        return err
+    try:
+        _rate_report(tok)
+        q = request.query_params
+        d = await run_in_threadpool(shadow_report, tok.uid, q.get("tage"), q.get("stichproben"))
+    except Fail as f:
+        return _fail(f)
     return _resp(200, d)
 
 
@@ -1438,6 +1863,75 @@ def mcp_remember(tok, a):
     return frame(d)
 
 
+def mcp_nap(tok, a):
+    _rate(tok)
+    _st, d = nap(tok.uid, a, tok)
+    return frame(d)
+
+
+def mcp_wake(tok, a):
+    return frame(wake_all(tok.uid, tok), "memory:core")
+
+
+def mcp_recall_used(tok, a):
+    _rate(tok)
+    return frame(recall_used(tok.uid, a.get("ids")))
+
+
+def mcp_shadow_report(tok, a):
+    _rate_report(tok)
+    return frame(shadow_report(tok.uid, a.get("tage"), a.get("stichproben")), "memory:report")
+
+
+REPORT_RATE = 6                  # Auswertung je Token und Minute
+
+
+def _rate_report(tok):
+    from saga import apitok
+    if tok is None:
+        return
+    with apitok._lock:
+        wait = apitok._take(("memory-report", tok.id), REPORT_RATE, time.time())
+    if wait:
+        raise Fail(429, t("Zu viele Anfragen – bitte kurz warten."), extra={"retry_after": wait})
+
+
+def _int_arg(v, k, lo, hi, d):
+    if v is None or v == "":
+        return d
+    if isinstance(v, bool):
+        raise Fail(400, t("ungültige Angabe") + f" ({k})")
+    try:
+        i = int(v)
+    except (TypeError, ValueError):
+        raise Fail(400, t("ungültige Angabe") + f" ({k})")
+    if not lo <= i <= hi:
+        raise Fail(400, t("„{k}“: Zahl von {a} bis {b}.", k=k, a=lo, b=hi))
+    return i
+
+
+def _ids_arg(ids):
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 10 or any(isinstance(i, bool) or not isinstance(i, int) or not 0 < i < 2 ** 63
+                                                                   for i in ids):
+        raise Fail(400, t("„{k}“: 1 bis {n} ganze Zahlen.", k="ids", n=10))
+    return list(dict.fromkeys(ids))
+
+
+def recall_used(uid, ids):
+    """recall_used (2603, docs/MEMORY.md 12.4) - Schattenmodus: saga/memory_shadow.py."""
+    ids = _ids_arg(ids)
+    from saga import memory_shadow
+    return memory_shadow.used(uid, ids)
+
+
+def shadow_report(uid, tage=None, stichproben=None):
+    """Auswertung (2603, docs/MEMORY.md 13)."""
+    tage = _int_arg(tage, "tage", 1, 30, 14)
+    n = _int_arg(stichproben, "stichproben", 0, 20, 8)
+    from saga import memory_shadow
+    return memory_shadow.report(uid, tage, n)
+
+
 # --- Web: Bindung je Konto ---------------------------------------------------------------------------------------------
 def _title(c, nid):
     r = c.execute("SELECT title FROM note WHERE id=?", (nid,)).fetchone()
@@ -1457,8 +1951,38 @@ def account_view(uid):
                "core": {"id": b["core"], "title": _title(c, b["core"])} if core_ok else None,
                "map": b["map"], "columns": info if st else {}, "missing_required": [] if (not st or cols.get("inhalt")) else ["inhalt"],
                "weights": b["weights"], "weights_default": dict(WEIGHTS), "databases": dbs}
+        # 2601: Nickerchen-Status (Option in "Art", Anzahl, neuester)
+        oname = b["map"].get("schnappschuss") or DEFAULT_MAP["schnappschuss"]
+        snap = {"option": oname, "found": False, "count": 0, "latest": None}
+        if st and snap_option(cols, b["map"]) is not None:
+            snaps, _se = excluded(c, uid, b["db"], cols, b["map"])
+            snap["found"], snap["count"] = True, len(snaps)
+            if snaps:
+                r = c.execute("SELECT max(created) FROM note WHERE uid=? AND id = ANY(?)", (uid, sorted(snaps))).fetchone()
+                snap["latest"] = _iso(r[0]) if r and r[0] else None
+        out["snapshot"] = snap
+        out["shadow"] = shadow_view(c, uid)
     out["status"] = status(uid)
     return out
+
+
+def shadow_since(c, uid):
+    """memory.shadow -> Einschaltzeitpunkt (Unix-Sekunden) oder None (aus)."""
+    r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='memory.shadow'", (uid,)).fetchone()
+    try:
+        v = float(r[0]) if r else None
+    except (TypeError, ValueError):
+        v = None
+    return v if v and math.isfinite(v) else None
+
+
+def shadow_view(c, uid):
+    from saga import memory_shadow
+    since = shadow_since(c, uid)
+    nl = c.execute("SELECT count(*) FROM mem_link WHERE uid=?", (uid,)).fetchone()[0]
+    nt = c.execute("SELECT count(*) FROM mem_trace WHERE uid=? AND at >= ?", (uid, time.time() - memory_shadow.TRACE_KEEP)).fetchone()[0]
+    return {"on": since is not None, "since": _iso(since) if since else None, "links": int(nl), "traces": int(nt),
+            "running": memory_shadow.running(uid)}
 
 
 def _set_kv(c, uid, k, v):
@@ -1491,9 +2015,12 @@ def account_put(uid, b):
                 return 400, {"error": t("Das ist keine Datenbank."), "code": "bad_request"}
         if "map" in b and b["map"] is not None:
             m = b["map"]
-            if not isinstance(m, dict) or any(k not in FIELDS or not isinstance(v, str) or not v.strip() or len(v) > 100
+            if not isinstance(m, dict) or any(k not in MAP_KEYS or not isinstance(v, str) or not v.strip() or len(v) > 100
                                               for k, v in m.items()):
                 return 400, {"error": t("ungültige Angabe") + " (map)", "code": "bad_request"}
+        for k in ("shadow", "forget_traces"):
+            if k in b and not isinstance(b[k], bool):
+                return 400, {"error": t("ungültige Angabe") + f" ({k})", "code": "bad_request"}
         if "weights" in b and b["weights"] is not None:
             w = b["weights"]
             if not isinstance(w, dict) or any(k not in _W_RANGE or isinstance(v, bool) or not isinstance(v, (int, float))
@@ -1501,6 +2028,9 @@ def account_put(uid, b):
                                               for k, v in w.items()):
                 return 400, {"error": t("ungültige Angabe") + " (weights)", "code": "bad_request"}
         old = binding(uid, c)
+        if b.get("shadow") is True and not ((b["db"] if "db" in b else old["db"])):
+            f = _not_bound()
+            return 409, {"error": f.msg, "code": f.code}
         if "db" in b:
             _set_kv(c, uid, "memory.db", None if b["db"] is None else str(int(b["db"])))
             rebind = (b["db"] or None) != old["db"]
@@ -1509,10 +2039,20 @@ def account_put(uid, b):
         if "map" in b:
             m = {k: v.strip() for k, v in (b["map"] or {}).items() if v.strip() != DEFAULT_MAP[k]}
             _set_kv(c, uid, "memory.map", json.dumps(m, ensure_ascii=False) if m else None)
-            rebind = rebind or m != {k: v for k, v in old["map_raw"].items() if k in FIELDS}
+            rebind = rebind or {k: v for k, v in m.items() if k in FIELDS} != {k: v for k, v in old["map_raw"].items() if k in FIELDS}
         if "weights" in b:
             w = {k: float(v) for k, v in (b["weights"] or {}).items() if float(v) != WEIGHTS[k]}
             _set_kv(c, uid, "memory.weights", json.dumps(w) if w else None)
+        # 2603: Schattenmodus (an: Zeitpunkt bleibt beim erneuten Einschalten; aus: Links/Spuren bleiben)
+        was_on = shadow_since(c, uid) is not None
+        if b.get("shadow") is True and not was_on:
+            _set_kv(c, uid, "memory.shadow", str(int(time.time())))
+        elif b.get("shadow") is False:
+            _set_kv(c, uid, "memory.shadow", None)
+        if b.get("forget_traces") is True:
+            n = c.execute("DELETE FROM mem_trace WHERE uid=?", (uid,)).rowcount
+            print(f"gedaechtnis: Konto {_uh(uid)}: {n} Spuren geloescht", flush=True)
+        shadow_on = shadow_since(c, uid) is not None
     _load_bound()
     with _bound_lock:
         nb = binding(uid)["db"]
@@ -1523,16 +2063,25 @@ def account_put(uid, b):
     if rebind:
         forget(uid)
         schedule(uid, whole=True, delay=0.5)
+    if shadow_on and (rebind or not was_on):
+        from saga import memory_shadow
+        memory_shadow.schedule_backfill(uid)
     return 200, account_view(uid)
 
 
 def bind_restored(uid, dbid):
-    """Persoenliches Backup hat eine Bindung eingespielt (saga.userbackup._import_memory): Zuhoerer + Abgleich."""
+    """Persoenliches Backup hat eine Bindung eingespielt (saga.userbackup._import_memory): Zuhoerer + Abgleich (+ Nachziehen
+    der Verknuepfungen, wenn memory.shadow mitkam - Links/Spuren selbst gehen nicht mit, 2603)."""
     _load_bound()
     with _bound_lock:
         _bound[uid] = dbid
     forget(uid)
     schedule(uid, whole=True, delay=1)
+    with _db() as c:
+        on = shadow_since(c, uid) is not None
+    if on:
+        from saga import memory_shadow
+        memory_shadow.schedule_backfill(uid, delay=30)
 
 
 @router.get("/api/account/memory")

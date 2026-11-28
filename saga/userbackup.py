@@ -27,6 +27,7 @@ privaten Daten in ein fremdes Ziel tragen (DSGVO).
 import binascii
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -71,7 +72,8 @@ KEY_TTL = 900
 MB = backups.MB
 KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online",
            "task_due", "contacts.cc",       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
-           "memory.db", "memory.core", "memory.map", "memory.weights")   # 2.6 (Bugs-DB 2581): Gedaechtnis, IDs beim Einspielen umgeschrieben
+           "memory.db", "memory.core", "memory.map", "memory.weights",   # 2.6 (Bugs-DB 2581): Gedaechtnis, IDs beim Einspielen umgeschrieben
+           "memory.shadow")                 # 2.6 (Bugs-DB 2603): Schattenmodus (Links/Spuren gehen nicht mit - abgeleitet bzw. Messdaten)
 CATS = ("pages", "templates", "archive", "trash", "versions", "files", "comments", "comments_others", "tasks", "bookmarks", "settings")
 CAT_DEFAULT = {k: k != "comments_others" for k in CATS}
 SCHEDULES = ("off", "weekly", "daily")
@@ -1204,7 +1206,7 @@ def _import_memory(c, uid, data, nmap, made):
     rows = {k: str(v) for k, v in ids.items()}
     m = _json_load(st.get("memory.map"), {}) if isinstance(st.get("memory.map"), str) else {}
     m = m if isinstance(m, dict) else {}             # manipuliertes Backup ("[1]") darf den Restore nicht abbrechen
-    m = {k: v.strip()[:100] for k, v in m.items() if k in memory.FIELDS and isinstance(v, str) and v.strip()}
+    m = {k: v.strip()[:100] for k, v in m.items() if k in memory.MAP_KEYS and isinstance(v, str) and v.strip()}
     if m:
         rows["memory.map"] = json.dumps(m, ensure_ascii=False)
     w = _json_load(st.get("memory.weights"), {}) if isinstance(st.get("memory.weights"), str) else {}
@@ -1212,6 +1214,12 @@ def _import_memory(c, uid, data, nmap, made):
     w = {k: float(v) for k, v in memory.weights(w).items() if k in w and float(v) != memory.WEIGHTS[k]}
     if w:
         rows["memory.weights"] = json.dumps(w)
+    sh = st.get("memory.shadow")                    # 2603: Schalter (Zeitpunkt) - nur mit abgebildeter Datenbank
+    try:
+        if isinstance(sh, str) and math.isfinite(float(sh)) and float(sh) > 0:
+            rows["memory.shadow"] = str(int(float(sh)))
+    except ValueError:
+        pass
     for k, v in rows.items():
         c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO NOTHING", (uid, k, v))
     dbid = ids["memory.db"]

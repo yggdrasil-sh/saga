@@ -1203,6 +1203,33 @@ CREATE TABLE IF NOT EXISTS mem_vec (
     dim INTEGER NOT NULL, vec BYTEA NOT NULL, text_hash TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0,
     last_hit DOUBLE PRECISION, mirrored DOUBLE PRECISION, updated DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS mem_vec_uid ON mem_vec (uid);
+-- Gedaechtnis Stufe 3 (2.6, Bugs-DB 2603, saga/memory_shadow.py, docs/MEMORY.md 12): Schattenmodus Phase 1 - Verknuepfungen
+-- zwischen Zeilen der Gedaechtnis-Datenbank (mem_link, a < b, Gewicht klingt lazy bis zur Untergrenze ab, nie geloescht
+-- ausser die Zeile ist weg), Spuren je recall (mem_trace, 30 Tage, nie der Fragetext - nur HMAC und <= 8 Stichworte),
+-- Handeingriffe (mem_link_log, Phase 2). Wie mem_vec ohne Fremdschluessel auf note (Rueckweg mit aelterem Backup).
+CREATE TABLE IF NOT EXISTS mem_link (
+    a BIGINT NOT NULL, b BIGINT NOT NULL, uid TEXT NOT NULL,
+    gewicht DOUBLE PRECISION NOT NULL, untergrenze DOUBLE PRECISION NOT NULL, treffer INTEGER NOT NULL DEFAULT 0,
+    zuletzt DOUBLE PRECISION NOT NULL, angelegt DOUBLE PRECISION NOT NULL, herkunft TEXT NOT NULL,
+    gepinnt BOOLEAN NOT NULL DEFAULT FALSE, PRIMARY KEY (a, b), CHECK (a < b),
+    CHECK (herkunft IN ('aehnlich', 'gemeinsam', 'hand')),
+    CHECK (untergrenze >= 0 AND untergrenze <= gewicht AND gewicht <= 1));
+CREATE INDEX IF NOT EXISTS mem_link_uid_a ON mem_link (uid, a);
+CREATE INDEX IF NOT EXISTS mem_link_uid_b ON mem_link (uid, b);
+CREATE TABLE IF NOT EXISTS mem_trace (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL, quelle TEXT NOT NULL,
+    frage_hash TEXT NOT NULL, stichworte TEXT NOT NULL DEFAULT '', lim SMALLINT NOT NULL,
+    treffer JSONB NOT NULL DEFAULT '[]', neu JSONB NOT NULL DEFAULT '[]', genutzt JSONB NOT NULL DEFAULT '[]',
+    gekappt SMALLINT NOT NULL DEFAULT 0, zeichen INTEGER NOT NULL DEFAULT 0, daten JSONB NOT NULL DEFAULT '{}',
+    CHECK (quelle IN ('embeddings', 'trigramm')), CHECK (char_length(stichworte) <= 160));
+CREATE INDEX IF NOT EXISTS mem_trace_uid_at ON mem_trace (uid, at);
+CREATE INDEX IF NOT EXISTS mem_trace_at ON mem_trace (at);
+-- Handeingriffe (Phase 2): bis dahin leer
+CREATE TABLE IF NOT EXISTS mem_link_log (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL, a BIGINT NOT NULL, b BIGINT NOT NULL,
+    aktion TEXT NOT NULL, vorher JSONB, nachher JSONB, wer TEXT NOT NULL,
+    CHECK (aktion IN ('anlegen', 'pinnen', 'loesen', 'staerken', 'schwaechen')));
+CREATE INDEX IF NOT EXISTS mem_link_log_uid ON mem_link_log (uid, at);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -1592,6 +1619,35 @@ CREATE TABLE IF NOT EXISTS mem_vec (
     last_hit DOUBLE PRECISION, mirrored DOUBLE PRECISION, updated DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS mem_vec_uid ON mem_vec (uid);
 SELECT 1 FROM mem_vec LIMIT 0;
+""",
+    # 2.6 (Bugs-DB 2601/2603, Gedaechtnis Stufe 3, saga/memory_shadow.py): Tabellen mem_link, mem_trace, mem_link_log
+    # (Schattenmodus Phase 1; Handeingriffe erst Phase 2) legt SCHEMA oben an (hier nochmal, falls SCHEMA aelter waere).
+    # Nichts an bestehenden Tabellen. Bestand: leer (ab Werk ist der Schattenmodus aus). Beliebig oft ausfuehrbar.
+    43: """
+CREATE TABLE IF NOT EXISTS mem_link (
+    a BIGINT NOT NULL, b BIGINT NOT NULL, uid TEXT NOT NULL,
+    gewicht DOUBLE PRECISION NOT NULL, untergrenze DOUBLE PRECISION NOT NULL, treffer INTEGER NOT NULL DEFAULT 0,
+    zuletzt DOUBLE PRECISION NOT NULL, angelegt DOUBLE PRECISION NOT NULL, herkunft TEXT NOT NULL,
+    gepinnt BOOLEAN NOT NULL DEFAULT FALSE, PRIMARY KEY (a, b), CHECK (a < b),
+    CHECK (herkunft IN ('aehnlich', 'gemeinsam', 'hand')),
+    CHECK (untergrenze >= 0 AND untergrenze <= gewicht AND gewicht <= 1));
+CREATE INDEX IF NOT EXISTS mem_link_uid_a ON mem_link (uid, a);
+CREATE INDEX IF NOT EXISTS mem_link_uid_b ON mem_link (uid, b);
+CREATE TABLE IF NOT EXISTS mem_trace (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL, quelle TEXT NOT NULL,
+    frage_hash TEXT NOT NULL, stichworte TEXT NOT NULL DEFAULT '', lim SMALLINT NOT NULL,
+    treffer JSONB NOT NULL DEFAULT '[]', neu JSONB NOT NULL DEFAULT '[]', genutzt JSONB NOT NULL DEFAULT '[]',
+    gekappt SMALLINT NOT NULL DEFAULT 0, zeichen INTEGER NOT NULL DEFAULT 0, daten JSONB NOT NULL DEFAULT '{}',
+    CHECK (quelle IN ('embeddings', 'trigramm')), CHECK (char_length(stichworte) <= 160));
+CREATE INDEX IF NOT EXISTS mem_trace_uid_at ON mem_trace (uid, at);
+CREATE INDEX IF NOT EXISTS mem_trace_at ON mem_trace (at);
+-- Handeingriffe (Phase 2): bis dahin leer
+CREATE TABLE IF NOT EXISTS mem_link_log (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL, a BIGINT NOT NULL, b BIGINT NOT NULL,
+    aktion TEXT NOT NULL, vorher JSONB, nachher JSONB, wer TEXT NOT NULL,
+    CHECK (aktion IN ('anlegen', 'pinnen', 'loesen', 'staerken', 'schwaechen')));
+CREATE INDEX IF NOT EXISTS mem_link_log_uid ON mem_link_log (uid, at);
+SELECT 1 FROM mem_link, mem_trace, mem_link_log LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

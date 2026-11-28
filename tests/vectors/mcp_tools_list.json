@@ -1090,7 +1090,7 @@
   "tools": [
    {
     "name": "recall",
-    "description": "Erinnerungen aus dem eigenen Gedächtnis holen (gebundene Datenbank, Einstellungen › Gedächtnis): die bis zu 5 passendsten Einträge zu text – nach Bedeutung (Embeddings) bzw. Wortähnlichkeit, gewichtet mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm.",
+    "description": "Erinnerungen aus dem eigenen Gedächtnis holen (gebundene Datenbank, Einstellungen › Gedächtnis): die bis zu 5 passendsten Einträge zu text – nach Bedeutung (Embeddings) bzw. Wortähnlichkeit, gewichtet mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm. Danach mit recall_used melden, was geholfen hat.",
     "inputSchema": {
      "type": "object",
      "properties": {
@@ -1169,6 +1169,10 @@
       "datum": {
        "type": "string",
        "description": "Datum (JJJJ-MM-TT, Standard heute)"
+      },
+      "sensibel": {
+       "type": "boolean",
+       "description": "Sensibel: kommt nur, wenn direkt danach gefragt wird – nie über Verknüpfungen"
       }
      },
      "required": [
@@ -1181,17 +1185,142 @@
      "destructiveHint": false,
      "openWorldHint": false
     }
+   },
+   {
+    "name": "nap",
+    "description": "Nickerchen: den eigenen Zustand als Schnappschuss im Gedächtnis ablegen (Art „Schnappschuss“) – bei der Verabschiedung und nach großen Runden. stimmung (ein Wort) und gedanke (ein Satz) sind Pflicht, dazu bis zu 5 offene Fäden und der Ort. Nichts wird gelöscht; wake liefert beim nächsten Mal den neuesten Schnappschuss.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "stimmung": {
+       "type": "string",
+       "description": "Stimmung in einem Wort (höchstens 40 Zeichen)"
+      },
+      "gedanke": {
+       "type": "string",
+       "description": "Letzter Gedanke in einem Satz (höchstens 240 Zeichen)"
+      },
+      "valenz": {
+       "type": "number",
+       "description": "Gefühlston -1 (negativ) bis 1 (positiv)",
+       "minimum": -1,
+       "maximum": 1
+      },
+      "erregung": {
+       "type": "number",
+       "description": "Erregung 0 (ruhig) bis 1 (aufgewühlt)",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "faeden": {
+       "type": "array",
+       "description": "Offene Fäden, je eine Zeile (höchstens 5, je 130 Zeichen)",
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 5
+      },
+      "ort": {
+       "type": "string",
+       "description": "Ort: Projekt/Ordner bzw. Chat (höchstens 100 Zeichen)"
+      },
+      "projekt": {
+       "type": "string",
+       "description": "Projekt (vorhandene Option)"
+      }
+     },
+     "required": [
+      "stimmung",
+      "gedanke"
+     ]
+    },
+    "annotations": {
+     "readOnlyHint": false,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
+   },
+   {
+    "name": "wake",
+    "description": "Aufwachen: Ich-Kern, Zeit seit dem letzten Nickerchen, der neueste Schnappschuss (Stimmung, offene Fäden, letzter Gedanke), der Tagessatz und welche Seiten sich seitdem geändert haben. Zu Beginn eines Gesprächs aufrufen.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {},
+     "required": []
+    },
+    "annotations": {
+     "readOnlyHint": true,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
+   },
+   {
+    "name": "recall_used",
+    "description": "Nach der Antwort melden, welche Erinnerungen aus recall wirklich geholfen haben (ids aus treffer). Nur das stärkt Verknüpfungen im Schattenmodus; ist er aus, hat es keine Wirkung.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "ids": {
+       "type": "array",
+       "description": "IDs der hilfreichen Treffer (1-10)",
+       "items": {
+        "type": "integer"
+       },
+       "minItems": 1,
+       "maxItems": 10
+      }
+     },
+     "required": [
+      "ids"
+     ]
+    },
+    "annotations": {
+     "readOnlyHint": false,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
+   },
+   {
+    "name": "shadow_report",
+    "description": "Auswertung des Schattenmodus (Probelauf): verdichtete Zahlen zu Verknüpfungen und Gewichten, Ausreißer und Stichproben von Erinnerungen, die zusätzlich aufgetaucht wären – mit Relevanz und Gesamtwert. Ändert nichts.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "tage": {
+       "type": "integer",
+       "description": "Zeitraum in Tagen (1-30, Standard 14)",
+       "minimum": 1,
+       "maximum": 30
+      },
+      "stichproben": {
+       "type": "integer",
+       "description": "Anzahl Stichproben (0-20, Standard 8)",
+       "minimum": 0,
+       "maximum": 20
+      }
+     },
+     "required": []
+    },
+    "annotations": {
+     "readOnlyHint": true,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
    }
   ],
   "only": {
-   "sha256": "4077e28d216176ec42393ec2d8343db0dffa06a422794003b096f16b9d1c9d97",
+   "sha256": "069c314abc33833cea4fb24fd08a03f70626c0f7c5aab6770db5daace93f60d0",
    "names": [
     "recall",
-    "remember"
+    "remember",
+    "nap",
+    "wake",
+    "recall_used",
+    "shadow_report"
    ]
   },
   "full": {
-   "sha256": "5c4364dc44eb2cd236c9daec78e0999b95dd858d36dfcd7f978e5100400f414c",
+   "sha256": "9f36757dacd5c52e81e007701b13f3804a7dea5b18484a0db767827ac905898e",
    "names": [
     "search_pages",
     "get_page",
@@ -1225,7 +1354,11 @@
     "complete_task",
     "add_comment",
     "recall",
-    "remember"
+    "remember",
+    "nap",
+    "wake",
+    "recall_used",
+    "shadow_report"
    ]
   }
  },

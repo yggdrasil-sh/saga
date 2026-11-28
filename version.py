@@ -61,6 +61,7 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "jobpush1",                                                          # 2.6 (Bugs-DB 2270): Push-Nutzlast 3, Knoepfe /api/ai/jobs/{id}/act
             "aitoday1",                                                          # 2.6 (Bugs-DB 2271 K-D): Tageszeile /api/ai/today, /api/app/today?line=1
             "memory1",                                                           # 2.6 (Bugs-DB 2581): Gedaechtnis /api/v1/memory, /api/account/memory (docs/MEMORY.md)
+            "memory2",                                                           # 2.6 (Bugs-DB 2601/2603): Nickerchen nap/wake, Spalte Sensibel, Schattenmodus Phase 1 (docs/MEMORY.md 11-13)
             "aishare1")                                                          # 2.6 (Bugs-DB 2275 K-G): Teilen -> Auftrag (POST /api/ai/jobs source share + shared, APP-API-KI 14)
 # (status1 in FEATURES ist seit 2.5 Paket 5 der Datenbank-Status; der eigene Status meldet sich hier als userstatus1 und
 #  in GET /api/chat/me features als userstatus1)

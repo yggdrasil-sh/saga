@@ -23,7 +23,7 @@ angezeigt; Saga speichert nur eine Prüfsumme.
 - **Bereiche:** `read:pages`, `write:pages`, `read:db`, `write:db`, `read:tasks`, `write:tasks`, `read:files`,
   `write:files`, `read:comments`, `write:comments`, `read:calendar`, `write:calendar` (2.5: CalDAV-Kalender des Kontos,
   nur über den MCP-Server), `webhooks`, `mcp`, `memory` (2.6: Gedächtnis – `/api/v1/memory/…`, MCP `recall`/`remember`,
-  siehe [MEMORY.md](MEMORY.md)). `write:x` schließt `read:x` ein.
+  `nap`/`wake`/`recall_used`/`shadow_report`, siehe [MEMORY.md](MEMORY.md)). `write:x` schließt `read:x` ein.
 - **Seitenbäume (optional):** Mit „Nur diese Seitenbäume“ sieht der Token nur die angegebenen Seiten und alles darunter.
   Alles andere ist für ihn „nicht gefunden“ (404) – auch in der Suche.
 - **Rechte:** Ein Token kann nie mehr als das Konto. Geteilte Seiten gehen mit der Rolle, die das Konto hat (Lesen,

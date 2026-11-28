@@ -15,6 +15,7 @@ from saga.sharing import delete_account, share_counts
 # Wichtig: uid = Benutzername. Blieben Daten liegen, bekaeme ein spaeter neu angelegtes Konto mit
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
 USER_TABLES = ("mem_vec",                                    # 2.6 (Bugs-DB 2581): vor note (Gedaechtnis-Vektoren)
+               "mem_link", "mem_trace", "mem_link_log",      # 2.6 (Bugs-DB 2603): Schattenmodus (Verknuepfungen, Spuren, Eingriffe)
                "task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
                "immich_key", "bookorbit_link", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
                "chat_identity", "chat_device", "chat_link", "ai_act_token", "push_sub", "push_queue", "ai_history", "ai_usage", "ai_units", "chat_ai_reply",
