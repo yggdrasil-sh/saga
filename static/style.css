@@ -2421,6 +2421,7 @@ body.gr-open{overflow:hidden}
 .gr-lg{display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
 .gr-lg i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .gr-lg-cur i{background:var(--accent);box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--accent)}
+.gr-lg-mem i{background:var(--gr-row);box-shadow:0 0 0 2px color-mix(in srgb,var(--gr-mem) 55%,transparent),0 0 6px 3px color-mix(in srgb,var(--gr-mem) 45%,transparent)}   /* 2595: kuerzlich abgerufen */
 .gr-card{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:.8rem;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.55rem .55rem .55rem 1rem;box-shadow:0 8px 28px rgba(0,0,0,.22);max-width:calc(100% - 24px);z-index:2}
 .gr-card-tx{display:flex;flex-direction:column;min-width:0;flex:1}
 .gr-card-t{font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

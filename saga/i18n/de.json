@@ -5859,5 +5859,9 @@
  "Wird vorbereitet …": "Wird vorbereitet …",
  "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.": "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.",
  "{n} {n:Erinnerung|Erinnerungen}": "{n} {n:Erinnerung|Erinnerungen}",
- "{n} von {m} Erinnerungen vorbereitet": "{n} von {m} Erinnerungen vorbereitet"
+ "{n} von {m} Erinnerungen vorbereitet": "{n} von {m} Erinnerungen vorbereitet",
+ "Gedächtnis hervorheben": "Gedächtnis hervorheben",
+ "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten",
+ "Kürzlich abgerufen": "Kürzlich abgerufen",
+ "{n} {n:Abruf|Abrufe}": "{n} {n:Abruf|Abrufe}"
 }

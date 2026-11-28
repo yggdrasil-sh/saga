@@ -35,6 +35,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Hintergrund (entprellt, Papierkorb/Löschen räumt auf, Modellwechsel rechnet neu) und `python run.py gedaechtnis
   einbetten [--konto …]`. Neue Abhängigkeit numpy. Claude-Code-Hooks `tools/claude-code/saga_hooks.py` (SessionStart:
   Ich-Kern, UserPromptSubmit: Erinnerungen; 1,5 s, nie blockierend) mit Anleitung [docs/CLAUDE-CODE-HOOKS.md](docs/CLAUDE-CODE-HOOKS.md).
+- **Gedächtnis im Graph (2595, [docs/MEMORY.md](docs/MEMORY.md) §10):** mit gebundenem Gedächtnis wachsen oft
+  abgerufene Erinnerungen im Graph (bis × 1,8, wie der Häufigkeits-Faktor), kürzlich abgerufene leuchten nach (klingt über
+  24 h ab), und jeder recall (MCP oder REST) lässt die Treffer in offenen Graph-Ansichten der eigenen Sitzungen kurz
+  pulsieren (bei „weniger Bewegung“ ein ruhiger Ring). `GET /api/graph` liefert dazu `mem {db, now, rows}` live aus
+  `mem_vec` – nur für die eigene gebundene Datenbank, nie für freigegebene Seiten; Live-Ereignis `memory.recalled {ids}`
+  nur an die Besitzerin, ohne Titel/Inhalte. Schalter „Gedächtnis hervorheben“ unter Graph › Einstellungen › Anzeige
+  (Standard an), Legende „Kürzlich abgerufen“, Karte zeigt die Zahl der Abrufe.
 - **Gedächtnis im Web (2581):** Einstellungen › Konto › **Gedächtnis** (`?settings=memory`, eigener Bereich nach „Saga“,
   auch wenn die KI für die Person aus ist): Schalter, Auswahl „Datenbank fürs Gedächtnis“ (nur eigene) und
   „Ich-Kern-Seite“, erkannte Spalten (gefunden / fehlt / falscher Typ, je Spalte ⓘ), Stand „n von m Einträgen

@@ -5859,5 +5859,9 @@
  "Wird vorbereitet …": "กำลังเตรียม …",
  "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.": "บริการค้นหาตามความหมายเข้าถึงไม่ได้ในขณะนี้ – โปรดลองใหม่ภายหลัง",
  "{n} {n:Erinnerung|Erinnerungen}": "{n} ความทรงจำ",
- "{n} von {m} Erinnerungen vorbereitet": "เตรียมแล้ว {n} จาก {m} ความทรงจำ"
+ "{n} von {m} Erinnerungen vorbereitet": "เตรียมแล้ว {n} จาก {m} ความทรงจำ",
+ "Gedächtnis hervorheben": "เน้นความจำ",
+ "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "ความจำที่ถูกเรียกบ่อยจะใหญ่ขึ้น ความจำที่เพิ่งถูกเรียกจะเรืองแสง",
+ "Kürzlich abgerufen": "เพิ่งถูกเรียก",
+ "{n} {n:Abruf|Abrufe}": "เรียก {n} ครั้ง"
 }

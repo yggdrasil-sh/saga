@@ -4,14 +4,16 @@
 // Datenbank-Relationen und Tags (Tag-Knoten). Daten: GET /api/graph (saga/graph.py). Eigene, schlanke Kraefte-Simulation
 // auf Canvas (Barnes-Hut) - keine Fremdbibliothek (CSP). Ueberfahren hebt Knoten + Nachbarn weich hervor (~180 ms),
 // Text blendet je nach Zoom ein, gezogene Knoten ziehen ihre Nachbarn mit. prefers-reduced-motion: ohne Uebergaenge.
+// 2.6 (Bugs-DB 2595, docs/MEMORY.md 10): mit gebundenem Gedaechtnis wachsen oft abgerufene Erinnerungen, kuerzlich
+// abgerufene gluehen (klingt ueber 24 h ab), ein recall laesst sie live pulsieren (memory.recalled); Schalter "mem".
 (function () {
   'use strict';
   if (!window.HK || !document.body.classList.contains('notes-page')) return;
   var HK = window.HK, el = HK.el, T = window.T;
   var KEY = 'saga-graph';
   var DEF = { link: true, child: true, rel: true, tags: false, orphans: true, rows: true, arrows: false, labels: 1.1,
-              size: 1, width: 1, center: 0.5, repel: 0.6, spring: 0.5, dist: 0.5, groups: [], depth: 1, panel: false };
-  var RESET = ['link', 'child', 'rel', 'tags', 'orphans', 'rows', 'arrows', 'labels', 'size', 'width', 'center', 'repel', 'spring', 'dist'];
+              size: 1, width: 1, center: 0.5, repel: 0.6, spring: 0.5, dist: 0.5, groups: [], depth: 1, panel: false, mem: true };
+  var RESET = ['link', 'child', 'rel', 'tags', 'orphans', 'rows', 'arrows', 'labels', 'size', 'width', 'center', 'repel', 'spring', 'dist', 'mem'];
   function prefs() {
     var p = {}; try { p = JSON.parse(HK.store(KEY) || '{}') || {}; } catch (e) { p = {}; }
     var o = {}; Object.keys(DEF).forEach(function (k) { o[k] = p[k] != null ? p[k] : DEF[k]; });
@@ -24,17 +26,48 @@
   var DUR = 180;                                     // ms fuer Hervorheben/Abblenden (Obsidian: ~150-250)
   function ease(x) { return x * x * (3 - 2 * x); }
   function now() { return window.performance ? performance.now() : Date.now(); }
+  // Gedaechtnis (2595): Groesse wie der Faktor freq (docs/MEMORY.md 4.1), Gluehen (1 - dt/24 h)^2, Puls ~1,6 s
+  var DAY = 86400, PULSE = 1600, RM_RING = 4000, GLOW_MAX = 400;
+  function memF(h) { return h > 0 ? Math.min(1, Math.log(1 + h) / Math.log(21)) : 0; }
+  function glowOf(lh, t) { if (!lh) return 0; var d = Math.max(0, t - lh); if (d >= DAY) return 0; var x = 1 - d / DAY; return x * x; }
+  function rgba(c, a) {                              // '#rgb' / '#rrggbb' / 'rgb(...)' -> rgba mit Deckkraft a
+    var m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c).trim()), r, g, b;
+    if (m) { var h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1]; r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); }
+    else { m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(String(c)); if (!m) return c; r = +m[1]; g = +m[2]; b = +m[3]; }
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
+  }
 
   // --- Daten -----------------------------------------------------------------------------------------------------
-  var DATA = null, DATA_T = 0, LOADING = null;
+  var DATA = null, DATA_T = 0, LOADING = null, SKEW = 0;        // SKEW: Serverzeit - Geraetezeit (s), aus mem.now
   function load(force) {
     if (!force && DATA && Date.now() - DATA_T < 30000) return Promise.resolve(DATA);
     if (LOADING) return LOADING;
-    LOADING = HK.api('GET', '/api/graph').then(function (d) { DATA = d; DATA_T = Date.now(); LOADING = null; return d; },
-      function (e) { LOADING = null; throw e; });
+    var t0 = Date.now();
+    LOADING = HK.api('GET', '/api/graph').then(function (d) {
+      DATA = d; DATA_T = Date.now(); LOADING = null;
+      SKEW = d && d.mem && d.mem.now ? d.mem.now - (t0 + DATA_T) / 2000 : 0;
+      return d;
+    }, function (e) { LOADING = null; throw e; });
     return LOADING;
   }
-  document.addEventListener('hk-live', function (e) { if (e.detail && e.detail.type === 'notes.tree') DATA_T = 0; });
+  function serverNow() { return Date.now() / 1000 + SKEW; }
+  // recall (MCP/REST) lieferte Erinnerungen: Zaehler hier nachfuehren (ohne Neuladen), offene Ansicht pulst
+  function recalled(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    if (!DATA || !DATA.mem) { DATA_T = 0; return; }        // gerade erst gebunden: beim naechsten Oeffnen neu laden
+    var t = Math.floor(serverNow()), by = {};
+    DATA.mem.rows.forEach(function (r) { by[r[0]] = r; });
+    ids.forEach(function (id) {
+      if (typeof id !== 'number') return;
+      if (by[id]) { by[id][1]++; by[id][2] = t; } else { by[id] = [id, 1, t]; DATA.mem.rows.push(by[id]); }
+    });
+    if (FULL && FULL.pulse) FULL.pulse(ids, t);
+  }
+  document.addEventListener('hk-live', function (e) {
+    var d = e.detail; if (!d) return;
+    if (d.type === 'notes.tree') DATA_T = 0;
+    else if (d.type === 'memory.recalled') recalled(d.data && d.data.ids);
+  });
 
   // Farben aus dem Stylesheet (hell/dunkel); werden je Ansicht zwischengespeichert, nicht je Bild abgefragt
   function palette() {
@@ -42,15 +75,18 @@
     function v(n, fb) { return s.getPropertyValue(n).trim() || fb; }
     return { fg: v('--fg', '#ddd'), bg: v('--bg', '#111'), acc: v('--accent', '#c9a45c'), line: v('--gr-line', '#8b97a8'),
              page: v('--gr-node', '#9aa6b8'), db: v('--gr-db', '#b39ddb'), row: v('--gr-row', '#7fb0e0'), tag: v('--gr-tag', '#6cc48a'),
-             lineA: parseFloat(v('--gr-line-a', '0.35')) || 0.35 };
+             mem: v('--gr-mem', '#f5c25c'), lineA: parseFloat(v('--gr-line-a', '0.35')) || 0.35 };
   }
 
   // Graph fuer die Anzeige bauen: Filter, Tag-Knoten, Gruppenfarben, lokal (BFS ab einer Seite)
   function build(d, p, opt) {
-    var byId = {}, nodes = [], edges = [];
+    var byId = {}, nodes = [], edges = [], mh = {};
+    if (d.mem && p.mem) (d.mem.rows || []).forEach(function (r) { mh[r[0]] = r; });   // nur eigene Gedaechtnis-Zeilen (Server)
     d.nodes.forEach(function (n) {
       if (!p.rows && n[3] === 'row' && !(opt && opt.focus === n[0])) return;
       var o = { id: n[0], title: n[1] || T('Unbenannt'), icon: n[2], kind: n[3], own: !!n[4], parent: n[5], deg: 0, tags: [] };
+      var mr = mh[o.id];
+      if (mr && o.own) { o.hits = mr[1] || 0; o.lh = mr[2] || 0; o.mf = memF(o.hits); }
       byId[o.id] = o; nodes.push(o);
     });
     function add(a, b, k) { if (byId[a] && byId[b] && a !== b) { edges.push({ s: byId[a], t: byId[b], k: k }); } }
@@ -113,6 +149,7 @@
     this.nodes = []; this.edges = []; this.adj = {}; this.k = 1; this.tx = 0; this.ty = 0; this.alpha = 0;
     this.hover = null; this.sel = null; this.drag = null; this.p = prefs(); this.raf = 0; this.focus = null; this.match = null;
     this.dim = 0; this.mp = null; this.cam = null; this.autoFit = false; this.last = 0; this.pal = palette();
+    this.npulse = 0; this.rmT = 0;                   // laufende Pulse (Gedaechtnis), Zeitgeber des ruhigen Rings
     var self = this;
     this.ro = window.ResizeObserver ? new ResizeObserver(function () { self.resize(); }) : null;
     if (this.ro) this.ro.observe(canvas); else window.addEventListener('resize', function () { self.resize(); });
@@ -132,7 +169,7 @@
     var R = Math.sqrt(g.nodes.length + 1) * 18, self = this;
     g.nodes.forEach(function (n, i) {
       var o = old[n.id];
-      if (o) { n.x = o.x; n.y = o.y; n.vx = o.vx; n.vy = o.vy; n.e = o.e; n.g = o.g; }
+      if (o) { n.x = o.x; n.y = o.y; n.vx = o.vx; n.vy = o.vy; n.e = o.e; n.g = o.g; n.pz = o.pz; n.pr = o.pr; }
       else { var a = i * 2.399963, rr = R * Math.sqrt((i + 0.5) / g.nodes.length); n.x = Math.cos(a) * rr; n.y = Math.sin(a) * rr; n.vx = 0; n.vy = 0; n.e = 0; n.g = 0; }
       if (n.id === self.focus && !o) { n.x = 0; n.y = 0; }
     });
@@ -175,6 +212,7 @@
       if (self.mp && !self.drag && (sim || cam)) self.hoverAt(self.mp.x, self.mp.y);   // Inhalt bewegt sich unter dem Zeiger
       var busy = self.animate(dt);
       self.draw();
+      if (self.npulse) busy = true;                              // Gedaechtnis-Puls laeuft (draw zaehlt npulse)
       if (sim || cam || busy) self.loop();
     });
   };
@@ -217,7 +255,25 @@
     for (i = 0; i < this.edges.length; i++) { var e = this.edges[i]; e.e = to(e.e || 0, hov && (e.s === hov || e.t === hov) ? 1 : 0); }
     return busy;
   };
-  View.prototype.rad = function (n) { return Math.max((2.5 + Math.sqrt(n.deg) * 1.6) * this.p.size * (n.tag ? 0.85 : 1), 2.5 / this.k); };
+  View.prototype.rad = function (n) {
+    var m = n.mf ? 1 + 0.8 * n.mf : 1;               // Gedaechtnis: oft abgerufen = groesser, hoechstens x1,8
+    return Math.max((2.5 + Math.sqrt(n.deg) * 1.6) * this.p.size * (n.tag ? 0.85 : 1) * m, 2.5 / this.k);
+  };
+  // Puls nach recall: zwei Ringe (~1,6 s); weniger Bewegung: ruhiger Ring fuer 4 s, ein Bild davor und danach
+  View.prototype.pulse = function (ids, t) {
+    var self = this, any = false, tn = now();
+    ids.forEach(function (id) {
+      var n = self.byId(id); if (!n || !n.own) return;
+      n.hits = (n.hits || 0) + 1; n.lh = t; n.mf = memF(n.hits); any = true;
+      if (RM.matches) n.pr = tn + RM_RING; else n.pz = tn;
+    });
+    if (!any) return false;
+    if (RM.matches) {
+      this.draw(); clearTimeout(this.rmT);
+      this.rmT = setTimeout(function () { if (self.c.isConnected) self.draw(); }, RM_RING + 50);
+    } else this.loop();
+    return true;
+  };
   // gezeichneter Radius: waechst beim Ueberfahren um 35 % und auf mind. 5 px (Bildschirm), auch weit herausgezoomt
   View.prototype.rr = function (n) { var g = ease(n.g || 0), r = this.rad(n); return g ? Math.max(r * (1 + 0.35 * g), (2.5 + 2.5 * g) / this.k) : r; };
   View.prototype.color = function (n) {
@@ -269,9 +325,15 @@
     ctx.setLineDash([]); ctx.lineWidth = lw;
     // Knoten: unbeteiligte je Farbe gebuendelt, hervorgehobene einzeln (wachsen, Akzentfarbe beim ueberfahrenen)
     var dimA = 1 - 0.85 * D, batches = {}, hiN = [], lab = [], thr = this.p.labels * 1.6, few = this.nodes.length <= 40;
+    var glow = [], pul = [], tS = serverNow(), tP = now();
     for (i = 0; i < this.nodes.length; i++) {
       n = this.nodes[i];
       var r = this.rad(n);
+      if (n.pz && tP - n.pz > PULSE * 1.35) n.pz = 0;
+      if (n.pr && tP > n.pr) n.pr = 0;
+      if (!vis(n.x, n.y, r * 3)) continue;
+      if (n.lh) { var gw = glowOf(n.lh, tS); if (gw > 0.004) glow.push([n, gw]); }
+      if (n.pz || n.pr) pul.push(n);
       if (!vis(n.x, n.y, r * 1.4)) continue;
       if (n.e > 0 || n.g > 0 || n.id === this.focus) hiN.push(n);
       else { var key = this.color(n) + (n.own ? '' : '|s'); (batches[key] = batches[key] || []).push(n); }
@@ -281,6 +343,15 @@
       if (m && !m[n.id]) la = Math.min(la, za * dimA);
       if (la > 0.03) lab.push([n, la]);
     }
+    // Nachleuchten (Gedaechtnis): weicher Hof in --gr-mem unter dem Knoten, Staerke nach dem letzten Abruf
+    if (glow.length > GLOW_MAX) glow = glow.sort(function (a, b) { return b[1] - a[1]; }).slice(0, GLOW_MAX);
+    glow.forEach(function (x) {
+      var n = x[0], g = x[1], r = self.rr(n), R = r * 1.7 + (5 + 9 * g) / k;
+      var gr = ctx.createRadialGradient(n.x, n.y, r * 0.6, n.x, n.y, R);
+      gr.addColorStop(0, rgba(P.mem, 0.75 * g)); gr.addColorStop(0.45, rgba(P.mem, 0.32 * g)); gr.addColorStop(1, rgba(P.mem, 0));
+      ctx.globalAlpha = Math.max(dimA, ease(n.e || 0)); ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(n.x, n.y, R, 0, 6.2832); ctx.fill();
+    });
     Object.keys(batches).forEach(function (key) {
       var list = batches[key]; ctx.beginPath();
       list.forEach(function (n) { var r = self.rad(n); ctx.moveTo(n.x + r, n.y); ctx.arc(n.x, n.y, r, 0, 6.2832); });
@@ -296,6 +367,29 @@
         ctx.beginPath(); ctx.arc(n.x, n.y, r + 3.5 / k, 0, 6.2832); ctx.stroke(); ctx.lineWidth = lw;
       }
     });
+    // Gedaechtnis: Kontur fuer gluehende Knoten (auch im hellen Schema klar), Puls bzw. ruhiger Ring nach recall
+    ctx.strokeStyle = P.mem;
+    glow.forEach(function (x) {
+      var n = x[0]; ctx.globalAlpha = Math.min(1, 0.25 + 0.75 * x[1]) * Math.max(dimA, ease(n.e || 0));
+      ctx.lineWidth = (1 + 0.8 * x[1]) / k; ctx.beginPath(); ctx.arc(n.x, n.y, self.rr(n) + 1.2 / k, 0, 6.2832); ctx.stroke();
+    });
+    var np = 0;
+    pul.forEach(function (n) {
+      var r = self.rr(n);
+      if (n.pr) {
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 2.2 / k;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 4 / k, 0, 6.2832); ctx.stroke(); return;
+      }
+      np++;
+      [0, 0.35].forEach(function (off) {
+        var q = (tP - n.pz) / PULSE - off; if (q < 0 || q > 1) return;
+        var e2 = 1 - (1 - q) * (1 - q);
+        ctx.globalAlpha = 0.9 * (1 - q); ctx.lineWidth = (2.4 - 1.4 * q) / k;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + (3 + 24 * e2) / k, 0, 6.2832); ctx.stroke();
+      });
+    });
+    this.npulse = np;
+    ctx.lineWidth = lw;
     // Beschriftungen: feste Bildschirmgroesse, Rand in Hintergrundfarbe; hervorgehobene zuletzt (oben)
     lab.sort(function (a, b) { return (a[0].e || 0) - (b[0].e || 0); });
     if (lab.length > 450) lab = lab.slice(lab.length - 450);
@@ -558,7 +652,7 @@
     function describe(n) {
       if (!n) return '';
       var c = (view.adj[n.id] ? Object.keys(view.adj[n.id]).length : 0);
-      return T('{n} {n:Verbindung|Verbindungen}', { n: c });
+      return T('{n} {n:Verbindung|Verbindungen}', { n: c }) + (n.hits ? ' · ' + T('{n} {n:Abruf|Abrufe}', { n: n.hits }) : '');
     }
     var view = new View(cv, {
       onOpen: openNode,
@@ -594,6 +688,7 @@
       cb.addEventListener('change', function () { P[key] = cb.checked; savePrefs(P); rebuild(true); });
       l.appendChild(el('span', null, label)); l.appendChild(cb); box.appendChild(l);
       ctl.push(function () { cb.checked = !!P[key]; });
+      return l;
     }
     function slider(box, key, label, min, max, step, cb2) {
       var l = el('label', 'gr-slider'); l.appendChild(el('span', null, label));
@@ -629,6 +724,8 @@
     ng.addEventListener('click', function () { P.groups.push({ q: '', color: GCOL[P.groups.length % GCOL.length] }); savePrefs(P); drawGroups(); var qs = glist.querySelectorAll('.gr-gq'); if (qs.length) qs[qs.length - 1].focus(); });
     drawGroups();
     var dsp = sec(T('Anzeige'), false);
+    var memL = check(dsp, 'mem', T('Gedächtnis hervorheben')); memL.hidden = true;   // nur mit gebundenem Gedaechtnis (2595)
+    memL.title = T('Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten');
     check(dsp, 'arrows', T('Pfeile'));
     slider(dsp, 'labels', T('Text einblenden ab Zoomstufe'), 0.2, 3, 0.1);
     slider(dsp, 'size', T('Knotengröße'), 0.4, 3, 0.1);
@@ -683,6 +780,10 @@
         var s = el('span', 'gr-lg'), d = el('i'); d.style.background = it[1]; s.appendChild(d); s.appendChild(document.createTextNode(it[2])); legend.appendChild(s);
       });
       if (view.focus != null && view.byId(view.focus)) { var s = el('span', 'gr-lg gr-lg-cur'), d = el('i'); s.appendChild(d); s.appendChild(document.createTextNode(T('Offene Seite'))); legend.appendChild(s); }
+      var tS = serverNow();
+      if (P.mem && gph.nodes.some(function (n) { return n.lh && glowOf(n.lh, tS) > 0.004; })) {
+        var sm = el('span', 'gr-lg gr-lg-mem'); sm.appendChild(el('i')); sm.appendChild(document.createTextNode(T('Kürzlich abgerufen'))); legend.appendChild(sm);
+      }
       legend.hidden = legend.childNodes.length < 2;
     }
     function paintMode() {
@@ -695,6 +796,7 @@
       view.p = P;
       var loc = S.mode === 'local';
       var gph = build(DATA, P, loc ? { focus: S.id, depth: parseInt(dep.value, 10) || 1 } : null);
+      memL.hidden = !DATA.mem;
       view.focus = S.id;
       view.set(gph, keep);
       S.g = gph; drawLegend(gph);
@@ -722,7 +824,7 @@
     dep.addEventListener('change', function () { P.depth = parseInt(dep.value, 10) || 1; savePrefs(P); rebuild(true); view.autoFit = true; view.heat(0.6); });
     function close() {
       if (!FULL) return;
-      FULL = null; cancelAnimationFrame(view.raf); if (view.ro) view.ro.disconnect();
+      FULL = null; cancelAnimationFrame(view.raf); clearTimeout(view.rmT); if (view.ro) view.ro.disconnect();
       document.removeEventListener('keydown', onKey, true); window.removeEventListener('hk-theme', onTheme);
       w.remove(); document.body.classList.remove('gr-open');
       if (back && back.isConnected) try { back.focus(); } catch (e) { /* egal */ }
@@ -747,7 +849,8 @@
     window.addEventListener('hk-theme', onTheme);       // Hell/Dunkel: eigene Wahl, anderer Tab oder System (theme-boot.js)
     x.addEventListener('click', close);
     fitB.addEventListener('click', function () { view.user(); view.fit(); });
-    FULL = { show: show, close: close, view: view };
+    FULL = { show: show, close: close, view: view,
+             pulse: function (ids, t) { if (P.mem && view.pulse(ids, t) && S.g) drawLegend(S.g); } };
     paintMode();
     view.resize();
     function start(force) {

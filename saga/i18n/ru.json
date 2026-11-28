@@ -5859,5 +5859,9 @@
  "Wird vorbereitet …": "Подготовка …",
  "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.": "Сервис поиска по смыслу сейчас недоступен – попробуйте позже.",
  "{n} {n:Erinnerung|Erinnerungen}": "{n} {n:воспоминание|воспоминания|воспоминаний}",
- "{n} von {m} Erinnerungen vorbereitet": "Подготовлено {n} из {m} воспоминаний"
+ "{n} von {m} Erinnerungen vorbereitet": "Подготовлено {n} из {m} воспоминаний",
+ "Gedächtnis hervorheben": "Выделять память",
+ "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Часто вызываемые воспоминания крупнее, недавно вызванные светятся",
+ "Kürzlich abgerufen": "Недавно вызвано",
+ "{n} {n:Abruf|Abrufe}": "{n} {n:вызов|вызова|вызовов}"
 }

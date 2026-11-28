@@ -5859,5 +5859,9 @@
  "Wird vorbereitet …": "Preparing …",
  "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.": "The service for searching by meaning is unreachable right now – please try again later.",
  "{n} {n:Erinnerung|Erinnerungen}": "{n} {n:memory|memories}",
- "{n} von {m} Erinnerungen vorbereitet": "{n} of {m} memories prepared"
+ "{n} von {m} Erinnerungen vorbereitet": "{n} of {m} memories prepared",
+ "Gedächtnis hervorheben": "Highlight memory",
+ "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Frequently recalled memories appear larger, recently recalled ones glow",
+ "Kürzlich abgerufen": "Recently recalled",
+ "{n} {n:Abruf|Abrufe}": "{n} {n:recall|recalls}"
 }

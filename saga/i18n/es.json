@@ -5859,5 +5859,9 @@
  "Wird vorbereitet …": "Preparando …",
  "Der Dienst für die Suche nach Bedeutung ist gerade nicht erreichbar – bitte später noch einmal.": "El servicio de búsqueda por significado no está disponible ahora; vuelve a intentarlo más tarde.",
  "{n} {n:Erinnerung|Erinnerungen}": "{n} {n:recuerdo|recuerdos}",
- "{n} von {m} Erinnerungen vorbereitet": "{n} de {m} recuerdos preparados"
+ "{n} von {m} Erinnerungen vorbereitet": "{n} de {m} recuerdos preparados",
+ "Gedächtnis hervorheben": "Resaltar memoria",
+ "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Los recuerdos consultados a menudo se ven más grandes; los consultados hace poco brillan",
+ "Kürzlich abgerufen": "Consultado hace poco",
+ "{n} {n:Abruf|Abrufe}": "{n} {n:consulta|consultas}"
 }
