@@ -527,6 +527,23 @@ def part_cleanup_forget():
     hs = {r[0] for r in pg("SELECT frage_hash FROM mem_trace WHERE uid=?", (U,))}
     ok("Aufraeumen: Spur > 30 Tage weg, 29 Tage bleibt; Link zu fehlender Zeile weg, Papierkorb-Zeile bleibt verknuepft",
        "x" not in hs and "y" in hs and (ids["Lied"], 9 * 10 ** 15) not in links(U) and all(k in links(U) for k in jl) and nl >= 1, (nt, nl, jl))
+    # Pruefer 2: ohne X-Saga (Cross-Site) und mit Nicht-Bool nichts geloescht, Schalter unveraendert
+    n0 = len(traces(U))
+    h = {"Content-Type": "application/json", "Cookie": "saga=" + cookie(U)}
+    if HOST:
+        h["Host"] = HOST
+    try:
+        with urllib.request.urlopen(urllib.request.Request(B_URL + "/api/account/memory", data=b'{"forget_traces": true, "shadow": false}',
+                                                           method="PUT", headers=h), timeout=30) as r:
+            st0 = r.status
+    except urllib.error.HTTPError as e:
+        st0 = e.code
+    st1, d1 = req("PUT", "/api/account/memory", {"forget_traces": "ja"}, uid=U)
+    st2, d2 = req("PUT", "/api/account/memory", {"shadow": 1}, uid=U)
+    st3, d3 = req("GET", "/api/account/memory", uid=U)
+    ok("PUT ohne X-Saga 401, forget_traces/shadow als Nicht-Bool 400 - Spuren und Schalter bleiben",
+       st0 == 401 and st1 == 400 and st2 == 400 and len(traces(U)) == n0 and n0 > 0 and st3 == 200 and d3["shadow"]["on"] is True,
+       (st0, st1, d1, st2, n0, len(traces(U)), d3.get("shadow")))
     st, d = req("PUT", "/api/account/memory", {"forget_traces": True}, uid=U)
     ok("forget_traces: alle Spuren weg, Links bleiben", st == 200 and not traces(U) and links(U) and d["shadow"]["traces"] == 0, d.get("shadow"))
     L = links(U)
