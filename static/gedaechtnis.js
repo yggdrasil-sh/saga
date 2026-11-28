@@ -4,6 +4,8 @@
 // aus der Navigation, wenn der Server das Gedaechtnis nicht kennt (404).
 // Eigener Bereich statt Teil von "Saga": der verschwindet, wenn die KI fuer die Person aus ist - das Gedaechtnis wirkt
 // aber unabhaengig davon (eigener Assistent ueber MCP bzw. Hooks). Fachwoerter (Embedding, Vektor) nur hinter ⓘ (M3).
+// Stufe 3 (Bugs-DB 2601/2603, docs/MEMORY.md 1.2/2/11/12): Spalte "Sensibel", Block "Nickerchen" (Schnappschuesse),
+// Block "Schattenmodus (Probelauf)" (Schalter, Stand Verknuepfungen/Spuren, Aufbau, "Spuren loeschen").
 // Alle Texte per textContent.
 (function () {
   'use strict';
@@ -22,11 +24,18 @@
     ['erregung', T('0 bis 1 – wie aufregend sie war. Wird gespeichert, zählt aber noch nicht.')],
     ['datum', T('Wann es war. Frisches kommt eher dran.')],
     ['letzter_abruf', T('Saga trägt ein, wann die Erinnerung zuletzt gebraucht wurde – gesammelt, höchstens alle 10 Minuten.')],
-    ['abrufe', T('Saga zählt, wie oft die Erinnerung gebraucht wurde.')]
+    ['abrufe', T('Saga zählt, wie oft die Erinnerung gebraucht wurde.')],
+    ['sensibel', T('Kontrollkästchen: Angehakte Erinnerungen kommen nur, wenn direkt danach gefragt wird – nie über Verknüpfungen.')]
   ];
-  var TYPE = { text: T('Text'), multi_select: T('Mehrfachauswahl'), select: T('Auswahl'), number: T('Zahl'), date: T('Datum') };
+  var TYPE = { text: T('Text'), multi_select: T('Mehrfachauswahl'), select: T('Auswahl'), number: T('Zahl'), date: T('Datum'), checkbox: T('Kontrollkästchen') };
   var WANT = { inhalt: 'text', schlagworte: 'multi_select', projekt: 'select', art: 'select', wichtigkeit: 'number', valenz: 'number',
-               erregung: 'number', datum: 'date', letzter_abruf: 'date', abrufe: 'number' };
+               erregung: 'number', datum: 'date', letzter_abruf: 'date', abrufe: 'number', sensibel: 'checkbox' };
+  function when(iso) {                                // "2026-11-28T09:12+01:00" -> Datum/Uhrzeit in der Sprache der Person
+    var t = Date.parse(iso || '');
+    if (!isFinite(t)) return String(iso || '');
+    try { return new Date(t).toLocaleString(window.SAGA_LOCALE || undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+    catch (e) { return new Date(t).toLocaleString(); }
+  }
 
   var seq = 0;
   // ⓘ-Knopf mit aufklappbarem Text (wie static/saga.js, aber ohne saga.css - die Einstellungen gibt es auch auf /notes)
@@ -68,7 +77,7 @@
     intro.appendChild(ii.btn); sec.appendChild(intro); sec.appendChild(ii.box);
     var box = el('div', 'hk-mem'); sec.appendChild(box);
     var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status');
-    var d = null, pages = null, open = false, poll = null, polls = 0, grace = 0, coreQ = '', embedWait = false, ui = {};
+    var d = null, pages = null, open = false, poll = null, polls = 0, grace = 0, coreQ = '', embedWait = false, ui = {}, us = {}, shGrace = 0;
 
     function load() {
       return api('GET', '/api/account/memory').then(function (x) { d = x; render(); }, function (e) {
@@ -84,7 +93,9 @@
     // fid: Feld, das danach den Fokus zurueckbekommt (das gesperrte Auswahlfeld verliert ihn, render() baut es neu)
     function put(b, what, fid) {
       return api('PUT', '/api/account/memory', b).then(function (x) {
-        d = x; render(); refocus(fid); status(msg, what || T('✓ Gespeichert'), 'ok'); polls = 0; grace = 5; schedulePoll();
+        d = x; render(); refocus(fid); status(msg, what || T('✓ Gespeichert'), 'ok'); polls = 0; grace = 5;
+        if (b.shadow === true) shGrace = 4;            // Aufbau startet im Hintergrund, evtl. erst nach der Antwort
+        schedulePoll();
       }, function (e) { render(); refocus(fid); status(msg, errText(e), 'err'); });
     }
     function bound() { return !!(d && (d.db || d.core)); }
@@ -167,7 +178,7 @@
       loadPages().then(function () { if (cs.isConnected) fillCore(); });
       cs.addEventListener('change', function () { cs.disabled = true; put({ core: cs.value ? +cs.value : null }, null, cs.id); });
       box.appendChild(el('p', 'hk-hint', T('Diese Seite liest dein Assistent zu Beginn jeder Sitzung – wer er ist und was ihm wichtig ist. Nur eigene Seiten.')));
-      if (d.db) { columns(); state(); }
+      if (d.db) { columns(); state(); nap(); shadow(); }
       box.appendChild(msg);
       refocus(keep);
     }
@@ -242,6 +253,66 @@
       });
       updateState();
     }
+    // 2601: Nickerchen - Schnappschuesse (Option in der Spalte "Art"), die der Assistent vor einer Pause ablegt
+    function nap() {
+      var sn = d.snapshot; if (!sn) return;
+      box.appendChild(el('h4', null, T('Nickerchen')));
+      var p = el('p', 'hk-hint hk-mem-nap-intro');
+      p.appendChild(document.createTextNode(T('Vor einer Pause kann dein Assistent einen Schnappschuss ablegen – Stimmung, offene Fäden, letzter Gedanke – und beim nächsten Start daran anknüpfen.') + ' '));
+      var ni = info([T('Dein Assistent ruft dafür das Werkzeug nap auf; beim Aufwachen (wake) bekommt er den neuesten Schnappschuss und was sich seitdem geändert hat. Schnappschüsse bleiben alle erhalten, tauchen aber nie als Erinnerung auf.')], T('Wie funktioniert das Nickerchen?'));
+      p.appendChild(ni.btn); box.appendChild(p); box.appendChild(ni.box);
+      var st = el('p', 'hk-mem-state hk-mem-nap'); st.id = 'hk-mem-nap';
+      var cols = d.columns || {}, art = cols.art || {};
+      if (!sn.found) {
+        st.className = 'hk-hint hk-mem-warn hk-mem-nap'; st.setAttribute('role', 'note');
+        st.textContent = art.ok ? T('Lege in der Spalte „{col}“ die Option „{opt}“ an, damit dein Assistent Schnappschüsse ablegen kann.', { col: art.name || 'Art', opt: sn.option })
+          : T('Für Schnappschüsse braucht die Datenbank eine Auswahl-Spalte „{col}“ mit der Option „{opt}“.', { col: art.name || 'Art', opt: sn.option });
+      } else if (!sn.count) {
+        st.textContent = T('Noch kein Schnappschuss (Option „{opt}“).', { opt: sn.option });
+      } else {
+        st.textContent = T('{n} {n:Schnappschuss|Schnappschüsse}', { n: sn.count }) + (sn.latest ? ' · ' + T('zuletzt {when}', { when: when(sn.latest) }) : '');
+      }
+      box.appendChild(st);
+    }
+    // 2603: Schattenmodus (Probelauf) - misst nur, aendert keine Antwort. Stand/Aufbau aendert updateShadow() (ohne Neuaufbau).
+    function shadow() {
+      var sh = d.shadow; us = {}; if (!sh) return;
+      box.appendChild(el('h4', null, T('Schattenmodus (Probelauf)')));
+      var l = el('label', 'hk-avset-row'), sw = el('input', 'hk-switch'); sw.type = 'checkbox'; sw.setAttribute('role', 'switch');
+      sw.id = 'hk-mem-shadow'; sw.checked = !!sh.on; l.htmlFor = sw.id;
+      l.appendChild(el('span', null, T('Schattenmodus'))); l.appendChild(sw); box.appendChild(l);
+      var p = el('p', 'hk-hint hk-mem-shadow-txt');
+      p.appendChild(document.createTextNode(T('Saga probiert im Hintergrund aus, ob verknüpfte Erinnerungen deinem Assistenten helfen würden. Antworten ändern sich nicht; gespeichert werden 30 Tage lang nur Zahlen und Stichworte, nie die Fragen.') + ' '));
+      var si = info([T('Saga verknüpft ähnliche und oft gemeinsam gebrauchte Erinnerungen und merkt sich bei jedem Abruf, was zusätzlich aufgetaucht wäre. Meldet dein Assistent mit recall_used, was geholfen hat, werden diese Verknüpfungen stärker. Die Auswertung holt er mit shadow_report.'),
+                     T('Erinnerungen mit „Sensibel“ werden nie verknüpft. Ausschalten behält Verknüpfungen und Spuren; Spuren verfallen nach 30 Tagen.')], T('Was misst der Schattenmodus?'));
+      p.appendChild(si.btn); box.appendChild(p); box.appendChild(si.box);
+      us.state = el('p', 'hk-mem-state hk-mem-shadow-state'); us.state.id = 'hk-mem-shadow-state'; box.appendChild(us.state);
+      us.run = el('p', 'hk-hint hk-mem-shadow-run', T('Wird aufgebaut …')); box.appendChild(us.run);
+      var act = el('div', 'hk-actions'), fg = el('button', 'btn', T('Spuren löschen')); fg.type = 'button'; fg.id = 'hk-mem-forget';
+      act.appendChild(fg); box.appendChild(act); us.act = act; us.go = fg;
+      sw.addEventListener('change', function () {
+        var on = sw.checked; sw.disabled = true;
+        put({ shadow: on }, on ? T('✓ Schattenmodus an – Saga baut die Verknüpfungen auf.') : T('✓ Schattenmodus aus – Verknüpfungen und Spuren bleiben.'), sw.id);
+      });
+      fg.addEventListener('click', function () {
+        var n = (d.shadow || {}).traces || 0;
+        HK.ask({ title: T('Spuren löschen?'), text: T('{n} {n:Spur|Spuren} des Schattenmodus jetzt löschen? Die Verknüpfungen bleiben.', { n: n }),
+                 ok: T('Löschen'), danger: true }).then(function (yes) {
+          if (!yes || !fg.isConnected) { refocus(fg.id); return; }
+          fg.disabled = true; put({ forget_traces: true }, T('✓ Spuren gelöscht'), fg.id);
+        });
+      });
+      updateShadow();
+    }
+    function updateShadow() {
+      var sh = (d && d.shadow) || {};
+      if (!us.state) return;
+      us.state.textContent = T('{n} {n:Verknüpfung|Verknüpfungen}', { n: sh.links || 0 }) + ' · ' + T('{n} {n:Spur|Spuren} (30 Tage)', { n: sh.traces || 0 });
+      us.state.hidden = !sh.on && !sh.links && !sh.traces;
+      us.run.hidden = !sh.running;
+      us.act.hidden = !sh.traces;
+      us.go.disabled = !sh.traces;
+    }
     function updateState() {
       var s = (d && d.status) || {};
       if (!ui.text) return;
@@ -260,18 +331,21 @@
     // Nur der Stand wird aktualisiert - neu gebaut wird nur, wenn sich mehr geaendert hat (andere Datenbank, Quelle, Spalten).
     function schedulePoll() {
       clearTimeout(poll);
-      var s = d && d.status;
-      if (!sec.isConnected || !d || !d.db || !s || s.source !== 'embeddings') return;
-      if (!s.running && !embedWait && (grace <= 0 || !(s.embedded < s.rows))) return;
-      if (!s.running) grace--;
+      var s = d && d.status, sr = !!(d && d.shadow && d.shadow.running);
+      if (!sec.isConnected || !d || !d.db || !s) return;
+      var emb = s.source === 'embeddings' && (s.running || embedWait || (grace > 0 && s.embedded < s.rows));
+      if (!emb && !sr && shGrace <= 0) return;       // 2603: auch solange die Verknuepfungen aufgebaut werden
+      if (!s.running && !sr) grace--;
+      if (!sr && shGrace > 0) shGrace--;
       if (++polls > POLL_MAX) { embedWait = false; updateState(); return; }
       poll = setTimeout(function () {
         if (!sec.isConnected) return;
         api('GET', '/api/account/memory').then(function (x) {
           var same = x.db && d.db && x.db.id === d.db.id && (x.status || {}).source === ui.source
-            && JSON.stringify(x.columns) === JSON.stringify(d.columns) && ((x.core || {}).id === (d.core || {}).id);
+            && JSON.stringify(x.columns) === JSON.stringify(d.columns) && ((x.core || {}).id === (d.core || {}).id)
+            && JSON.stringify(x.snapshot) === JSON.stringify(d.snapshot) && !!(x.shadow || {}).on === !!(d.shadow || {}).on;
           d = x;
-          if (same) updateState(); else render();
+          if (same) { updateState(); updateShadow(); } else render();
           schedulePoll();
         }, function () {});
       }, POLL_MS);
