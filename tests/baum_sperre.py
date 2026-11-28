@@ -20,8 +20,8 @@ B_ = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 S = TimestampSigner(os.environ["SESSION_SECRET"])
 TOK = os.environ.get("SAGA_TEST_TOKEN") or ""
-A, BU, CU = "bs-a", "bs-b", "bs-c"
-USERS = (A, BU, CU)
+A, BU, CU, DU = "bs-a", "bs-b", "bs-c", "bs-d"
+USERS = (A, BU, CU, DU)
 FAST, HANG = 5.0, 8.0                 # Antwort spaetestens nach FAST s; nach HANG s gilt sie als haengend (Sperre loesen)
 OLD = 31 * 86400 + 60                 # aelter als TRASH_DAYS bzw. TOMB_DAYS
 res = []
@@ -218,6 +218,21 @@ def main():
         s, raw = req("GET", "/api/notes", CU, timeout=HANG)
         ok(f"B3: GET /api/notes (ohne Parameter) in {time.time() - t0:.1f} s, Papierkorb-Frist gespeichert",
            s == 200 and raw[:1] == b"[" and alive(CU, ids3) == 0, (s, alive(CU, ids3)))
+
+        # --- B4: grosser Rueckstand - je Lauf im Seitenbaum hoechstens 500 Seiten (in fester Reihenfolge) -------------
+        ids5 = trash(DU, 501, "D")
+        t0 = time.time()
+        s, _ = req("GET", "/api/notes?delta=1", DU, timeout=HANG)
+        left = alive(DU, ids5)
+        with connect() as c:
+            rest = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND id = ANY(?)", (DU, ids5))]
+        ok(f"B4: 501 alte Papierkorb-Seiten - erster Lauf loescht 500 ({time.time() - t0:.1f} s), der Rest bleibt",
+           s == 200 and left == 1 and rest == [max(ids5)], (s, left, rest))
+        if have_clock:
+            clock(advance=3700)
+        s, _ = req("GET", "/api/notes?delta=1", DU, timeout=HANG)
+        ok("B4: eine Stunde spaeter (Testuhr) auch der Rest", s == 200 and alive(DU, ids5) == 0, alive(DU, ids5))
+        quiet("B4")
 
         # --- C: _prune allein - gesperrte Zeilen und fremde Sperren --------------------------------------------------
         ids4 = trash(A, 2, "C")

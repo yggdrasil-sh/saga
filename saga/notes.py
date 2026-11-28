@@ -308,6 +308,7 @@ VERSION_EVERY, VERSION_MAX = 300, 50     # 2.4: hoechstens alle 5 Minuten eine S
 def _purge_ids(c, uid, ids):
     """Endgueltig loeschen - samt Versionen, Veroeffentlichung, Freigaben und Kommentaren (im Papierkorb bleiben sie
     gespeichert, wirken aber nicht: Seiten im Papierkorb sind fuer niemanden ausser dem Eigentuemer erreichbar)."""
+    ids = sorted({int(i) for i in ids})                  # 2636: immer in derselben Reihenfolge sperren (keine Verklemmung)
     tree_changed(c, uid, ids, "deleted")                 # vor dem Loeschen (Empfaenger aus den Freigaben bestimmen)
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_base WHERE note_id=? AND note_id IN (SELECT id FROM note WHERE uid=?)", [(i, uid) for i in ids])
@@ -406,6 +407,7 @@ def announce_shared(c, owner, root, ids, before=None):
         bus.emit_after(c, "shared.changed", {"owner": owner, "note_id": root, "target_type": tt, "target": tg})
 
 
+PURGE_BATCH = 500          # _purge_old(..., every=...): hoechstens so viele Seiten je Lauf (Bugs-DB 2636)
 _PURGED = {}               # uid -> Zeitpunkt der letzten Papierkorb-Frist (nur fuer _purge_old(..., every=...))
 
 
@@ -418,8 +420,12 @@ def _purge_old(c, uid, every=0):
     if every and 0 <= tick - _PURGED.get(uid, 0) < every:     # zurueckgestellte Testuhr: wieder pruefen
         return
     _PURGED[uid] = tick
-    old = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL AND deleted_at < ?",
-                                   (uid, now - TRASH_DAYS * 86400))]
+    # Bugs-DB 2636: feste Reihenfolge (zwei Prozesse sperren in derselben Folge - keine Verklemmung); im Seitenbaum (every)
+    # hoechstens PURGE_BATCH je Lauf - ein grosser Rueckstand (z. B. nach dem Update) macht kein GET minutenlang, der
+    # Rest folgt beim naechsten Lauf bzw. ueber /api/trash
+    old = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL AND deleted_at < ? ORDER BY id"
+                                   + (" LIMIT ?" if every else ""),
+                                   (uid, now - TRASH_DAYS * 86400, *((PURGE_BATCH,) if every else ())))]
     if old:
         _purge_ids(c, uid, old)
 

@@ -436,7 +436,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   gerade gesperrten dieser Seiten: die Anfrage wartete auf sich selbst („idle in transaction“, stündlich ein neues Paar,
   bis keine Datenbank-Verbindung mehr frei war). Das Aufräumen überspringt jetzt gesperrte Grabsteine und wartet
   höchstens 2 s auf andere Sperren. Dazu bleibt die Papierkorb-Frist aus dem Seitenbaum gespeichert (wurde bisher am
-  Ende der Anfrage zurückgerollt und deshalb jede Stunde wiederholt). Test: `tests/baum_sperre.py`.
+  Ende der Anfrage zurückgerollt und deshalb jede Stunde wiederholt) – je Lauf höchstens 500 Seiten in fester
+  Reihenfolge (großer Rückstand nach dem Update: der Rest folgt stündlich bzw. über den Papierkorb). Test: `tests/baum_sperre.py`.
 - **Ort „Saga“ auf breiten Fenstern (2541):** Gespräch und Aufträge stehen mittig im Platz neben der Seitenleiste statt
   als schmale Spalte am linken Rand – mit und ohne Seitenleiste, beim Ein-/Ausklappen gleitend; Leiste oben und
   Eingabezeile bleiben so breit wie der Verlauf. Die Spaltenbreite bleibt (gut lesbare Zeilen), schmal unverändert.

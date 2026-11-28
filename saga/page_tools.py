@@ -90,7 +90,7 @@ def api_trash_empty(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     with _db() as c, c:
-        ids = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL", (uid,))]
+        ids = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL ORDER BY id", (uid,))]
         _purge_ids(c, uid, ids)
     return JSONResponse({"purged": len(ids)})
 
