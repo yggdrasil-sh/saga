@@ -703,6 +703,10 @@ def part_memory(cid):
     code, _ = code_for(cid, ver, ch, state="mem-3", scopes=["memory"])                  # nur Gedaechtnis reicht
     st, d, _, _ = exchange(cid, code, ver)
     ok("memory: nur Gedaechtnis gewaehlt ist erlaubt", st == 200 and set(d.get("scope", "").split()) == {"mcp", "memory"}, d)
+    st, a, _, _ = req("GET", "/api/account/oauth-apps", jar=JAR, headers={"X-Saga": "1"})
+    for app in a.get("apps") or []:                                  # aufraeumen: spaetere Teile zaehlen die Verbindungen
+        if app.get("name") == "Gedaechtnis-Client":
+            req("DELETE", f"/api/account/oauth-apps/{app['id']}", jar=JAR, headers={"X-Saga": "1"})
 
 
 def part_refresh(cid, ref):
