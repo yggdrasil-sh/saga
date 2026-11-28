@@ -861,3 +861,217 @@ gibt es kein Teilen-Ziel. Ablauf:
 
 - Auftrag zu einer offenen Seite: derselbe Weg wie im Web (11.7, `context.note`).
 - Im Auftrags-Detail „Deine Bitte“ = `detail.request` (wie Web seit 2509), leer → Zeile weglassen.
+
+## 15. Diktat (2.6, Bugs-DB 2274 K-F, `aistt1`)
+
+Sprechen statt tippen im Eingabefeld des Ortes „Saga“ (Frage und „Als Auftrag“). Konzept K16/K17, RT-18/RT-19.
+**Gerät zuerst** (iOS/macOS SpeechAnalyzer, Android on-device), sonst ein **Server-Weg** (Saga reicht die Aufnahme an
+einen Whisper-kompatiblen Dienst durch, den der Admin einrichtet), sonst **kein Knopf**. Die Oberfläche sagt immer vor
+dem Start, wohin die Aufnahme geht; der erkannte Text landet im Feld und wird **nie automatisch gesendet**.
+**Keine Migration.** Der Schalter `aistt1` (`/api/version` `features`) gilt für 15.1, 15.2 (`stt`) und 15.5 (`input`);
+ohne ihn gibt es nur den Geräte-Weg (iOS/Android/Mac-Hülle) – und auch den nur, wenn die Person nicht „nur auf dem
+Gerät“ abgeschaltet hat (15.7). Testvektoren: `tests/vectors/stt_contract.json` (Format `saga-stt/1`: Anfragen und
+Antworten je Statuscode, Entscheidungstabelle `decide`, `stt`-Beispiele, `notice` und Fehlertexte in de/en/es/ru/th mit
+du/Sie, Plan-Herkunft mit und ohne Warnung, Brücke der Mac-Hülle, Oberflächentexte `ui`).
+
+### 15.1 `POST /api/ai/transcribe`
+
+```
+POST /api/ai/transcribe?lang=de        (Sitzung bzw. Geräte-Sitzung der App + X-Saga: 1)
+Content-Type: audio/ogg                 (Ogg/Opus)  |  audio/wav (PCM 16 bit, mono)
+<rohe Bytes der Aufnahme, höchstens 2 097 152>
+→ 200 {"text": "Erinner mich Freitag an den Pavillon", "dur": 4.2, "lang": "de", "cut": false}
+   Cache-Control: no-store
+```
+
+**Anfrage**
+
+| Teil | Regel |
+|---|---|
+| Anmeldung | wie `/api/ai/jobs`: Sitzung (Web) bzw. Geräte-Sitzung der App und `X-Saga: 1`. **Jeder** `Authorization: Bearer …` (`hk_`, `sga_`, OAuth, auch `hkd_`) → 403 (RT-42). |
+| Query | nur `lang` (`de`/`en`/`es`/`ru`/`th`, = App-Sprache, F7). Fehlt `lang`: Sprache aus Admin › Diktat, sonst Sprache der Anfrage. Nie andere Inhalte in die Adresse (uvicorn schreibt Pfad und Query ins Zugriffs-Log). |
+| `Content-Type` | `audio/ogg` (Parameter wie `; codecs=opus` egal) oder `audio/wav` (auch `audio/x-wav`, `audio/wave`). Kein Multipart, kein Base64, kein JSON. |
+| Körper | genau eine Aufnahme, roh. `Content-Length` oder `Transfer-Encoding: chunked` – beides wird gezählt. |
+| Ogg/Opus | erste Seite `OggS` mit Paket `OpusHead` (1 oder 2 Kanäle); Dauer = (Granule der letzten Seite − Pre-Skip) / 48 000. Web/Android/iOS haben den Ogg-Muxer der Sprachnachrichten (`SagaVoice`, `OggOpus.kt`, `VoiceOgg.swift`) – Chrome-WebM vorher umpacken wie dort. |
+| WAV | `RIFF…WAVE`, Block `fmt ` mit Format 1 (PCM), 16 Bit, **mono**, 8 000–48 000 Hz; Dauer = Größe des Blocks `data` / Byterate. **Senden mit 16 kHz** (60 s = 1 920 044 Bytes; 48 kHz passt nur bis ~21 s). Andere Blöcke (`LIST` …) sind erlaubt. |
+| Format wählen | `ogg`, wenn es in `stt.formats` (15.2) steht, sonst `wav`. Steht keins von beiden, das der Client erzeugen kann, drin → kein Server-Weg (`decide`, `fmt_ok`). |
+| Grenzen | höchstens **60 s** (geprüft mit 0,5 s Spiel) und **2 MiB**; der Client stoppt selbst bei 60 s. Antwort abwarten bis **75 s** (Dienst-Frist höchstens 60 s). |
+
+**Antwort 200:** `text` = erkannter Text (Steuerzeichen außer Zeilenumbruch entfernt, Leerraum an den Enden weg,
+höchstens **1 000** Zeichen – sonst gekürzt und `cut: true`). Besteht die Antwort des Dienstes nur aus einer Marke wie
+`[BLANK_AUDIO]`, `[Musik]` oder `(Stille)`, ist `text` leer → Client zeigt `ui.nothing`. `dur` = Dauer laut Kopf (s,
+eine Nachkommastelle), `lang` = tatsächlich verwendete Sprache. Der Text ist **noch keine Bitte**: Er geht erst mit dem
+Senden der Person an `/api/ai/thread` bzw. `/api/ai/jobs`.
+
+**Reihenfolge der Prüfungen** (nichts verlässt den Server, bevor alle bestanden sind): Bearer → Sitzung/`X-Saga` →
+Fähigkeit `ai` → eingerichtet (`off`) → Einwilligung → Schalter der Person (`device_only`) → `lang` → `Content-Type` →
+Grenzen je Person/Server (`rate`, `busy`, `full`) → Körper lesen (`too_big`) → leer/Magie/Format/Dauer → Ziel-Adresse
+(`blocked`) → Senden.
+
+| Status | `code` | Fall |
+|---|---|---|
+| 400 | `format` | `Content-Type` nicht erlaubt; Magie passt nicht zum `Content-Type` (`OggS` ohne `OpusHead`, `RIFF` ohne `WAVE`, kein PCM 16 Bit mono, Rate außerhalb 8–48 kHz); Format nicht in `stt.formats` |
+| 400 | `lang` | `lang` nicht `de`/`en`/`es`/`ru`/`th` |
+| 400 | `empty` | 0 Bytes bzw. Dauer 0 |
+| 400 | `too_long` | Dauer > 60,5 s (`max_s: 60` in der Antwort) |
+| 413 | `too_big` / – | Körper > 2 MiB (auch chunked, vor jedem Weiterreichen). Die vorgeschaltete Grenze (> 2 MiB + 4 KiB laut `Content-Length`) antwortet mit `{"success":0,"error":"request too large"}` ohne `code` – Clients werten den Körper bei 413 nicht aus und zeigen `ui.too_big`. |
+| 401 | – | ohne Sitzung oder ohne `X-Saga` |
+| 403 | – | `Authorization: Bearer …` (jeder Schlüssel) |
+| 403 | `ai` | Fähigkeit `ai` fehlt (KI für die Person aus). **Nicht** nötig: `ai_act` (F5) |
+| 403 | – + `consent: "needed"` | keine (gültige) Einwilligung (Abschnitt 11.2) – Kennenlernen-Karte |
+| 404 | `off` | Diktat nicht eingerichtet (Admin) |
+| 409 | `device_only` | Person hat „Diktat nur auf dem Gerät“ (15.7) |
+| 409 | `busy` | von dieser Person läuft schon ein Diktat (höchstens 1 gleichzeitig) |
+| 429 | `rate` | mehr als **30** je Stunde oder **120** je Tag (gleitend, je Person); `Retry-After` (s) und `retry_after` |
+| 503 | `full` | serverweit laufen schon **2** Diktate; `Retry-After` und `retry_after` (wenige Sekunden) |
+| 502 | `upstream` | Dienst antwortet mit Fehler, Weiterleitung (3xx – wird nie verfolgt), mehr als 64 KB, kein JSON bzw. ohne `text` |
+| 502 | `blocked` | Ziel-Adresse jetzt nicht erlaubt (Name löst öffentlich auf, „Cloud erlauben“ aus; Metadaten-Adresse) – **nichts gesendet**; danach `stt.on: false` |
+| 504 | `timeout` | Dienst innerhalb der Frist (Admin, Standard 30 s, höchstens 60 s) ohne Antwort |
+
+Alle Fehler sind `{error, code, …}` mit `error` als fertigem Systemtext (Sprache der Anfrage) – Clients zeigen ihn und
+lassen den Text im Feld unverändert. Gezählt (30/h, 120/Tag) wird jede Anfrage, die an den Dienst geht.
+
+**Ton wird nie gespeichert** (K16): Die Aufnahme bleibt im Speicher des Servers (kein `request.form()`, keine
+Temp-Datei, kein Cache), geht als Multipart im Speicher an `POST {url}/v1/audio/transcriptions` (`file`, `model`,
+`language`, `response_format=json`, `temperature=0`) und wird danach verworfen. Nichts davon in `ai_history`,
+`ai_turn`, `job` oder Logs – das Log nennt nur Zahlen (`stt: 200 4.2 s 31 KB 820 ms`). Gezählt wird im Pool `stt`
+(nur gemessen: Einheiten = Zeichen/4, Sekunden; nicht in `units.left`, Abschnitt 8). Was der Dienst selbst speichert,
+liegt beim Betreiber des Dienstes; den Proxy-Puffer (nginx `client_body_temp`) beschreibt `docs/ANLEITUNG.md`.
+
+### 15.2 `GET /api/ai/status` → `stt`
+
+Am Ende (ältere Felder unverändert), nur bei `enabled: true`:
+
+```json
+"stt": {"on": true,
+        "where": {"host": "whisper.lan:8000", "net": "home", "label": "whisper.lan:8000 (im Heimnetz)"},
+        "notice": "Deine Aufnahme geht an whisper.lan:8000 (im Heimnetz) und wird dort zu Text. Saga speichert sie nicht.",
+        "max_s": 60, "max_bytes": 2097152, "formats": ["ogg", "wav"], "langs": ["de", "en", "es", "ru", "th"]}
+```
+
+- `stt: null` = Diktat nicht eingerichtet (bzw. älterer Server: Feld fehlt) · `{"on": false}` = eingerichtet, aber
+  gerade gesperrt (Ziel nicht erlaubt, bis der Admin neu speichert) – in beiden Fällen kein Server-Weg.
+- `where` wie `endpoint` in 11.1, aber für den **Diktat-Dienst**: `host` (Host[:Port], nie mit `user:pw@`), `net`
+  (`home` nur, wenn alle festgehaltenen IPs privat sind und der Name seitdem nicht öffentlich aufgelöst hat), bei
+  `internet` ggf. `provider`, `country`, `country_name`; `note` = Zusatzsatz des Admins (fällt bei `internet` weg, wenn
+  er „lokal“ o. Ä. behauptet); `label` fertig. Nie der API-Schlüssel.
+- `notice` = **der** Satz am Knopf (vor dem ersten Start und während der Aufnahme), fertig in Sprache und Anrede der
+  Person (du/Sie wie `share_notice`), inklusive `where.note`. `home`: „Deine Aufnahme geht an {label} und wird dort zu
+  Text. Saga speichert sie nicht.“ · `internet`: „Deine Aufnahme geht übers Internet an {host} ({Anbieter}, {Land}) und
+  wird dort zu Text. Saga speichert sie nicht.“ Apps zeigen genau diesen Text, bauen nie selbst „im Heimnetz“.
+- `formats`: was der Dienst annimmt (Verbindungstest des Admins; whisper.cpp ohne ffmpeg nur `wav`).
+- `stt` hängt nicht von `ai_prefs.dictation` ab – das entscheidet der Client (15.3). Nach `PUT /api/ai/prefs` oder
+  einem Fehler `off`/`blocked`/`device_only` Status neu laden.
+
+### 15.3 Entscheidung – Gerät, Server oder kein Knopf
+
+```
+device_ok                                                    → "device"
+sonst aistt1 ∧ stt.on ∧ dictation == "server" ∧ fmt_ok       → "server"
+sonst                                                        → "none" (kein Knopf)
+```
+
+`device_ok` = diese App kann **auf dem Gerät** in der App-Sprache erkennen (Ton verlässt das Gerät nicht; ein Modell
+nachladen ist erlaubt). `dictation` aus `GET /api/ai/prefs` (Standard `server`). `fmt_ok` = `stt.formats` enthält ein
+Format, das der Client erzeugen kann (alle Clients können `ogg` und `wav` → praktisch immer wahr). Der Knopf erscheint
+nur, wo das Feld überhaupt aktiv ist (Ort „Saga“ mit Einwilligung, Abschnitt 11.7) – im Teilen-Modus (Zeile „Geteilt:
+…“, 14.1) gibt es **keinen** Knopf. Tabelle mit allen Fällen: `decide` in den Vektoren.
+
+| Plattform | Gerät (`device_ok`) | Server | sonst |
+|---|---|---|---|
+| iOS/iPadOS 26 | `SpeechAnalyzer` + `SpeechTranscriber` (Rückfall `DictationTranscriber`, nur on-device), Sprache über `supportedLocale(equivalentTo:)`; fehlt das Modell → `AssetInventory`, Zeile `ui.loading` | Ogg im Speicher (VoiceCodec/VoiceOgg, **keine** Vorschau-Datei) → 15.1 | kein Knopf |
+| Mac-Hülle | Fähigkeit `dictate` (15.6) | Web-Weg | – |
+| Android | nur `SpeechRecognizer.createOnDeviceSpeechRecognizer` (API 31+, `isOnDeviceRecognitionAvailable`; API 33+ `checkRecognitionSupport`/`triggerModelDownload`) – nie `createSpeechRecognizer`/`EXTRA_PREFER_OFFLINE` (darf in die Cloud) | `VoiceRecorder` Ogg im Speicher → 15.1 | kein Knopf |
+| Web/PWA, Tauri | nie (F1: Web Speech API schickt Ton je nach Browser an Google/Apple) | `SagaVoice.record({maxS: 60})` → 15.1 | kein Knopf |
+| Linux-App | – | – | kein Knopf (kein Ort „Saga“) |
+
+Fällt der Geräte-Weg beim Start aus (`unavailable`), entscheidet der Client für diese Sitzung neu mit
+`device_ok = false` und zeigt – falls es jetzt der Server-Weg ist – **zuerst** `stt.notice`; er startet nie von sich aus
+eine Server-Aufnahme.
+
+### 15.4 Oberfläche (alle Clients gleich)
+
+- Mikro-Knopf am Eingabefeld des Ortes „Saga“ (44 pt / 48 dp), Name `ui.button` („Diktieren“), nur bei `device`/`server`.
+- **Vor dem ersten Start** (je Gerät, nach jedem Wechsel des Weges oder von `stt.where.host`/`net`) und **während der
+  Aufnahme** steht die Zeile, wohin die Aufnahme geht: Gerät `ui.device` („Auf diesem Gerät – die Aufnahme verlässt es
+  nicht.“), Server `stt.notice`. Der erste Tipp zeigt beim Server-Weg nur den Hinweis; erst der zweite startet.
+- Während der Aufnahme: Zeit, Pegel, `ui.recording`, Knöpfe `ui.done` / `ui.cancel`; harte Grenze 60 s (`ui.limit`),
+  danach wie „Fertig“. Danach `ui.working`, bis der Text da ist.
+- Text **an der Schreibmarke einfügen** (bzw. Auswahl ersetzen), mit Leerzeichen an der Naht, änderbar. **Nie
+  automatisch senden** – auch kein Sprachbefehl „senden“; Senden bleibt der Knopf der Person.
+- Fehler: `error` des Servers bzw. `ui.failed`/`ui.mic_denied`/`ui.nothing`/`ui.too_big` – das Feld bleibt, wie es war.
+- Abbrechen verwirft die Aufnahme ohne Anfrage. Die Aufnahme liegt nur im Speicher (keine Datei, kein Cache).
+- `input: "dictation"` (15.5) nur, wenn der gesendete Text diktierte Teile enthält (auch nach Bearbeiten); nach dem
+  Leeren des Feldes vergisst der Client die Markierung.
+
+### 15.5 Auftrag aus Diktat – `POST /api/ai/jobs` `input`
+
+```json
+POST /api/ai/jobs   {"text": "Schreib allen, dass das Treffen ausfällt", "input": "dictation", "thread": true}
+```
+
+| Feld | Regel |
+|---|---|
+| `input` | `"text"` (Standard, fehlt = `text`) oder `"dictation"`. Nur mit `aistt1` senden. Anderer Wert/Typ → **400** `code: "input"`. `"dictation"` mit leerem `text`, mit `recipe` oder mit `source: "share"`/`shared` → 400 `input`. Nach einer Rückfrage (`choice`) dasselbe `input` erneut mitschicken. |
+
+- Der diktierte Text bleibt die **Bitte der Person** (kein Datenrahmen – sie hat ihn gesehen und gesendet), aber er
+  bekommt eine Herkunft (K17): gespeichert `plan.origin {kind: "dictation", warn}`; der Plan-Hash deckt sie ab,
+  „Ändern“ behält sie. `warn` = die Erkennung aus 14.1 (`saga/ai_origin.py`) findet `strong` oder `exfil` – eine bloße
+  Anrede („Saga, erinner mich …“, `address`) warnt beim Diktat **nicht**.
+- Ereignis `plan`, `detail.plan` und `PUT …/plan` tragen:
+
+```json
+"origin": {"kind": "dictation", "text": "Diktiert", "warn": true,
+           "warn_text": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist."}
+```
+
+  `warn_text` nur bei `warn: true`, sonst `null`; kein `host`/`from`. Plan-Karte: Symbol (Mikrofon) + `text` unter „Ich
+  lese dafür: …“, bei `warn` zusätzlich ⚠ + `warn_text` (nie nur Farbe) – derselbe Platz wie bei `kind: "share"`.
+  Clients unterscheiden nach `origin.kind`; unbekannte Arten zeigen nur `text`.
+- `source` bleibt `saga`: keine Mitteilung in `wartet_ok`, nie ein Knopf `approve`; `POST /api/ai/jobs/{id}/act`
+  `action: "approve"` → **409** `{code: "open", url}` wie bei geteilten Aufträgen (RT-18: ein Fernseher im Raum kann
+  nichts freigeben). Freigabe nur über die Plan-Karte.
+- `/api/ai/thread` (Frage) hat kein `input` – diktierte Fragen gehen wie getippte.
+
+### 15.6 Mac-Hülle: Fähigkeit `dictate` (F2)
+
+Die Mac-Hülle (macOS 26) erkennt on-device mit SpeechAnalyzer; die Aufnahme verlässt den Mac nicht und geht **nicht**
+über die Brücke – nur Text. Die Hülle meldet `dictate` in `caps` (`hello`/`sagaHostInfo`, `docs/APP-API-HOST.md`); das
+Web prüft `HK.host.has('dictate')` und setzt dann `device_ok = true`.
+
+| Web → Hülle (`hk`) | Felder | Hülle tut |
+|---|---|---|
+| `dictate.start` | `v:1`, `id` (Ganzzahl 1…1e9, neu je Start), `lang` (`de`/`en`/`es`/`ru`/`th`) | Mikrofon + SpeechAnalyzer (SpeechTranscriber, Rückfall DictationTranscriber on-device) für `lang`; läuft schon eine andere `id` → `dictate.error busy` |
+| `dictate.stop` | `v:1`, `id` | Aufnahme beenden, Rest erkennen, `dictate.done` |
+| `dictate.cancel` | `v:1`, `id` | sofort beenden, alles verwerfen; danach kein Ereignis mehr für diese `id` |
+
+| Hülle → Web (`sagaHost.receive`) | Felder | Web tut |
+|---|---|---|
+| `dictate.state` | `id`, `state`: `loading` (Modell wird geladen) · `listening` | `ui.loading` bzw. Zeit starten (optional – fehlt es, gilt `listening` ab Start) |
+| `dictate.level` | `id`, `level` 0…1 (höchstens 10/s) | Pegel (optional) |
+| `dictate.partial` | `id`, `text` (ganzer bisheriger Text, nicht nur das Neue; höchstens 10/s) | Vorschau neben dem Knopf, **nicht** ins Feld |
+| `dictate.done` | `id`, `text` (≤ 1 000 Zeichen), `dur` (s), `limit` (bei 60 s selbst gestoppt), `cut` | Text an der Schreibmarke einfügen (15.4) |
+| `dictate.error` | `id`, `code`: `unavailable` · `denied` · `busy` · `failed` | `unavailable` → neu entscheiden mit `device_ok = false` (15.3); `denied` → `ui.mic_denied` (kein Rückfall auf den Server); sonst `ui.failed` |
+
+- Annahme nur aus dem Hauptfenster der Server-Origin (wie 3.2 in APP-API-HOST); Ereignisse mit fremder/alter `id`
+  verwirft das Web. Die Hülle stoppt selbst nach 60 s (`limit: true`) und bricht bei Seitenwechsel, Neuladen, Abmelden
+  und Schließen des Fensters ab (`cancel`).
+- Ohne `dictate` (ältere Hülle, Tauri, Browser) gilt der Web-Weg über den Server.
+
+### 15.7 Einstellung der Person – `ai_prefs.dictation`
+
+`GET/PUT /api/ai/prefs` `dictation: "server" | "device"` (11.5, Standard `server`, gilt fürs Konto auf allen Geräten).
+Clients zeigen ihn unter Einstellungen › Saga als Schalter `ui.setting` („Diktat nur auf dem Gerät“, an = `device`)
+mit `ui.setting_hint`. `device` → `decide` liefert ohne Geräte-Weg `none`, und der Server lehnt `transcribe` mit 409
+`device_only` ab. Der Schalter erscheint nur mit `aistt1` (ohne Server-Weg ändert er nichts).
+
+### 15.8 Admin und Betrieb (Kurzfassung)
+
+Admin › KI-Assistent › „Diktat“ (Einstellung `ai_stt`, JSON `GET/PUT /api/ai/stt`, `POST /api/ai/stt/test` auf dem
+Admin-Port): Adresse des Dienstes (`…/v1/audio/transcriptions` wird abgeschnitten), Modell (Standard `whisper-1`),
+optional Schlüssel (geheim, nie im Status), Sprache, Frist, Zusatzsatz, **„Cloud erlauben“** (aus: nur Adressen im
+eigenen Netz; an: auch öffentliche Adressen, nur `https`). Beim Speichern löst Saga den Namen auf und hält die IPs fest;
+verbunden wird nur mit genau diesen (Schutz vor Umbiegen per DNS), nie mit Metadaten-Adressen, Weiterleitungen werden
+nicht verfolgt. Der Verbindungstest schickt je 1 s Stille als WAV und Ogg und setzt `formats`. Hinter nginx muss für
+`/api/ai/transcribe` `proxy_request_buffering off` stehen, sonst legt nginx größere Aufnahmen kurz in
+`client_body_temp` ab (`docs/ANLEITUNG.md`).

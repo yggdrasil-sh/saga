@@ -13,6 +13,8 @@
  "_intro.form": "Tarjeta de presentación y barra (2515): solo la forma de usted; la forma de tú es texto del sistema (saga/i18n).",
  "intro.bar": {"sie": "Lo que usted escribe aquí lo lee la IA en {where}"},
  "intro.share": {"sie": "Lo que usted comparte lo lee la IA en {where}."},
+ "stt.home": {"sie": "Su grabación va a {where} y allí se convierte en texto. Saga no la guarda."},
+ "stt.internet": {"sie": "Su grabación va por internet a {where} y allí se convierte en texto. Saga no la guarda."},
  "intro.question": {"sie": "¿Le muestro alguna idea de vez en cuando – solo en «Hoy», nunca como notificación?"},
  "intro.e2e": {"sie": "Sin cifrado de extremo a extremo: lo que usted escribe a {name} lo lee en texto claro la IA en {host}."},
  "intro.what": {"sie": "Qué se envía exactamente: su pregunta, las últimas frases de esta conversación y fragmentos de páginas, tareas y citas que encajan con la pregunta – solo lo que usted puede ver y solo de las fuentes que ha activado. No lee chats ni páginas de otros servidores."},

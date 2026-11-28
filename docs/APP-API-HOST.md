@@ -46,6 +46,7 @@ Das Web sieht eine Hülle nur, wenn **beides** zutrifft:
 | `token` | bietet beim Anlegen eines App-Schlüssels „In dieser App verwenden“ an |
 | `tunnel` | 2.5 A3, nur Mac: Medien-Tunnel für Anrufe über `hkTunnel` (3.3) |
 | `mic` | 2.5 (Bugs-DB 2198), nur Mac: beim Einschalten des Mikrofons bzw. wenn die Aufnahme stumm hängt (Spur `muted`) `mic.active` schicken – die Hülle gibt sie nativ frei (ohne Nutzergeste) |
+| `dictate` | 2.6 (Bugs-DB 2274 K-F), nur Mac: Diktat im Ort „Saga“ auf dem Gerät (SpeechAnalyzer) über `dictate.start`/`stop`/`cancel` statt über den Server – Vertrag `docs/APP-API-KI.md` 15.6 |
 
 Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem Eintrag hier dazu.
 
@@ -101,6 +102,7 @@ dazukommen – unbekannte Felder und Aktionen ignorieren.
 | `settings` (alt) | – | eigene Einstellungen der Hülle (Server, Konto, Updates) |
 | `token` (alt) | `token` (`hk_…`) | als Widget-/App-Schlüssel ablegen (Mac: Schlüsselbund der App-Group) |
 | `mic.active` | – | 2.5 (Bugs-DB 2198), nur Mac: ist die Aufnahme der Seite stumm (`WKWebView.microphoneCaptureState == .muted`, z. B. nach Media Session `setMicrophoneActive(false)`), `setMicrophoneCaptureState(.active)`; startet nie eine neue Aufnahme |
+| `dictate.start` / `dictate.stop` / `dictate.cancel` | `id`, `lang` (nur `start`) | 2.6 (Bugs-DB 2274), nur Mac mit `dictate`: Diktat on-device starten, beenden, verwerfen (APP-API-KI 15.6) – kein Ton über die Brücke |
 | `retry` | – | nur von der Offline-Seite: Server-Adresse neu laden (5) |
 
 ### 3.2 Transport
@@ -149,6 +151,7 @@ oder JSON-Text. Nur im Hauptfenster; ohne Nachrichtenweg ignoriert das Web alles
 | `notificationClick` | `url` | zur eigenen Adresse navigieren |
 | `active` | `active` (bool) | Fenster vorn/hinten – Web holt Zähler frisch (Timer liefen gedrosselt, P0) |
 | `online` / `offline` | – | nur Ereignis (für spätere Offline-Stufen) |
+| `dictate.state` / `dictate.level` / `dictate.partial` / `dictate.done` / `dictate.error` | `id`, … | 2.6 (Bugs-DB 2274), nur Mac: Zustand, Pegel, Zwischentext, Ergebnis bzw. Fehler eines Diktats (APP-API-KI 15.6) – nur Ereignis (`HK.host.on`) |
 
 Navigation: gleiche Seite mit anderem Hash → nur `location.hash` (Seiten-Ansicht reagiert auf `hashchange`);
 `/notes?settings=<bereich>` → Einstellungen ohne Neuladen; sonst `location.assign`.

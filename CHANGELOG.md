@@ -55,6 +55,11 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Gedächtnis: Spalte „Sensibel“, Block „Nickerchen“ (Zahl und letzter Schnappschuss, Hinweis bei fehlender Option) und
   „Schattenmodus (Probelauf)“ mit Schalter, Stand „n Verknüpfungen · m Spuren“, „Wird aufgebaut …“ und „Spuren löschen“.
   Reihen `tests/browser_graph_schatten.js`, `tests/browser_gedaechtnis.js`.
+- **Kollegin: Diktat (2274 K-F, `aistt1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §15):** Vertrag für Web und Apps –
+  `POST /api/ai/transcribe` (rohe Ogg/Opus- oder WAV-Aufnahme ≤ 60 s/2 MiB, nur Durchreiche an einen Whisper-kompatiblen
+  Dienst, Ton nie gespeichert), `GET /api/ai/status` `stt` mit Hinweis, wohin die Aufnahme geht, `POST /api/ai/jobs`
+  `input: "dictation"` mit Herkunft „Diktiert“ und Warnung bei Anweisungen an die KI, Entscheidung Gerät/Server/kein
+  Knopf, Mac-Hülle `dictate`; Vektoren `tests/vectors/stt_contract.json`.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im
