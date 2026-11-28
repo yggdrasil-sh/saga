@@ -489,6 +489,34 @@ def part_token():
        isinstance(t1, str) and isinstance(t2, str) and t1 != t2 and still and again == ("busy", None) and gone)
 
 
+def part_abort():
+    """Pruefer (Nachpruefung Fund 2): Auflegen beim Lesen zaehlt wie 408 slow und gibt den Platz frei - sonst hielte
+    Troepfeln + Auflegen kurz vor der Frist den Platz beliebig oft ungezaehlt."""
+    from starlette.requests import Request
+    body = ogg(1.0)
+    msgs = [{"type": "http.request", "body": body[:100], "more_body": True}]
+
+    async def receive():
+        if msgs:
+            return msgs.pop(0)
+        await asyncio.sleep(0.2)
+        return {"type": "http.disconnect"}
+    scope = {"type": "http", "method": "POST", "path": "/api/ai/transcribe", "raw_path": b"/api/ai/transcribe",
+             "query_string": b"lang=de", "headers": [(b"content-type", b"audio/ogg"), (b"x-saga", b"1"),
+                                                     (b"content-length", str(len(body)).encode())],
+             "session": {"uid": P2, "pwc": time.time() + 5}, "client": ("127.0.0.1", 1), "server": ("127.0.0.1", 80),
+             "scheme": "http", "root_path": "", "http_version": "1.1"}
+    n0 = len(ai_stt._sent.get(P2) or [])
+    tok = i18n.set_lang("de")
+    try:
+        r = asyncio.run(ai_stt.api_transcribe(Request(scope, receive)))
+    finally:
+        i18n._cur.reset(tok)
+    n1 = len(ai_stt._sent.get(P2) or [])
+    ok(f"Auflegen beim Lesen: zaehlt in 30/h, Platz frei ({r.status_code}, {n1 - n0}, {P2 in ai_stt._running})",
+       r.status_code == 400 and n1 - n0 == 1 and P2 not in ai_stt._running)
+
+
 def _snapshot(dirs):
     out = {}
     for d in dirs:
@@ -965,6 +993,7 @@ def main():
         part_slow()
         part_rate_slow_big(cA)
         part_token()
+        part_abort()
         part_disk(cA)
         part_units(cA)
         part_rt18(cA)

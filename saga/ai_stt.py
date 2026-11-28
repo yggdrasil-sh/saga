@@ -602,11 +602,14 @@ async def api_transcribe(request: Request):
                 return False
             buf.extend(chunk)
         return True
+    read_end = False                                                    # Lesen fertig (oder 408 schon gezaehlt)?
     try:
         try:
             limit = read_limit(max(0, clen))
             whole = await asyncio.wait_for(read(), limit)           # Gesamtfrist: ein troepfelnder Upload haelt keinen Platz
+            read_end = True
         except asyncio.TimeoutError:
+            read_end = True
             note_sent(uid)                                          # zaehlt wie ein Versuch (30/h, 120/Tag): kein Dauerblockieren
             print(f"stt: 408 slow {round(len(buf) / 1024)} KB in {limit:.0f} s", flush=True)
             return _err(408, "slow", headers={"Connection": "close"})
@@ -645,6 +648,8 @@ async def api_transcribe(request: Request):
         print(f"stt: 500 {type(ex).__name__}", flush=True)
         return JSONResponse({"error": message("upstream"), "code": "upstream"}, status_code=500, headers=NO_STORE)
     finally:
+        if not read_end:                    # Abbruch beim Lesen (Verbindung weg, Cancel, Ausnahme) zaehlt wie 408 slow -
+            note_sent(uid)                  # sonst hielte Troepfeln + Auflegen kurz vor der Frist den Platz ungezaehlt
         buf[:] = bytes(len(buf))                                        # best effort: Ton im Speicher ueberschreiben
         free(uid, slot)
 

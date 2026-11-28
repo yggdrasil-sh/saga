@@ -930,7 +930,7 @@ Fähigkeit `ai` → eingerichtet (`off`) → Einwilligung → Schalter der Perso
 | 504 | `timeout` | Dienst innerhalb der Frist (Admin, Standard 30 s, höchstens 60 s) ohne Antwort |
 
 Alle Fehler sind `{error, code, …}` mit `error` als fertigem Systemtext (Sprache der Anfrage) – Clients zeigen ihn und
-lassen den Text im Feld unverändert. Gezählt (30/h, 120/Tag) wird jede Anfrage, die an den Dienst geht, und jede, die mit 408 `slow` endet.
+lassen den Text im Feld unverändert. Gezählt (30/h, 120/Tag) wird jede Anfrage, die an den Dienst geht, und jede, die mit 408 `slow` endet oder beim Lesen des Körpers abbricht (Verbindung weg).
 
 **Ton wird nie gespeichert** (K16): Die Aufnahme bleibt im Speicher des Servers (kein `request.form()`, keine
 Temp-Datei, kein Cache), geht als Multipart im Speicher an `POST {url}/v1/audio/transcriptions` (`file`, `model`,
