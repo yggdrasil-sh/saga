@@ -52,6 +52,50 @@
     <button class="btn" type="submit" name="action" value="test">{{ _("Verbindung testen") }}</button>
   </div>
 </form>
+{# 2.6 (Bugs-DB 2581): Embeddings fuer das Gedaechtnis (docs/MEMORY.md 1.1) - eigener Endpunkt, getrennt vom Chat-Anbieter.
+   Gespeichert und getestet per JSON (PUT /api/ai/embed, POST /api/ai/embed/test, static/admin.js); die Knoepfe sind
+   type=button, damit ohne JavaScript nichts an /settings/ai (KI-Formular oben) geht. Den Schluessel zeigt die Seite nie. #}
+{% if emb %}{% set es = emb.settings %}
+<form class="adm-form" id="embeddings" data-embed
+      data-busy="{{ _('Prüfe …') }}" data-saved="{{ _('✓ Gespeichert') }}" data-fail="{{ _('Nicht gespeichert: {err}') }}"
+      data-key-set="{{ _('gespeichert ✓ – leer lassen = behalten') }}" data-key-none="{{ _('optional – Ollama braucht keinen') }}"
+      data-stats="{{ _('Konten mit Gedächtnis: {a} · eingebettet: {e} von {r} Einträgen') }}" data-running="{{ _('wird gerade eingebettet …') }}">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Embeddings") }}</h3>
+    <p class="hk-hint">{{ _("Fürs Gedächtnis: Damit findet Saga Erinnerungen nach Bedeutung statt nur nach Wörtern. Getrennt vom Chat-Anbieter oben – nötig ist ein Dienst mit Embedding-Modell, z. B. Ollama mit bge-m3 im eigenen Netz. Ohne Eintrag sucht Saga nach ähnlichen Wörtern (Trigramme).") }}</p>
+    <p class="adm-flash err" id="emb-where-net" role="note"{% if emb.where != 'internet' %} hidden{% endif %}>{{ _("Der Endpunkt liegt im Internet – Erinnerungen verlassen dann den Server. Ein lokaler Dienst (z. B. Ollama im eigenen Netz) behält sie im Haus.") }}</p>
+    <p class="hk-hint" id="emb-where-home"{% if emb.where != 'home' %} hidden{% endif %}>{{ _("Der Endpunkt liegt im eigenen Netz – Erinnerungen bleiben im Haus.") }}</p>
+    <p class="adm-flash warn" id="emb-where-maybe" role="note" hidden>{{ _("Diese Adresse sieht nach einem Dienst im Internet aus – dann verlassen Erinnerungen den Server. Beim Speichern prüft Saga das genau.") }}</p>
+    {{ check(_('Embeddings nutzen'), 'enabled', es.enabled, _('Standard: aus. Aus oder ohne Adresse und Modell: Rückfall auf ähnliche Wörter.')) }}
+    <label class="adm-field"><span>{{ _("Anbieter") }}</span>
+      <select class="hk-in" name="provider">
+        <option value="ollama"{% if es.provider != 'openai' %} selected{% endif %}>{{ _("Ollama (eigene Schnittstelle /api/embed)") }}</option>
+        <option value="openai"{% if es.provider == 'openai' %} selected{% endif %}>{{ _("OpenAI-kompatibel (/v1/embeddings – auch LM Studio, vLLM)") }}</option>
+      </select></label>
+    {{ field(_('Adresse'), 'url', es.url, max=300, ph='http://ollama.lan:11434', hint=_('Ollama: http://host:11434 · OpenAI-kompatibel: bis /v1 · interne Adressen sind erlaubt (nur genau diese)')) }}
+    {{ field(_('Modell'), 'model', es.model, max=200, ph='bge-m3', hint=_('Empfehlung: bge-m3 (mehrsprachig, stark im Deutschen). Ein anderes Modell rechnet alle Erinnerungen im Hintergrund neu.')) }}
+    <label class="adm-field"><span>{{ _("API-Schlüssel") }}</span>
+      <input class="hk-in adm-secret" type="password" name="api_key" value="" maxlength="500" autocomplete="new-password" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+      <small id="emb-key-hint">{% if es.has_key %}{{ _('gespeichert ✓ – leer lassen = behalten') }}{% else %}{{ _('optional – Ollama braucht keinen') }}{% endif %}</small></label>
+    <label class="adm-check" id="emb-clear"{% if not es.has_key %} hidden{% endif %}><input type="checkbox" name="clear_key" value="1"><span>{{ _("Gespeicherten Schlüssel löschen") }}</span></label>
+    <label class="adm-field" id="emb-keep"{% if es.provider == 'openai' %} hidden{% endif %}><span>{{ _("Modell geladen halten") }}</span>
+      <input class="hk-in" type="text" name="keep_alive" value="{{ es.keep_alive or '' }}" maxlength="8" placeholder="30m" autocomplete="off" spellcheck="false">
+      <small>{{ _("Nur Ollama (keep_alive): so lange bleibt das Modell nach einem Aufruf geladen – z. B. 5m, 30m, 2h, -1 = immer, leer = Ollama-Standard. Saga schickt keine Warmhalte-Aufrufe.") }}</small></label>
+    <details class="adm-more">
+      <summary>{{ _("Zeitlimits") }}</summary>
+      {{ field(_('Zeitlimit im Hintergrund (Sekunden)'), 'timeout', es.timeout, type='number', max=3, hint=_('Je Stapel von 32 Einträgen (2–120).')) }}
+      {{ field(_('Zeitlimit für eine Frage (Millisekunden)'), 'query_timeout_ms', es.query_timeout_ms, type='number', max=5, hint=_('So lange darf das Einbetten einer Frage dauern (200–10000). Danach antwortet Saga für diese Frage mit ähnlichen Wörtern.')) }}
+    </details>
+    <p class="hk-hint adm-indent" id="emb-stats">{% if emb.stats %}{{ _('Konten mit Gedächtnis: {a} · eingebettet: {e} von {r} Einträgen', a=emb.stats.accounts, e=emb.stats.embedded, r=emb.stats.rows) }}{% if emb.stats.running %} · {{ _("wird gerade eingebettet …") }}{% endif %}{% endif %}</p>
+    <div class="adm-actions">
+      <button class="btn btn-primary" type="button" id="emb-save">{{ _("Speichern") }}</button>
+      <button class="btn" type="button" id="emb-test">{{ _("Verbindung testen") }}</button>
+    </div>
+    <pre class="adm-test" id="emb-out" role="status" aria-live="polite" hidden></pre>
+  </section>
+</form>
+{% endif %}
 {# 2.6 (Bugs-DB 2267 K-B): Auftraege der KI - Faehigkeitsstufe, Rezepte, Selbsttest (saga/ai_plan.py) #}
 <form method="post" action="/settings/ai/plan" class="adm-form" id="auftraege">
   {{ csrf_field() }}

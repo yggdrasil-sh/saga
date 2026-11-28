@@ -19,6 +19,84 @@
         .then(function () { stb.disabled = false; });
     });
   }
+  // 2.6 (Bugs-DB 2581): Admin -> KI-Assistent -> Embeddings (docs/MEMORY.md 1.1). Speichern/Testen als JSON mit CSRF;
+  // der gespeicherte Schluessel kommt nie zurueck (nur "gesetzt"). Texte stehen uebersetzt in data-* der Vorlage.
+  var ef = document.querySelector('form[data-embed]');
+  if (ef) (function (f) {
+    var D = f.dataset, $ = function (id) { return document.getElementById(id); };
+    var inp = function (n) { return f.querySelector('[name=' + n + ']'); };
+    var out = $('emb-out'), save = $('emb-save'), test = $('emb-test');
+    var saved = { url: inp('url').value.trim(), where: $('emb-where-net').hidden ? ($('emb-where-home').hidden ? null : 'home') : 'internet' };
+    function csrf() { var c = f.querySelector('input[name=csrf]'); return c ? c.value : ''; }
+    function vals() {
+      return { enabled: inp('enabled').checked, provider: inp('provider').value, url: inp('url').value.trim(), model: inp('model').value.trim(),
+               api_key: inp('api_key').value.trim(), clear_key: inp('clear_key').checked, keep_alive: inp('keep_alive').value.trim(),
+               timeout: parseInt(inp('timeout').value, 10) || null, query_timeout_ms: parseInt(inp('query_timeout_ms').value, 10) || null };
+    }
+    function send(method, url, body) {
+      return fetch(url, { method: method, credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf(), 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); });
+    }
+    function show(txt, cls) { out.hidden = false; out.textContent = txt; out.className = 'adm-test' + (cls ? ' ' + cls : ''); }
+    // Grobe Einschaetzung beim Tippen (genau prueft der Server beim Speichern: where = home | internet)
+    function looksPublic(u) {
+      var h;
+      try { h = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : 'http://' + u).hostname.toLowerCase(); } catch (e) { return false; }
+      h = h.replace(/^\[|\]$/g, '');
+      if (!h) return false;
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+        var p = h.split('.').map(Number);
+        return !(p[0] === 10 || p[0] === 127 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168) ||
+                 (p[0] === 169 && p[1] === 254) || (p[0] === 100 && p[1] >= 64 && p[1] <= 127));
+      }
+      if (h.indexOf(':') >= 0) return !(h === '::1' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h));
+      if (h.indexOf('.') < 0) return false;
+      return !/\.(lan|local|localhost|internal|intranet|home|home\.arpa|corp)$/.test(h);
+    }
+    function where() {
+      var u = inp('url').value.trim(), same = u === saved.url;
+      $('emb-where-net').hidden = !(same && saved.where === 'internet');
+      $('emb-where-home').hidden = !(same && saved.where === 'home');
+      $('emb-where-maybe').hidden = same || !u || !looksPublic(u);
+    }
+    function keep() { $('emb-keep').hidden = inp('provider').value === 'openai'; }
+    function apply(d) {
+      var s = d.settings || {};
+      saved = { url: s.url || '', where: d.where || null };
+      // 2581: alle Felder vom Server uebernehmen (so steht da, was wirklich gespeichert ist - z. B. Adresse normalisiert)
+      inp('enabled').checked = !!s.enabled;
+      if (s.provider) inp('provider').value = s.provider;
+      inp('model').value = s.model || '';
+      inp('keep_alive').value = s.keep_alive || '';
+      if (s.timeout != null) inp('timeout').value = s.timeout;
+      if (s.query_timeout_ms != null) inp('query_timeout_ms').value = s.query_timeout_ms;
+      keep();
+      inp('url').value = s.url || ''; inp('api_key').value = ''; inp('clear_key').checked = false;
+      $('emb-key-hint').textContent = s.has_key ? D.keySet : D.keyNone;
+      $('emb-clear').hidden = !s.has_key;
+      var st = d.stats, sp = $('emb-stats');
+      if (st && sp) sp.textContent = D.stats.replace('{a}', st.accounts).replace('{e}', st.embedded).replace('{r}', st.rows) + (st.running ? ' · ' + D.running : '');
+      where();
+    }
+    function busy(on) { save.disabled = test.disabled = on; }
+    function doSave() {
+      busy(true); show(D.busy);
+      send('PUT', '/api/ai/embed', vals()).then(function (d) { apply(d); show(D.saved, 'ok'); })
+        .catch(function (e) { show(D.fail.replace('{err}', e.message), 'err'); }).then(function () { busy(false); });
+    }
+    save.addEventListener('click', doSave);
+    test.addEventListener('click', function () {
+      busy(true); show(D.busy);
+      send('POST', '/api/ai/embed/test', vals()).then(function (d) { show((d.lines || []).join('\n'), d.ok ? 'ok' : 'err'); })
+        .catch(function (e) { show('✗ ' + e.message, 'err'); }).then(function () { busy(false); });
+    });
+    f.addEventListener('submit', function (e) { e.preventDefault(); doSave(); });
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') { e.preventDefault(); doSave(); } });
+    inp('provider').addEventListener('change', keep);
+    inp('url').addEventListener('input', where);
+    keep(); where();
+  })(ef);
   document.querySelectorAll('form[data-confirm]').forEach(function (f) {
     f.addEventListener('submit', function (e) {
       var b = e.submitter;

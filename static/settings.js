@@ -137,6 +137,7 @@
     sagaSection(body);                                       // 2.6 K-H (2268): Anrede und Lebhaftigkeit der KI (/api/ai/prefs)
     if (window.HKSaga && HKSaga.settingsSection) HKSaga.settingsSection(body);   // 2.6 (K-I 2269): Einwilligung, Ideen, Quellen, Meine Daten - in denselben Abschnitt (static/saga.js)
     sagaNotifySection(body);                                 // 2.6 (K-C 2270): Mitteilungen von {Persona} - Inhalt, an/aus, "Gerade nicht"
+    if (window.HKMemory) HKMemory.section(body, function (k) { if (navDrop) navDrop(k); });   // 2.6 (2581): Gedaechtnis binden (static/gedaechtnis.js)
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
@@ -150,7 +151,7 @@
       HKLive.settingsSection(push);
     }
     var GROUPS = [
-      [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell'], ['saga', 'Saga', 'sparkles']]],
+      [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell'], ['saga', 'Saga', 'sparkles'], ['memory', T('Gedächtnis'), 'history']]],
       [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star'], ['contacts', T('Kontakte'), 'users']]],
       [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['oauth', T('Verbundene Apps'), 'link'], ['api', 'API', 'code']]],
       [T('Daten'), [['backup', T('Mein Backup'), 'download']]],

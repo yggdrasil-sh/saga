@@ -3622,3 +3622,35 @@ a.kb-line-v:hover{text-decoration:underline}
   .kb-addr{padding-bottom:.35rem;border-bottom:1px dashed var(--border)}
 }
 @media (max-width:760px){.kb-item{min-height:3.25rem}.kb-addr-rm{min-width:2.75rem;min-height:2.75rem}.kb-cc-in{min-height:2.75rem}}
+/* 2.6 (Bugs-DB 2581): Einstellungen > Gedaechtnis (static/gedaechtnis.js) - erkannte Spalten, Stand, ⓘ mit Erklaerung */
+.hk-mem-ib{display:inline-grid;place-items:center;min-width:2rem;min-height:2rem;padding:0 .2rem;margin:-.45rem 0;border:0;border-radius:50%;
+  background:none;color:var(--accent);font:inherit;font-size:var(--fs-md);line-height:1;cursor:pointer;vertical-align:middle}
+.hk-mem-ib:hover,.hk-mem-ib:focus-visible{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.hk-mem-ib:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.hk-mem-ibox{margin:.3rem 0 .5rem;padding:.5rem .75rem;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--card));
+  border-radius:0 var(--r-sm,6px) var(--r-sm,6px) 0;font-size:var(--fs-sm);color:var(--fg)}
+.hk-mem-ibox p{margin:.2rem 0}
+.hk-mem-cols{list-style:none;margin:.2rem 0 .5rem;padding:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:1.2rem}
+.hk-mem-col{display:flex;flex-wrap:wrap;align-items:center;gap:.1rem .45rem;padding:.2rem 0;border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent);min-width:0}
+.hk-mem-col .hk-mem-ibox{flex-basis:100%;margin:.1rem 0 .3rem}
+.hk-mem-mk{flex:none;width:1.1rem;text-align:center;font-weight:600}
+.hk-mem-col.ok .hk-mem-mk{color:var(--ok)}
+.hk-mem-col.miss .hk-mem-mk{color:var(--muted)}
+.hk-mem-cn{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.hk-mem-cs{flex:1;min-width:0;color:var(--muted);font-size:var(--fs-sm)}
+.hk-mem-col.ok .hk-mem-cs{color:var(--ok)}
+.hk-mem-warn{color:var(--down)}
+.hk-mem-state{margin:.2rem 0;font-size:var(--fs-base)}
+@media (max-width:560px){.hk-mem-cols{grid-template-columns:minmax(0,1fr)}}
+@media (pointer:coarse){.hk-mem-ib{min-width:2.75rem;min-height:2.75rem}}
+/* 2.6 (Bugs-DB 2581): Admin > KI-Assistent > Embeddings - aufklappbare Zeitlimits */
+.adm-more{margin-left:14rem;border:1px solid var(--border);border-radius:var(--r-md);padding:.4rem .8rem}
+.adm-more>summary{cursor:pointer;color:var(--muted);font-size:var(--fs-base)}
+.adm-more[open]>summary{margin-bottom:.4rem}
+.adm-more .adm-field{grid-template-columns:minmax(0,1fr)}
+.adm-more .adm-field small{grid-column:1}
+@media (max-width:720px){.adm-more{margin-left:0}}
+.adm-test.err{border-color:var(--down)}   /* 2.6 (2581): Verbindungstest Embeddings gescheitert */
+.hk-mem-col.wrong .hk-mem-cs,.hk-mem-col.wrong .hk-mem-mk{color:var(--down)}   /* 2.6 (2581): Spalte da, aber falscher Typ */
+.adm-indent{padding-left:14rem}   /* 2.6 (2581): Zeile unter den Feldern, buendig mit Haken und Knoepfen */
+@media (max-width:720px){.adm-indent{padding-left:0}}

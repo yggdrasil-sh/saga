@@ -9,7 +9,7 @@
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const E = process.env, BASE = E.SAGA_BASE, USER = E.SAGA_USER, PASS = E.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
-const ALL = ['account', 'security', 'push', 'pages', 'calendar', 'bookmarks', 'contacts', 'immich', 'nextcloud', 'apps', 'api', 'backup', 'help'];
+const ALL = ['account', 'security', 'push', 'memory', 'pages', 'calendar', 'bookmarks', 'contacts', 'immich', 'nextcloud', 'apps', 'api', 'backup', 'help'];
 const KI = E.KI || '';
 (async () => {
   const b = await chromium.launch({ channel: E.PW_CHANNEL || undefined }), res = [], errs = [];
@@ -52,8 +52,9 @@ const KI = E.KI || '';
       ok(ss.cur.join() === 'saga' && ss.vis.join() === 'saga' && ss.focus === 'hk-pane-h-saga', 'KI an: Bereich Saga erreichbar', ss);
       await p.click('#hk-tab-account'); await p.waitForTimeout(150);          // zurueck zum Start fuer die folgenden Pruefungen
     } else {
+      // 2581: "Gedaechtnis" bleibt ohne KI (eigener Assistent ueber MCP/Hooks) - Pfeil runter ueberspringt nur "Saga"
       await p.focus('#hk-tab-push'); await p.keyboard.press('ArrowDown');
-      ok(await p.evaluate(() => document.activeElement.id) === 'hk-tab-pages', 'KI aus: Pfeil runter springt von Mitteilungen direkt zu Seiten');
+      ok(await p.evaluate(() => document.activeElement.id) === 'hk-tab-memory', 'KI aus: Pfeil runter springt von Mitteilungen direkt zu Gedächtnis');
     }
   }
   let s = await state();
