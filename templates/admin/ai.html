@@ -127,8 +127,8 @@
       {{ field(_('Zeitlimit (Sekunden)'), 'timeout', ss.timeout, type='number', max=2, hint=_('So lange darf der Dienst für eine Aufnahme brauchen (5–60).')) }}
       {{ field(_('Zusatzsatz zum Hinweis'), 'note', ss.note or '', max=200, hint=_('Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.')) }}
     </details>
-    <p class="hk-hint" id="stt-where">{% if stt.where %}{{ _('So sehen die Personen, wohin ihre Aufnahme geht: „{label}“', label=stt.where.label) }}{% endif %}</p>
-    <p class="hk-hint" id="stt-formats">{% if ss.url %}{{ _('Angenommene Formate: {f}', f=(ss.formats|join(', ')|upper) or '–') }}{% endif %}</p>
+    <p class="hk-hint adm-indent" id="stt-where">{% if stt.where %}{{ _('So sehen die Personen, wohin ihre Aufnahme geht: „{label}“', label=stt.where.label) }}{% endif %}</p>
+    <p class="hk-hint adm-indent" id="stt-formats">{% if ss.url %}{{ _('Angenommene Formate: {f}', f=(ss.formats|join(', ')|upper) or '–') }}{% endif %}</p>
     <div class="adm-actions">
       <button class="btn btn-primary" type="button" id="stt-save">{{ _("Speichern") }}</button>
       <button class="btn" type="button" id="stt-test">{{ _("Verbindung testen") }}</button>

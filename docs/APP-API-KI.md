@@ -905,7 +905,7 @@ Senden der Person an `/api/ai/thread` bzw. `/api/ai/jobs`.
 
 **Reihenfolge der Prüfungen** (nichts verlässt den Server, bevor alle bestanden sind): Bearer → Sitzung/`X-Saga` →
 Fähigkeit `ai` → eingerichtet (`off`) → Einwilligung → Schalter der Person (`device_only`) → `lang` → `Content-Type` →
-Grenzen je Person/Server (`rate`, `busy`, `full`) → Körper lesen (`too_big`) → leer/Magie/Format/Dauer → Ziel-Adresse
+`Content-Length` > 2 MiB (`too_big`) → Grenzen je Person/Server (`rate`, `busy`, `full`) → Körper lesen (`too_big`) → leer/Magie/Format/Dauer → Ziel-Adresse
 (`blocked`) → Senden.
 
 | Status | `code` | Fall |
