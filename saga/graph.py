@@ -5,11 +5,14 @@ negative IDs, die hier nicht aufgeloest werden).
 
 GET /api/graph -> {nodes: [[id, titel, symbol, art, eigen, eltern]], edges: [[von, nach, art]], tags: [[name, [ids]]],
 truncated: bool}. art der Kante: l = Verweis, c = Unterseite, r = Relation. Kompakt als Listen, weil es tausende sein
-koennen. Vorlagen fehlen (sind keine Inhalte)."""
+koennen. Vorlagen fehlen (sind keine Inhalte).
+2.6 (Bugs-DB 2595): mit gebundenem Gedaechtnis zusaetzlich mem: {db, now, rows: [[id, hits, last_hit]]} - nur Zeilen der
+EIGENEN Gedaechtnis-Datenbank (saga/memory.py graph_rows, Vertrag docs/MEMORY.md 10); ohne Bindung fehlt das Feld."""
 import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
+from saga import memory
 from saga.core import _api_guard, _bad
 from saga.notes import _tags_load
 from saga.pageindex import _LINK
@@ -85,9 +88,13 @@ def graph(c, uid):
         for tg in _tags_load(n[6]):
             tags.setdefault(tg, []).append(n[0])
     el = sorted(edges)[:EDGES_MAX]
-    return {"nodes": [n[:6] for n in nodes.values()], "edges": [list(e) for e in el],
-            "tags": sorted([[k, v] for k, v in tags.items()], key=lambda x: x[0].lower()),
-            "truncated": truncated or len(edges) > EDGES_MAX}
+    out = {"nodes": [n[:6] for n in nodes.values()], "edges": [list(e) for e in el],
+           "tags": sorted([[k, v] for k, v in tags.items()], key=lambda x: x[0].lower()),
+           "truncated": truncated or len(edges) > EDGES_MAX}
+    mem = memory.graph_rows(c, uid, nodes)
+    if mem is not None:
+        out["mem"] = mem
+    return out
 
 
 @router.get("/api/graph")

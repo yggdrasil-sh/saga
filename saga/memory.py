@@ -1128,6 +1128,9 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
                                 "(mirrored IS NULL OR mirrored <= ?)", (uid, [x[2] for x in top], now - MIRROR_GAP)).fetchall()
                 if due:
                     mirror(c, uid, due, cols, b["db"], now)
+            # 2.6 (Bugs-DB 2595): offene Graph-Ansichten der Besitzerin lassen die Treffer kurz pulsieren - nach dem Commit,
+            # nur an ihre eigenen Verbindungen, nur IDs (nie Titel/Inhalte; docs/MEMORY.md 10)
+            bus.emit("direct", {"uids": [uid], "typ": "memory.recalled", "data": {"ids": [x[2] for x in top]}})
     out = []
     for s, _r, nid, fa, f, _h in top:
         wi = f["wichtigkeit"]
@@ -1141,6 +1144,22 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
     if hint:
         res["hinweis"] = hint
     return res
+
+
+def graph_rows(c, uid, ids):
+    """Graph (2.6, Bugs-DB 2595, docs/MEMORY.md 10): Abruf-Zaehler der Zeilen der EIGENEN gebundenen Gedaechtnis-Datenbank
+    der ansehenden Person -> {"db", "now", "rows": [[id, hits, last_hit|None]]} oder None (nichts gebunden, Datenbank weg).
+    ids: Knoten des Graphen (nur deren Zeilen). Live aus mem_vec (nicht aus der 10-min-Spiegelung), eine Abfrage fuer alle
+    Zeilen. mem_vec gehoert immer dem Konto der Zeile (uid) - fuer freigegebene Seiten anderer gibt es hier nie Zaehler."""
+    r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='memory.db'", (uid,)).fetchone()
+    dbid = _int_or_none(r[0]) if r else None
+    if not dbid or _db_state(c, uid, dbid) is None:
+        return None
+    rows = c.execute("SELECT v.note_id, v.hits, v.last_hit FROM mem_vec v JOIN note n ON n.id = v.note_id AND n.uid = v.uid "
+                     "WHERE v.uid=? AND n.parent_id=? AND (v.hits > 0 OR v.last_hit IS NOT NULL) ORDER BY v.note_id",
+                     (uid, dbid)).fetchall()
+    return {"db": dbid, "now": int(time.time()),
+            "rows": [[nid, max(0, int(h or 0)), int(lh) if lh is not None else None] for nid, h, lh in rows if nid in ids]}
 
 
 def _opt_match(p, v):

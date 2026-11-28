@@ -149,7 +149,7 @@ Jeder **zurückgegebene** Treffer zählt: `hits += 1`, `last_hit = jetzt` – so
 „Abrufe“ (Zahl) und „Letzter Abruf“ (Zeitpunkt `JJJJ-MM-TTTHH:MM±hh:mm` in der Server-Zeitzone) schreibt Saga
 **gebündelt, höchstens alle 10 Minuten je Zeile** – als System-Schreibvorgang: kein `rev`-Sprung, „zuletzt geändert“
 (`updated`) bleibt, keine Version, keine Live-Ereignisse, keine Webhooks. Offene Tabellen zeigen den neuen Stand erst
-beim nächsten Laden. Ändert eine Person die beiden Spalten selbst, übernimmt Saga diesen Wert als neuen Zählerstand.
+beim nächsten Laden. (Der recall selbst meldet die Treffer als `memory.recalled` an den Graph, §10.) Ändert eine Person die beiden Spalten selbst, übernimmt Saga diesen Wert als neuen Zählerstand.
 
 ### 4.4 Rückfall ohne Endpunkt (Trigramme)
 Schlüsselwörter der Frage (≥ 3 Zeichen, ohne häufige Füllwörter, klein, höchstens 16). Je Schlüsselwort die beste
@@ -245,3 +245,39 @@ Die Werkzeuge stehen am Ende von `tools/list`; Listen ohne Bereich `memory` sind
   die Zähler starten mit den Spaltenwerten.
 - Ein entladenes Ollama-Modell braucht beim ersten Aufruf Sekunden: dieser eine recall nimmt Trigramme
   (`hinweis: embed_timeout`), die Hooks liefern still nichts. `keep_alive` (Standard 30 min) bzw. `OLLAMA_KEEP_ALIVE`.
+
+## 10. Graph: abgerufene Erinnerungen hervorheben (Bugs-DB 2595)
+
+Im Graph (`static/graph.js`) fallen oft und kürzlich abgerufene Erinnerungen auf. Nur für die **eigene** gebundene
+Gedächtnis-Datenbank der ansehenden Person; Zähler fremder oder freigegebener Seiten gehen nie hinaus.
+
+### 10.1 `GET /api/graph`, Feld `mem`
+Nur wenn die Person ein Gedächtnis gebunden hat (`memory.db`, eigene Datenbank, nicht im Papierkorb):
+```json
+"mem": {"db": 12, "now": 1764300000, "rows": [[77, 5, 1764290000], [78, 2, null]]}
+```
+`rows` = `[id, hits, last_hit]` je Zeile der gebundenen Datenbank, die im Graph als Knoten steht und `hits > 0` oder
+`last_hit` hat (andere fehlen; Reihenfolge nach id). `hits`/`last_hit` (Unix-Sekunden, ganzzahlig, oder `null`) kommen
+**live aus `mem_vec`**, nicht aus der 10-min-Spiegelung in die Spalten. `now` = Serverzeit (für das Abklingen,
+unabhängig von der Uhr des Geräts). Ohne Bindung fehlt `mem` ganz; gebunden, aber noch nichts abgerufen: `rows: []`. Eine Abfrage für
+alle Zeilen (kein N+1), auch bei 5 000 Knoten. Kein Feature-Schalter nötig: das Feld meldet sich selbst; ältere Clients
+lassen es liegen.
+
+### 10.2 Live-Ereignis `memory.recalled`
+Nach jedem recall mit Treffern (REST §5 und MCP §6, Zähler gezählt) bekommt **nur die Besitzerin des Tokens** auf allen
+ihren Verbindungen (Web-Tabs, Geräte; `/api/events`) nach dem Commit:
+```json
+{"ids": [77, 78]}
+```
+Nur die IDs der zurückgegebenen Treffer, nie Titel, Inhalte oder die Frage. Andere Konten (auch mit Freigabe der
+Datenbank) bekommen nichts. Kein Ereignis ohne Treffer und für interne Abrufe ohne Zählung.
+
+### 10.3 Darstellung (Web)
+- Größe: Radius × (1 + 0,8 · `freq`), `freq` = min(1, ln(1 + hits) / ln(21)) wie §4.1 – höchstens × 1,8 (ab 20 Abrufen).
+- Nachleuchten: Glühen in `--gr-mem` (hell/dunkel eigene Farbe) mit Stärke g = (1 − Δt / 24 h)², Δt = `now` − `last_hit`
+  (älter als 24 h: kein Glühen). Das Glühen ist ruhig (keine Animation), es klingt beim Neuzeichnen ab.
+- Puls: `memory.recalled` in einer offenen Graph-Ansicht → betroffene Knoten senden zwei Ringe aus (~1,6 s), `hits` + 1,
+  `last_hit` = jetzt (ohne Neuladen). `prefers-reduced-motion`: statt Puls ein ruhiger Ring für 4 s, keine Bewegung.
+- Schalter „Gedächtnis hervorheben“ (Einstellungen › Anzeige, nur sichtbar mit `mem`), Standard an, gespeichert wie die
+  übrigen Graph-Einstellungen (`saga-graph` → `mem`). Legende „Kürzlich abgerufen“, Karte/Ansage „n Abrufe“.
+
