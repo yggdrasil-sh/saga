@@ -5990,5 +5990,6 @@
  "Zeitlimit (Sekunden)": "Time limit (seconds)",
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "How long the service may take for one recording (5–60).",
  "Zusatzsatz zum Hinweis": "Extra sentence for the notice",
- "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Optional, one sentence, e.g. “Runs on the computer in the basement.” For a service on the internet, a sentence claiming “local” is dropped."
+ "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Optional, one sentence, e.g. “Runs on the computer in the basement.” For a service on the internet, a sentence claiming “local” is dropped.",
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "The recording arrived too slowly – try again."
 }

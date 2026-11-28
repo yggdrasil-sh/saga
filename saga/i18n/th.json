@@ -5990,5 +5990,6 @@
  "Zeitlimit (Sekunden)": "เวลาจำกัด (วินาที)",
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "เวลาที่บริการใช้ได้ต่อการบันทึกหนึ่งครั้ง (5–60)",
  "Zusatzsatz zum Hinweis": "ประโยคเพิ่มเติมในคำแนะนำ",
- "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "ไม่บังคับ หนึ่งประโยค เช่น “ทำงานบนคอมพิวเตอร์ในห้องใต้ดิน” สำหรับบริการบนอินเทอร์เน็ต ประโยคที่อ้างว่า “อยู่ในเครื่อง” จะถูกตัดออก"
+ "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "ไม่บังคับ หนึ่งประโยค เช่น “ทำงานบนคอมพิวเตอร์ในห้องใต้ดิน” สำหรับบริการบนอินเทอร์เน็ต ประโยคที่อ้างว่า “อยู่ในเครื่อง” จะถูกตัดออก",
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "เสียงที่บันทึกส่งมาช้าเกินไป – ลองอีกครั้ง"
 }

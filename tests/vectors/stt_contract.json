@@ -45,6 +45,7 @@
    ],
    "granule_rate": 48000
   },
+  "read_s": 20,
   "rate_hour": 30,
   "rate_day": 120,
   "per_user": 1,
@@ -377,6 +378,25 @@
    "sent": 0
   },
   {
+   "name": "zu_langsam",
+   "query": "lang=de",
+   "type": "audio/ogg",
+   "audio": {
+    "ogg": {
+     "s": 1.0
+    }
+   },
+   "chunked": true,
+   "drip": {
+    "first_bytes": 200,
+    "then_wait_s": 21
+   },
+   "status": 408,
+   "code": "slow",
+   "sent": 0,
+   "note": "Koerper nicht innerhalb von 20 s ganz da (troepfelnder/haengender Upload) - Platz sofort wieder frei"
+  },
+  {
    "name": "nur_wav_dienst_ogg",
    "query": "lang=de",
    "type": "audio/ogg",
@@ -526,6 +546,11 @@
    "client": "error zeigen"
   },
   {
+   "status": 408,
+   "code": "slow",
+   "client": "error zeigen; Text im Feld bleibt; erneut versuchen geht sofort"
+  },
+  {
    "status": 429,
    "code": "rate",
    "client": "error zeigen; Retry-After (s) beachten"
@@ -651,6 +676,16 @@
    "body": {
     "error": "Es läuft schon ein Diktat.",
     "code": "busy"
+   }
+  },
+  "slow": {
+   "status": 408,
+   "headers": {
+    "Connection": "close"
+   },
+   "body": {
+    "error": "Die Aufnahme kam zu langsam an – versuch es noch mal.",
+    "code": "slow"
    }
   },
   "rate": {
@@ -1202,6 +1237,7 @@
     "too_long": "Die Aufnahme ist zu lang (höchstens 60 Sekunden).",
     "too_big": "Die Aufnahme ist zu groß.",
     "busy": "Es läuft schon ein Diktat.",
+    "slow": "Die Aufnahme kam zu langsam an – versuch es noch mal.",
     "full": "Gerade diktieren zu viele gleichzeitig – versuch es gleich noch mal.",
     "rate": "Für jetzt sind es genug Diktate – versuch es später noch mal.",
     "upstream": "Der Diktat-Dienst hat einen Fehler gemeldet.",
@@ -1235,6 +1271,7 @@
     "too_long": "The recording is too long (at most 60 seconds).",
     "too_big": "The recording is too large.",
     "busy": "A dictation is already running.",
+    "slow": "The recording arrived too slowly – try again.",
     "full": "Too many people are dictating right now – try again in a moment.",
     "rate": "That's enough dictation for now – try again later.",
     "upstream": "The dictation service reported an error.",
@@ -1268,6 +1305,7 @@
     "too_long": "La grabación es demasiado larga (como máximo 60 segundos).",
     "too_big": "La grabación es demasiado grande.",
     "busy": "Ya hay un dictado en curso.",
+    "slow": "La grabación llegó demasiado despacio – inténtalo de nuevo.",
     "full": "Ahora mismo hay demasiados dictados a la vez – inténtalo de nuevo en un momento.",
     "rate": "Por ahora ya son suficientes dictados – inténtalo más tarde.",
     "upstream": "El servicio de dictado ha dado un error.",
@@ -1301,6 +1339,7 @@
     "too_long": "Запись слишком длинная (не больше 60 секунд).",
     "too_big": "Запись слишком большая.",
     "busy": "Диктовка уже идёт.",
+    "slow": "Запись поступала слишком медленно – попробуй ещё раз.",
     "full": "Сейчас слишком много диктовок одновременно – попробуй чуть позже.",
     "rate": "На сейчас диктовок достаточно – попробуй позже.",
     "upstream": "Служба диктовки сообщила об ошибке.",
@@ -1334,6 +1373,7 @@
     "too_long": "การบันทึกยาวเกินไป (ไม่เกิน 60 วินาที)",
     "too_big": "ไฟล์บันทึกเสียงใหญ่เกินไป",
     "busy": "กำลังพิมพ์ด้วยเสียงอยู่แล้ว",
+    "slow": "เสียงที่บันทึกส่งมาช้าเกินไป – ลองอีกครั้ง",
     "full": "ตอนนี้มีคนใช้การพิมพ์ด้วยเสียงพร้อมกันมากเกินไป – ลองใหม่อีกสักครู่",
     "rate": "ตอนนี้ใช้การพิมพ์ด้วยเสียงครบจำนวนแล้ว – ลองใหม่ภายหลัง",
     "upstream": "บริการพิมพ์ด้วยเสียงแจ้งข้อผิดพลาด",
@@ -1357,6 +1397,7 @@
    "loading": "Sprachpaket wird geladen …",
    "mic_denied": "Ohne Mikrofon geht kein Diktat.",
    "failed": "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.",
+   "slow": "Die Aufnahme kam zu langsam an – versuch es noch mal.",
    "too_big": "Die Aufnahme ist zu groß.",
    "setting": "Diktat nur auf dem Gerät",
    "setting_hint": "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“."
@@ -1373,6 +1414,7 @@
    "loading": "Downloading language pack …",
    "mic_denied": "Dictation needs the microphone.",
    "failed": "Dictation didn't work. Your text stays as it is.",
+   "slow": "The recording arrived too slowly – try again.",
    "too_big": "The recording is too large.",
    "setting": "Dictation on device only",
    "setting_hint": "Then no recording goes to the server. If your device can't dictate on its own, there's no Dictate button there."
@@ -1389,6 +1431,7 @@
    "loading": "Descargando paquete de idioma …",
    "mic_denied": "El dictado necesita el micrófono.",
    "failed": "El dictado no ha funcionado. Tu texto se queda como está.",
+   "slow": "La grabación llegó demasiado despacio – inténtalo de nuevo.",
    "too_big": "La grabación es demasiado grande.",
    "setting": "Dictado solo en el dispositivo",
    "setting_hint": "Así ninguna grabación va al servidor. Si tu dispositivo no puede dictar por sí mismo, no tendrá el botón «Dictar»."
@@ -1405,6 +1448,7 @@
    "loading": "Загружается языковой пакет …",
    "mic_denied": "Для диктовки нужен микрофон.",
    "failed": "Диктовка не получилась. Твой текст остаётся.",
+   "slow": "Запись поступала слишком медленно – попробуй ещё раз.",
    "too_big": "Запись слишком большая.",
    "setting": "Диктовка только на устройстве",
    "setting_hint": "Тогда записи не уходят на сервер. Если устройство не умеет распознавать речь само, кнопки «Диктовать» на нём не будет."
@@ -1421,6 +1465,7 @@
    "loading": "กำลังโหลดชุดภาษา …",
    "mic_denied": "การพิมพ์ด้วยเสียงต้องใช้ไมโครโฟน",
    "failed": "พิมพ์ด้วยเสียงไม่สำเร็จ ข้อความของคุณยังอยู่",
+   "slow": "เสียงที่บันทึกส่งมาช้าเกินไป – ลองอีกครั้ง",
    "too_big": "ไฟล์บันทึกเสียงใหญ่เกินไป",
    "setting": "พิมพ์ด้วยเสียงบนอุปกรณ์เท่านั้น",
    "setting_hint": "เสียงที่บันทึกจะไม่ถูกส่งไปที่เซิร์ฟเวอร์ ถ้าอุปกรณ์ของคุณแปลงเสียงเองไม่ได้ จะไม่มีปุ่ม “พิมพ์ด้วยเสียง”"

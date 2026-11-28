@@ -13,7 +13,8 @@ DATABASE_URL - der Endpunkt laeuft dort ein zweites Mal mit DNS-Attrappe und ges
   und Text; nichts in ai_turn/ai_history/job.
 - Rechte: hk_/sga_/OAuth/hkd_ -> 403; ohne X-Saga/Sitzung -> 401; ohne ai -> 403 ai; ohne Einwilligung -> 403 consent;
   dictation=device -> 409 device_only; nicht eingerichtet -> 404 off; 31. je Stunde -> 429 rate + Retry-After; zweite
-  gleichzeitig -> 409 busy; dritte Person bei zwei laufenden -> 503 full.
+  gleichzeitig -> 409 busy; dritte Person bei zwei laufenden -> 503 full; troepfelnder Upload > 20 s -> 408 slow, danach
+  sofort wieder frei (auch fuer andere); Platz-Token (alter Handler gibt keinen neuen Platz frei).
 - Status: stt nur eingerichtet + mit ai, ganz hinten; kein Schluessel, kein user:pw@; net/label/notice home bzw. internet
   mit Anbieter in de/en/es/ru/th, du/Sie wie im Vektor.
 - RT-18: input dictation -> nur wartet_ok, origin dictation, keine Mitteilung/kein Token, act approve -> 409 open, Freigabe
@@ -303,8 +304,8 @@ def part_status(cA):
 
 def part_vectors(cA):
     for r in VEC["requests"]:
-        if r.get("formats"):
-            continue                                         # nur-WAV-Dienst: im Prozess (part_inproc)
+        if r.get("formats") or r.get("drip"):
+            continue                                         # nur-WAV-Dienst: im Prozess (part_inproc); troepfelnd: part_slow
         body = audio_of(r["audio"])
         n0 = wcount()[0]
         s, d, hd = stt(cA, body, r["type"], r["query"], chunked=bool(r.get("chunked")))
@@ -395,6 +396,51 @@ def part_limits():
     time.sleep(1.5)
     s, d, _ = stt(K.ck(A), ogg(1.0))
     ok(f"abgebrochene Verbindungen geben die Plaetze frei ({s})", s == 200, d)
+
+
+def part_slow():
+    """Auflage Pruefer (Fund 2): Gesamtfrist fuers Lesen 20 s -> 408 slow; haengende Uploads halten danach keinen Platz."""
+    r = next(x for x in VEC["requests"] if x["name"] == "zu_langsam")
+    head = ogg(1.0)[:r["drip"]["first_bytes"]]
+    n0 = wcount()[0]
+    t0 = time.time()
+    h1 = open_post(K.ck(P1), "audio/ogg", chunked=True)
+    send_part(h1, head, True)
+    h2 = open_post(K.ck(P2), "audio/ogg", chunked=True)
+    send_part(h2, head, True)
+    time.sleep(0.8)
+    s, d, _ = stt(K.ck(A), ogg(1.0))
+    ok(f"zwei haengende Uploads: dritte Person zunaechst 503 full ({s})", s == 503 and isinstance(d, dict) and d.get("code") == "full", d)
+    s1, d1, hd1 = finish(h1, False)
+    t1 = time.time() - t0
+    s2, d2, _ = finish(h2, False)
+    ok(f"Vektor zu_langsam: nach {t1:.1f} s 408 slow mit Text, Connection: close, nichts gesendet ({s1}, {s2})",
+       s1 == r["status"] and s2 == 408 and isinstance(d1, dict) and d1.get("code") == "slow"
+       and d1.get("error") == VEC["texts"]["de"]["errors"]["slow"] and (hd1.get("connection") or "").lower() == "close"
+       and ai_stt.READ_S - 0.5 <= t1 < ai_stt.READ_S + 6 and wcount()[0] == n0, (s1, d1, hd1, t1))
+    t2 = time.time()
+    sa, da, _ = stt(K.ck(A), ogg(1.0))
+    sp, dp, _ = stt(K.ck(P1), ogg(1.0))
+    sq, dq, _ = stt(K.ck(P2), ogg(1.0))
+    ok(f"nach der Frist blockiert niemand mehr: andere Person und dieselben Personen sofort wieder ({sa}, {sp}, {sq}, {time.time() - t2:.1f} s)",
+       (sa, sp, sq) == (200, 200, 200) and time.time() - t2 < 10, (da, dp, dq))
+
+
+def part_token():
+    """Platz-Token: free() eines alten Handlers (Platz von _prune geraeumt) gibt den neuen Platz derselben Person nicht frei."""
+    U = "kd-token"
+    ai_stt.free(U, "-")
+    t1 = ai_stt.take(U)
+    with ai_stt._lock:
+        ai_stt._running[U] = (time.monotonic() - ai_stt.STALE - 1, t1)          # wie ein verwaister Platz
+    t2 = ai_stt.take(U)
+    ai_stt.free(U, t1)                                                             # alter Handler endet spaet
+    still = U in ai_stt._running
+    again = ai_stt.take(U)
+    ai_stt.free(U, t2)
+    gone = U not in ai_stt._running
+    ok(f"Platz-Token: alter Handler gibt den neuen Platz nicht frei ({type(t1).__name__}, {type(t2).__name__}, {still}, {again}, {gone})",
+       isinstance(t1, str) and isinstance(t2, str) and t1 != t2 and still and again == ("busy", None) and gone)
 
 
 def _snapshot(dirs):
@@ -870,6 +916,8 @@ def main():
         part_vectors(cA)
         part_keys(cA)
         part_limits()
+        part_slow()
+        part_token()
         part_disk(cA)
         part_units(cA)
         part_rt18(cA)

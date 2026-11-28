@@ -23,6 +23,7 @@ import concurrent.futures
 import json
 import math
 import re
+import secrets
 import threading
 import time
 from urllib.parse import urlparse
@@ -51,6 +52,7 @@ RATE_H, RATE_D = 30, 120                            # Diktate je Person und Stun
 PER_USER, SERVER_MAX = 1, 2                         # gleichzeitig je Person / serverweit
 FULL_RETRY = 5                                      # Retry-After bei 503 full (s)
 STALE = 180                                         # s: ein belegter Platz gilt danach als verwaist
+READ_S = 20.0                                       # s: Gesamtfrist fuers Lesen des Koerpers (sonst 408 slow)
 TIMEOUT_DEF, TIMEOUT_MIN, TIMEOUT_MAX = 30, 5, 60
 INPUTS = ("text", "dictation")                      # POST /api/ai/jobs input
 PATH = "/v1/audio/transcriptions"
@@ -127,6 +129,8 @@ def message(code, **kw):
         return t("Die Aufnahme ist zu groß.")
     if code == "busy":
         return t("Es läuft schon ein Diktat.")
+    if code == "slow":
+        return t("Die Aufnahme kam zu langsam an – versuch es noch mal.")
     if code == "full":
         return t("Gerade diktieren zu viele gleichzeitig – versuch es gleich noch mal.")
     if code == "rate":
@@ -356,13 +360,13 @@ def check_audio(b, fmt, c):
 
 # --- Grenzen (im Speicher dieses Prozesses; ein Prozess je Server, run.py) ---------------------------------------------
 _lock = threading.Lock()
-_running = {}                                       # uid -> Beginn (monotonic)
+_running = {}                                       # uid -> (Beginn (monotonic), Platz-Token der Anfrage)
 _sent = {}                                          # uid -> [Zeitpunkte (testclock) der an den Dienst gegangenen Diktate]
 
 
 def _prune(now):
     m = time.monotonic()
-    for u in [u for u, t0 in _running.items() if m - t0 > STALE]:
+    for u in [u for u, (t0, _tok) in _running.items() if m - t0 > STALE]:
         _running.pop(u, None)
     for u in list(_sent):
         _sent[u] = [x for x in _sent[u] if now - x < 86400]
@@ -371,7 +375,8 @@ def _prune(now):
 
 
 def take(uid):
-    """Platz belegen -> None oder (code, retry_after). rate vor busy vor full."""
+    """Platz belegen -> Platz-Token (str) oder (code, retry_after). rate vor busy vor full. Das Token gibt free() mit:
+    ein alter Handler, dessen Platz _prune schon geraeumt hat, gibt so nie den neuen Platz derselben Person frei."""
     now = testclock.now()
     with _lock:
         _prune(now)
@@ -385,13 +390,16 @@ def take(uid):
             return "busy", None
         if len(_running) >= SERVER_MAX:
             return "full", FULL_RETRY
-        _running[uid] = time.monotonic()
-    return None
+        tok = secrets.token_hex(8)
+        _running[uid] = (time.monotonic(), tok)
+    return tok
 
 
-def free(uid):
+def free(uid, tok):
     with _lock:
-        _running.pop(uid, None)
+        cur = _running.get(uid)
+        if cur is not None and cur[1] == tok:
+            _running.pop(uid, None)
 
 
 def note_sent(uid):
@@ -572,18 +580,28 @@ async def api_transcribe(request: Request):
             return _err(413, "too_big")
     except ValueError:
         return _err(400, "format")
-    busy = take(uid)
-    if busy is not None:
-        code, ra = busy
+    slot = take(uid)
+    if isinstance(slot, tuple):
+        code, ra = slot
         hdr = {"Retry-After": str(ra)} if ra else None
         return _err({"rate": 429, "busy": 409, "full": 503}[code], code, headers=hdr, **({"retry_after": ra} if ra else {}))
     buf = bytearray()
     t0 = time.perf_counter()
-    try:
+
+    async def read():
         async for chunk in request.stream():
             if len(buf) + len(chunk) > MAX_BYTES:
-                return _err(413, "too_big")
-            buf += chunk
+                return False
+            buf.extend(chunk)
+        return True
+    try:
+        try:
+            whole = await asyncio.wait_for(read(), READ_S)          # Gesamtfrist: ein troepfelnder Upload haelt keinen Platz
+        except asyncio.TimeoutError:
+            print(f"stt: 408 slow {round(len(buf) / 1024)} KB in {READ_S:g} s", flush=True)
+            return _err(408, "slow", headers={"Connection": "close"})
+        if not whole:
+            return _err(413, "too_big")
         try:
             secs = check_audio(buf, fmt, c)
         except Bad as ex:
@@ -618,7 +636,7 @@ async def api_transcribe(request: Request):
         return JSONResponse({"error": message("upstream"), "code": "upstream"}, status_code=500, headers=NO_STORE)
     finally:
         buf[:] = bytes(len(buf))                                        # best effort: Ton im Speicher ueberschreiben
-        free(uid)
+        free(uid, slot)
 
 
 # --- Admin (JSON auf dem Admin-Port, admin.py /api/ai/stt*) ---------------------------------------------------------------

@@ -895,7 +895,7 @@ Content-Type: audio/ogg                 (Ogg/Opus)  |  audio/wav (PCM 16 bit, mo
 | Ogg/Opus | erste Seite `OggS` mit Paket `OpusHead` (1 oder 2 Kanäle), ein Strom, Seiten lückenlos; Dauer = (Granule der letzten Seite − Pre-Skip) / 48 000 – geprüft wird zusätzlich die Summe der Paketdauern laut TOC-Byte (der größere Wert zählt). Web/Android/iOS haben den Ogg-Muxer der Sprachnachrichten (`SagaVoice`, `OggOpus.kt`, `VoiceOgg.swift`) – Chrome-WebM vorher umpacken wie dort. |
 | WAV | `RIFF…WAVE`, Block `fmt ` mit Format 1 (PCM), 16 Bit, **mono**, 8 000–48 000 Hz; Dauer = Größe des Blocks `data` / Byterate. **Senden mit 16 kHz** (60 s = 1 920 044 Bytes; 48 kHz passt nur bis ~21 s). Andere Blöcke (`LIST` …) sind erlaubt, `fmt ` genau einmal (vor `data`). |
 | Format wählen | `ogg`, wenn es in `stt.formats` (15.2) steht, sonst `wav`. Steht keins von beiden, das der Client erzeugen kann, drin → kein Server-Weg (`decide`, `fmt_ok`). |
-| Grenzen | höchstens **60 s** (geprüft mit 0,5 s Spiel) und **2 MiB**; der Client stoppt selbst bei 60 s. Antwort abwarten bis **75 s** (Dienst-Frist höchstens 60 s). |
+| Grenzen | höchstens **60 s** (geprüft mit 0,5 s Spiel) und **2 MiB**; der Client stoppt selbst bei 60 s. Den Körper erst nach dem Ende der Aufnahme am Stück senden – nach 20 s Lesen bricht der Server ab (408 `slow`). Antwort abwarten bis **75 s** (Dienst-Frist höchstens 60 s). |
 
 **Antwort 200:** `text` = erkannter Text (Steuerzeichen außer Zeilenumbruch entfernt, Leerraum an den Enden weg,
 höchstens **1 000** Zeichen – sonst gekürzt und `cut: true`). Besteht die Antwort des Dienstes nur aus einer Marke wie
@@ -905,7 +905,7 @@ Senden der Person an `/api/ai/thread` bzw. `/api/ai/jobs`.
 
 **Reihenfolge der Prüfungen** (nichts verlässt den Server, bevor alle bestanden sind): Bearer → Sitzung/`X-Saga` →
 Fähigkeit `ai` → eingerichtet (`off`) → Einwilligung → Schalter der Person (`device_only`) → `lang` → `Content-Type` →
-`Content-Length` > 2 MiB (`too_big`) → Grenzen je Person/Server (`rate`, `busy`, `full`) → Körper lesen (`too_big`) → leer/Magie/Format/Dauer → Ziel-Adresse
+`Content-Length` > 2 MiB (`too_big`) → Grenzen je Person/Server (`rate`, `busy`, `full`) → Körper lesen (`too_big`, höchstens 20 s: `slow`) → leer/Magie/Format/Dauer → Ziel-Adresse
 (`blocked`) → Senden.
 
 | Status | `code` | Fall |
@@ -922,6 +922,7 @@ Fähigkeit `ai` → eingerichtet (`off`) → Einwilligung → Schalter der Perso
 | 404 | `off` | Diktat nicht eingerichtet (Admin) |
 | 409 | `device_only` | Person hat „Diktat nur auf dem Gerät“ (15.7) |
 | 409 | `busy` | von dieser Person läuft schon ein Diktat (höchstens 1 gleichzeitig) |
+| 408 | `slow` | Körper nicht innerhalb von **20 s** ganz angekommen (tröpfelnder oder hängender Upload); Antwort mit `Connection: close`, der Platz ist sofort wieder frei – erneut versuchen geht gleich |
 | 429 | `rate` | mehr als **30** je Stunde oder **120** je Tag (gleitend, je Person); `Retry-After` (s) und `retry_after` |
 | 503 | `full` | serverweit laufen schon **2** Diktate; `Retry-After` und `retry_after` (wenige Sekunden) |
 | 502 | `upstream` | Dienst antwortet mit Fehler, Weiterleitung (3xx – wird nie verfolgt), mehr als 64 KB, kein JSON bzw. ohne `text` |

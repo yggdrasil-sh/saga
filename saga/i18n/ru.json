@@ -5990,5 +5990,6 @@
  "Zeitlimit (Sekunden)": "Ограничение времени (секунды)",
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "Столько служба может обрабатывать одну запись (5–60).",
  "Zusatzsatz zum Hinweis": "Дополнительная фраза к подсказке",
- "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Необязательно, одна фраза, например «Работает на компьютере в подвале». Для службы в интернете фраза, утверждающая «локально», убирается."
+ "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Необязательно, одна фраза, например «Работает на компьютере в подвале». Для службы в интернете фраза, утверждающая «локально», убирается.",
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "Запись поступала слишком медленно – попробуй ещё раз."
 }

@@ -5990,5 +5990,6 @@
  "Zeitlimit (Sekunden)": "Límite de tiempo (segundos)",
  "So lange darf der Dienst für eine Aufnahme brauchen (5–60).": "Lo que puede tardar el servicio con una grabación (5–60).",
  "Zusatzsatz zum Hinweis": "Frase adicional para el aviso",
- "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Opcional, una frase, p. ej. «Funciona en el ordenador del sótano». Con un servicio en internet se omite una frase que afirme «local»."
+ "Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.": "Opcional, una frase, p. ej. «Funciona en el ordenador del sótano». Con un servicio en internet se omite una frase que afirme «local».",
+ "Die Aufnahme kam zu langsam an – versuch es noch mal.": "La grabación llegó demasiado despacio – inténtalo de nuevo."
 }
