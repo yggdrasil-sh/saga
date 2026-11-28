@@ -118,6 +118,7 @@
   }
   // Firefox legt einen AudioContext, der erst nach dem (asynchronen) getUserMedia entsteht, angehalten an - ohne resume()
   // laufen weder Pegel noch ScriptProcessor (Aufnahme leer). Bugs-DB 2274 (Diktat in Firefox gefunden).
+  function closeAc(ac) { try { if (ac && ac.state !== 'closed') { var c = ac.close(); if (c && c.catch) c.catch(function () { /* egal */ }); } } catch (e) { /* egal */ } }
   function resume(ac) { try { if (ac.state === 'suspended' && ac.resume) ac.resume().catch(function () { /* egal */ }); } catch (e) { /* egal */ } }
   // opts: {kbps, maxS, onTick(sec, level 0..1), onLimit()} -> Promise<rec>; rec.stop() -> Promise<{blob, dur, wf}>, rec.cancel()
   function record(opts) {
@@ -218,6 +219,9 @@
         rec.secs = secs;
         rec.metered = function () { return ac.state === 'running'; };
         return rec;
+        }).catch(function (e) {                      // Aufbau gescheitert (MediaRecorder/Encoder/Quelle): Mikrofon frei
+          stream.getTracks().forEach(function (t) { t.stop(); }); closeAc(ac);
+          throw e;
         });
       });
     });
@@ -292,6 +296,9 @@
         },
         metered: function () { return true; }
       };
+      }).catch(function (e) {                        // Aufbau gescheitert: Mikrofon frei (noaudio hat schon gestoppt)
+        stream.getTracks().forEach(function (t) { t.stop(); }); closeAc(ac);
+        throw e;
       });
     });
   }

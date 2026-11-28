@@ -224,6 +224,13 @@ async function partA(br, name, BRK) {
     ok('Fokus auf „Fertig“, Senden gesperrt', /sg-dict-done/.test(r.focus) && r.send, r); }
   await shot(p, 'aufnahme-dunkel');
   await p.emulateMedia({ colorScheme: 'light' }); await shot(p, 'aufnahme-hell'); await p.emulateMedia({ colorScheme: 'dark' });
+  // Pruefer 2274: Enter im Feld und Beispiel-Knoepfe senden waehrend der Aufnahme nichts und lassen das Feld stehen
+  { await p.focus('#sg-ta'); await p.keyboard.press('Enter');
+    const chip = await p.$('#sg-feed .sg-chip'); if (chip) await chip.click();
+    const jc = await p.$('#sg-feed .sg-chip-job'); if (jc) await jc.click();
+    await sleep(500);
+    ok('waehrend der Aufnahme: Enter und Beispiel-Knoepfe senden nichts, Feld bleibt', !!chip && seen.posts.length === 0 && (await field(p)) === 'Bitte:' && (await st(p)).st === 'rec',
+      { chip: !!chip, posts: seen.posts.length, f: await field(p), st: (await st(p)).st }); }
   M.trDelay = 700;
   await p.click('.sg-dict-done');
   ok('„Wird zu Text …“ bis die Antwort da ist', await until(() => p.evaluate((w) => document.querySelector('.sg-dict-lab').textContent === w
@@ -321,6 +328,24 @@ async function partA(br, name, BRK) {
   { const n0 = seen.tr.length; await p.click('#sg-mic'); await sleep(800);
     ok('Mikrofon verweigert: ui.mic_denied, keine Anfrage, Text bleibt', (await dictErrText(p)) === UI.mic_denied && seen.tr.length === n0 && (await field(p)) === 'Mein Text', await dictErrText(p)); }
   await p.evaluate(() => { navigator.mediaDevices.getUserMedia = window.__gum; });
+  // Pruefer 2274: scheitert der Aufbau nach getUserMedia (hier MediaRecorder), ist das Mikrofon wieder frei
+  { const r = await p.evaluate(async () => {
+      let tr = null; const g = navigator.mediaDevices.getUserMedia, MR = window.MediaRecorder;
+      navigator.mediaDevices.getUserMedia = async (c) => { const s = await g.call(navigator.mediaDevices, c); tr = s.getTracks()[0]; return s; };
+      window.MediaRecorder = function () { throw new DOMException('nein', 'NotSupportedError'); }; window.MediaRecorder.isTypeSupported = MR.isTypeSupported;
+      let err = null; try { await SagaVoice.record({ mode: 'mr-ogg', maxS: 5 }); } catch (e) { err = e.name; }
+      window.MediaRecorder = MR; navigator.mediaDevices.getUserMedia = g;
+      return { err, ended: !!tr && tr.readyState === 'ended' }; });
+    ok('Aufbau gescheitert: Fehler gemeldet, Mikrofon-Spur gestoppt', r.err === 'NotSupportedError' && r.ended, r); }
+  // Pruefer 2274: Reiter „Aufträge“ waehrend der Aufnahme bricht sie ab (keine Aufnahme hinter dem Reiter)
+  if (await p.$('#sg-tab-jobs:not([hidden])')) {
+    const n0 = seen.tr.length;
+    await p.click('#sg-mic'); await until(async () => (await st(p)).st === 'rec', 15000); await sleep(500);
+    await p.click('#sg-tab-jobs'); await sleep(800);
+    ok('Reiter „Aufträge“: Aufnahme abgebrochen, keine Anfrage, Feld unveraendert', (await st(p)).st === 'idle' && seen.tr.length === n0 && (await field(p)) === 'Mein Text',
+      { st: (await st(p)).st, n: seen.tr.length - n0, f: await field(p) });
+    await p.click('#sg-tab-talk'); await sleep(300);
+  } else skip('Reiter Auftraege', 'ohne Auftraege kein Reiter');
 
   // --- Fehlertabelle (15.1): Text bleibt, error bzw. ui-Text ---
   const cases = [['format', V.examples.format, V.examples.format.body.error], ['too_long', V.examples.too_long, V.examples.too_long.body.error],
@@ -336,6 +361,8 @@ async function partA(br, name, BRK) {
     ok('Fehler ' + label + ': Text bleibt, Meldung', seen.tr.length === n0 + 1 && (await field(p)) === 'Mein Text' && (await dictErrText(p)) === want, { f: await field(p), e: await dictErrText(p), n: seen.tr.length - n0 });
     if (label === 'full 503') await sleep(5200);       // Retry-After 5 s abwarten
   }
+  ok('nach einem Fehler: Fokus im Feld (nicht verloren)', await p.evaluate(() => document.activeElement && document.activeElement.id === 'sg-ta'),
+    await p.evaluate(() => document.activeElement && (document.activeElement.id || document.activeElement.tagName)));
   ok('Fehlermeldung mit role=alert', await p.evaluate(() => document.querySelector('.sg-dict-err').getAttribute('role') === 'alert'));
   // 429 mit Retry-After: naechster Tipp ohne neue Anfrage
   M.tr = clone(V.examples.rate);

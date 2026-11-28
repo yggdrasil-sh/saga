@@ -563,8 +563,9 @@
       var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
     }).catch(function () { HK.toast(T('Diese Seite kannst du nicht öffnen.')); });
   }
+  function dictBusy() { return DI.st !== 'idle' && DI.st !== 'hint'; }   // 2274: Aufnahme bzw. Erkennung laeuft
   function submit() {                               // mit G.share auch ohne eigene Worte; nie waehrend eines Diktats (2274)
-    if (DI.st !== 'idle' && DI.st !== 'hint') return;
+    if (dictBusy()) return;
     if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send();
   }
   function openJob(id) { tab('jobs', false); if (G.jobs && id != null) G.jobs.open(id, true); }
@@ -573,13 +574,14 @@
     if (!jobsOn()) k = 'talk';
     G.tab = k;
     $('sg-talk').hidden = k !== 'talk'; $('sg-jobs').hidden = k !== 'jobs';
+    if (k !== 'talk' && DI.st !== 'idle') dictCancel();   // 2274: keine Aufnahme hinter dem Reiter "Auftraege"
     [$('sg-tab-talk'), $('sg-tab-jobs')].forEach(function (b) {
       var on = b.dataset.k === k; b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; b.classList.toggle('on', on);
       if (on && focusTab) b.focus();
     });
     if (k === 'jobs') {
       if (!G.jobs) G.jobs = HKJobs.mount($('sg-jobs'), { form: false, give: function (text) {
-        tab('talk', false); if (!consentOk()) return;      // ohne Einwilligung: nur die Kennenlernen-Karte, nichts ans Modell
+        tab('talk', false); if (!consentOk() || dictBusy()) return;   // ohne Einwilligung: nur die Kennenlernen-Karte, nichts ans Modell
         setMode('job'); dictText(text); submit(); } });
       else G.jobs.refresh();
     }
@@ -635,14 +637,14 @@
     var chips = el('div', 'sg-chips');
     [T('Was steht diese Woche an?'), T('Fass meine Notizen zum Sommerfest zusammen'), T('Welche Aufgaben sind offen?')].forEach(function (q) {
       var b = el('button', 'sg-chip', q); b.type = 'button';
-      b.addEventListener('click', function () { setMode('ask'); dictText(q); send(); });
+      b.addEventListener('click', function () { if (dictBusy()) return; setMode('ask'); dictText(q); send(); });   // 2274: nie waehrend eines Diktats
       chips.appendChild(b);
     });
     w.appendChild(chips);
     if (jobsOn()) {                                      // UX §3: Beispiel fuer einen Auftrag (zeigt nur den Plan)
       w.appendChild(el('p', 'sg-empty-t', T('Oder gib mir einen Auftrag:')));
       var jc = el('div', 'sg-chips'), jb = el('button', 'sg-chip sg-chip-job', T('Erinnere mich Freitag an den Pavillon')); jb.type = 'button';
-      jb.addEventListener('click', function () { setMode('job'); dictText(jb.textContent); submit(); });
+      jb.addEventListener('click', function () { if (dictBusy()) return; setMode('job'); dictText(jb.textContent); submit(); });
       jc.appendChild(jb); w.appendChild(jc);
     }
     feed.appendChild(w);
@@ -893,7 +895,9 @@
     clearInterval(DI.timer); DI.timer = null;
     DI.st = 'idle'; DI.rec = null; DI.id = 0; DI.ctrl = null; DI.t = 0; DI.lv = 0; DI.peak = 0;
     if (DI.ui) { DI.ui.prev.textContent = ''; DI.ui.prev.hidden = true; }
+    var f = document.activeElement, lost = !!DI.ui && (!f || f === document.body || f === DI.ui.mic || DI.ui.box.contains(f));
     dictPaint();
+    if (lost) dictFocusTa();                           // Fokus stand auf „Fertig“/„Abbrechen“ bzw. dem Knopf (jetzt verborgen)
   }
   function dictFocusTa() { var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
   // Text an der Schreibmarke einfuegen (bzw. Auswahl ersetzen), Leerzeichen an der Naht, Feldgrenze 1000 (15.4)
