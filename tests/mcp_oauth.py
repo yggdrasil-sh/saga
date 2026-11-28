@@ -688,6 +688,13 @@ def part_memory(cid):
     ok("memory: Standard-Zustimmung gibt kein memory", st == 200 and "memory" not in got and "read:pages" in got, d)
     n0 = names(d.get("access_token", ""))
     ok("memory: ohne Bereich keine recall/remember in tools/list", n0 and not {"recall", "remember"} & n0, sorted(n0)[-5:])
+    # Refresh einer Verbindung ohne memory: mit scope=memory abgelehnt, ohne scope bleibt es ohne memory (Pruefer)
+    st, r1, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": d.get("refresh_token", ""),
+                          "scope": "mcp read:pages memory"})
+    ok("memory: Refresh mit scope=memory ohne Haekchen -> invalid_scope", st == 400 and r1.get("error") == "invalid_scope", r1)
+    st, r2, _, _ = token({"grant_type": "refresh_token", "client_id": cid, "refresh_token": d.get("refresh_token", "")})
+    ok("memory: Refresh ohne scope bringt kein memory dazu", st == 200 and "memory" not in r2.get("scope", "").split()
+       and "read:pages" in r2.get("scope", "").split(), r2)
     ver, ch = pkce()
     code, _ = code_for(cid, ver, ch, state="mem-1", scopes=["read:pages", "memory"])   # Person hakt Gedaechtnis an
     st, d, _, _ = exchange(cid, code, ver)
