@@ -42,10 +42,19 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Schnappschüsse sind aus recall, `aehnlich` und dem Schattenmodus ausgeschlossen – schon vor der Kandidaten-Grenze.
   Neue Spalte „Sensibel“ (Kontrollkästchen, `remember` nimmt `sensibel`). Vektoren `tests/vectors/memory_nap.json`,
   Reihe `tests/gedaechtnis_schlaf.py`.
-- **Gedächtnis: `remember` nennt fehlende Angaben (2601/2603, [docs/MEMORY.md](docs/MEMORY.md) §5/§6):** die Antwort
+- **Gedächtnis: `remember` nennt fehlende Angaben (2620, [docs/MEMORY.md](docs/MEMORY.md) §5/§6):** die Antwort
   (REST und MCP) enthält `fehlt` (Projekt, Art, Schlagworte, Wichtigkeit, Valenz, Erregung – nur mit passender Spalte),
   die gültigen `optionen` der fehlenden Auswahlfelder (ohne „Schnappschuss“) und einen Hinweis zum Ergänzen per
   `update_row`; nichts wird abgelehnt. Die Werkzeug-Beschreibung bittet, diese Felder möglichst immer mitzugeben.
+- **Gedächtnis Stufe 3 in der Weboberfläche (2601/2603, [docs/MEMORY.md](docs/MEMORY.md) §10.4):** Graph – Ich-Kern
+  und gerade (≤ 30 min) abgerufene Erinnerungen „bewusst“ (voll, Ring in `--gr-mem`), der Rest „unterbewusst“ (blasser),
+  Schnappschüsse kleiner und gedimmt (Text nur beim Überfahren); im Schattenmodus Verknüpfungen als eigene Kanten
+  (Breite/Deckkraft nach Gewicht in 5 Bändern, „gemeinsam“ gestrichelt, Feder nach Gewicht) und „wäre aufgetaucht“ der
+  letzten 24 h als gestrichelter Ring (`--gr-mlink`/`--gr-shadow` hell/dunkel), live nach einem recall (ruhig bei weniger
+  Bewegung), Schalter „Verknüpfungen (Schattenmodus)“/„Schatten-Treffer“, Legende, Karte mit Zahlen. Einstellungen ›
+  Gedächtnis: Spalte „Sensibel“, Block „Nickerchen“ (Zahl und letzter Schnappschuss, Hinweis bei fehlender Option) und
+  „Schattenmodus (Probelauf)“ mit Schalter, Stand „n Verknüpfungen · m Spuren“, „Wird aufgebaut …“ und „Spuren löschen“.
+  Reihen `tests/browser_graph_schatten.js`, `tests/browser_gedaechtnis.js`.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im
