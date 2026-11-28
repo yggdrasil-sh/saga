@@ -68,6 +68,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   lassen sich nie aus einer Mitteilung freigeben. Messwert im Pool `stt` (zählt nicht ins Kontingent). Vertrag für die
   Apps inkl. Mac-Hülle `dictate`, Vektoren `tests/vectors/stt_contract.json`, Tests `tests/kollegin_diktat.py`.
   **Hinter nginx** für `/api/ai/transcribe` `proxy_request_buffering off` setzen (Anleitung, Abschnitt Reverse-Proxy).
+- **Kollegin: Diktat im Web (2274 K-F, `aistt1`):** Knopf „Diktieren“ (44 px) im Eingabefeld des Ortes „Saga“ (Frage und
+  „Als Auftrag“, nicht beim Teilen) – nur über den Server (keine Web Speech API), in der Mac-Hülle mit Fähigkeit
+  `dictate` auf dem Mac. Der erste Tipp zeigt nur, wohin die Aufnahme geht (`stt.notice`); die Zeile steht auch während
+  der Aufnahme (Zeit, Pegel, „Fertig“/„Abbrechen“, harte Grenze 60 s). Ogg/Opus bzw. WAV 16 kHz (whisper.cpp ohne
+  ffmpeg), nur im Speicher. Der Text landet an der Schreibmarke und wird nie gesendet; als Auftrag gesendet trägt er
+  `input: "dictation"` – Plan-Karte „Diktiert“ mit Mikrofon, bei Anweisungen an die KI ⚠ + Warnung. Fehler lassen den
+  Text stehen. Einstellungen › Saga: „Diktat nur auf dem Gerät“. Reihe `tests/browser_kollegin_diktat.js`.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im
