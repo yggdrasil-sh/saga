@@ -952,11 +952,13 @@
   }
   function srvFinish() {
     var r = DI.rec, my = DI.seq, fmt = DI.fmt, peak = DI.peak, limit = DI.limit;
+    var metered = !r || !r.metered || r.metered();     // ohne Pegel (AudioContext laeuft nicht) keine Stille-Pruefung
     if (!r) return;
     DI.st = 'work'; dictPaint(); dictSay(limit ? T('Höchstens 60 Sekunden') + ' · ' + T('Wird zu Text …') : T('Wird zu Text …'));
     r.stop().then(function (res) {
       if (DI.seq !== my) return null;
-      if (!res || !res.blob || res.dur < 0.3 || peak < 0.01) { dictReset(); dictErr(T('Nichts verstanden – versuch es noch mal.')); dictFocusTa(); return null; }   // Stille: Whisper erfaende Text
+      DI.metered = metered;
+      if (!res || !res.blob || res.dur < 0.3 || (metered && peak < 0.01)) { dictReset(); dictErr(T('Nichts verstanden – versuch es noch mal.')); dictFocusTa(); return null; }   // Stille: Whisper erfaende Text
       var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 75000);
       DI.ctrl = ctrl;
       var l = dictLang();
@@ -1087,7 +1089,8 @@
     });
   }
   S.dictState = function () {                          // fuer Tests: Zustand ohne Ton
-    return { ready: !!DI.ready, st: DI.st, way: dictWay(), dictated: DI.dictated, feat: DI.feat, fmt: dictFmt(dictStt()), id: DI.id };
+    return { ready: !!DI.ready, st: DI.st, way: dictWay(), dictated: DI.dictated, feat: DI.feat, fmt: dictFmt(dictStt()), id: DI.id,
+             metered: DI.metered !== false, mode: DI.rec ? DI.rec.mode : null };
   };
   function pageInit() {
     $('sg-ask').addEventListener('submit', function (e) { e.preventDefault(); submit(); });

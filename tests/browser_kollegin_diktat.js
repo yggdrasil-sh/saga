@@ -166,6 +166,11 @@ async function partA(br, name, BRK) {
   await api('POST', '/api/first-steps', { answer: 'no' });
   await api('DELETE', '/api/ai/thread');
   ok('Seite bereit', await gotoSaga(p, true));
+  // Laeuft hier ein AudioContext? (Firefox headless ohne Audio-Ausgabe: nein - dann nimmt SagaVoice per MediaRecorder auf,
+  // ohne Pegel; WAV geht dann nicht und meldet ui.failed)
+  const audioOk = await p.evaluate(() => new Promise((res) => { const ac = new AudioContext(); ac.resume().catch(() => {});
+    setTimeout(() => { res(ac.state === 'running'); try { ac.close(); } catch (e) { /* egal */ } }, 800); }));
+  info('AudioContext laeuft', audioOk);
 
   // --- decide (15.3) ---
   { const got = await p.evaluate((rows) => rows.map((r) => HKSaga.dictDecide(r)), V.decide);
@@ -308,7 +313,8 @@ async function partA(br, name, BRK) {
     navigator.mediaDevices.getUserMedia = async () => { const ac = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(), d = ac.createMediaStreamDestination();
       g.gain.value = 0; o.connect(g); g.connect(d); o.start(); return d.stream; };
   });
-  { const n0 = seen.tr.length; await dictate(p, 1500);
+  if (!audioOk) skip('Stille', 'ohne laufenden AudioContext kein Pegel - Stille-Pruefung entfaellt');
+  else { const n0 = seen.tr.length; await dictate(p, 1500);
     ok('Stille: ui.nothing, keine Anfrage, Text bleibt', (await dictErrText(p)) === UI.nothing && seen.tr.length === n0 && (await field(p)) === 'Mein Text', await dictErrText(p)); }
   await p.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('nein', 'NotAllowedError')); });
   { const n0 = seen.tr.length; await p.click('#sg-mic'); await sleep(800);
@@ -369,7 +375,10 @@ async function partA(br, name, BRK) {
   if ((await st(p)).st === 'hint') {
     ok('Hinweis mit Zusatzsatz des Admins (notice inkl. note)', await p.evaluate((n) => document.getElementById('sg-dict-where').textContent === n, V.status.home_mit_satz.notice));
   }
-  { const n0 = seen.tr.length; await dictate(p, 1500, seen.tr);
+  if (!audioOk) {
+    const n0 = seen.tr.length; await p.click('#sg-mic'); await sleep(1500);
+    ok('WAV ohne laufenden AudioContext: ui.failed, keine Anfrage, nichts eingefuegt', (await dictErrText(p)) === UI.failed && seen.tr.length === n0 && (await field(p)) === '', await dictErrText(p));
+  } else { const n0 = seen.tr.length; await dictate(p, 1500, seen.tr);
     const t = seen.tr[n0] || { h: {}, body: Buffer.alloc(0) }, wi = wavInfo(t.body);
     ok('WAV: Content-Type audio/wav, RIFF/WAVE PCM 16 Bit mono 16 kHz, Groesse = Kopf + data', /^audio\/wav/.test(t.h['content-type'] || '') && wi.ok && wi.tag === 1
       && wi.bits === 16 && wi.ch === 1 && wi.rate === 16000 && wi.sizeOk && wi.dur > 0.8 && wi.dur < 5, wi);
@@ -389,7 +398,8 @@ async function partA(br, name, BRK) {
 
   // --- 60 s harte Grenze (Chromium: Ogg, Firefox: WAV) ---
   if (E.LIMIT !== '0') {
-    if (BRK === 'firefox') M.stt = clone(V.status.home_mit_satz);
+    const limWav = BRK === 'firefox' && audioOk;                // Chromium: Ogg; Firefox: WAV (mit Audio-Ausgabe) bzw. Ogg
+    if (limWav) M.stt = clone(V.status.home_mit_satz);
     await gotoSaga(p, false);
     await p.fill('#sg-ta', '');
     const n0 = seen.tr.length; M.trDelay = 1500;
@@ -400,9 +410,11 @@ async function partA(br, name, BRK) {
     const took = (Date.now() - t0) / 1000;
     await until(async () => { const s = await p.evaluate(() => document.getElementById('sg-dict-live').textContent); if (s.indexOf(UI.limit) >= 0) sawLimit = true; return (await st(p)).st === 'idle'; }, 10000);
     M.trDelay = 0;
-    const t = seen.tr[n0] || { h: {}, body: Buffer.alloc(0) }, inf = BRK === 'firefox' ? wavInfo(t.body) : oggInfo(t.body);
+    const t = seen.tr[n0] || { h: {}, body: Buffer.alloc(0) }, inf = limWav ? wavInfo(t.body) : oggInfo(t.body);
     ok('60 s: Aufnahme endet ohne Tippen, Anfrage geht raus (' + Math.round(took) + ' s)', seen.tr.length === n0 + 1 && took >= 59 && took < 75, took);
-    ok('60 s: Dauer im Kopf <= 60,0 s und > 59 s, <= 2 MiB', inf.ok && inf.dur <= 60.0 + 1e-9 && inf.dur > 59 && t.body.length <= V.limits.max_bytes, { dur: inf.dur, n: t.body.length });
+    // eigener Ogg-Muxer/WAV schneiden genau bei 60,0 s; Ogg aus dem MediaRecorder (Firefox ohne Audio-Ausgabe) nur in der Spanne des Servers
+    const capS = BRK === 'chromium' || limWav ? 60.0 : V.limits.max_s + V.limits.slack_s;
+    ok('60 s: Dauer im Kopf <= ' + capS + ' s und > 59 s, <= 2 MiB', inf.ok && inf.dur <= capS + 1e-9 && inf.dur > 59 && t.body.length <= V.limits.max_bytes, { dur: inf.dur, n: t.body.length });
     ok('60 s: ui.limit angesagt, Text eingefuegt, nicht gesendet', sawLimit && (await field(p)) === V.examples.ok.body.text && seen.posts.length === 5);
   } else skip('60 s', 'LIMIT=0');
 

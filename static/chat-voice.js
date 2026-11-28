@@ -130,6 +130,17 @@
         try { ac = new AC(md === 'wc' ? { sampleRate: RATE } : {}); } catch (e) { ac = new AC(); }
         if (md === 'wc' && ac.sampleRate !== RATE) { try { ac.close(); } catch (e) { /* egal */ } md = MediaRecorder && MediaRecorder.isTypeSupported(MR_OGG) ? 'mr-ogg' : 'mr-webm'; ac = new AC(); }
         resume(ac);
+        // 2274: laeuft der AudioContext nicht an (Firefox ohne Audio-Ausgabe, z. B. headless), liefert der WebCodecs-Weg
+        // keine Samples - dann MediaRecorder (Ogg bzw. WebM -> Ogg); Pegel gibt es dann nicht (rec.metered() = false)
+        var started = md !== 'wc' || ac.state === 'running' ? Promise.resolve() : new Promise(function (res) {
+          var t = setTimeout(res, 600);
+          ac.onstatechange = function () { if (ac.state === 'running') { clearTimeout(t); res(); } };
+        });
+        return started.then(function () {
+        if (md === 'wc' && ac.state !== 'running' && typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+          var alt = MediaRecorder.isTypeSupported(MR_OGG) ? 'mr-ogg' : MediaRecorder.isTypeSupported(MR_WEBM) ? 'mr-webm' : null;
+          if (alt) md = alt;
+        }
         var src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
         var levels = [], t0 = performance.now(), done = false, tick = null, buf = new Float32Array(an.fftSize);
         var enc = null, pkts = [], samples = 0, preskip = 312, proc = null, mute = null, pcm = new Float32Array(960), fill = 0, mr = null, chunks = [];
@@ -205,7 +216,9 @@
           });
         };
         rec.secs = secs;
+        rec.metered = function () { return ac.state === 'running'; };
         return rec;
+        });
       });
     });
   }
@@ -230,6 +243,15 @@
       return Promise.reject(Object.assign(new Error(T('Dieser Browser kann keine Sprachnachrichten aufnehmen.')), { code: 'unsupported' }));
     return navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
       var ac = new AC(); resume(ac);
+      var started = ac.state === 'running' ? Promise.resolve() : new Promise(function (res) {
+        var t = setTimeout(res, 600);
+        ac.onstatechange = function () { if (ac.state === 'running') { clearTimeout(t); res(); } };
+      });
+      return started.then(function () {
+      if (ac.state !== 'running') {                    // ohne laufenden AudioContext keine Samples (s. record)
+        stream.getTracks().forEach(function (t) { t.stop(); }); try { ac.close(); } catch (e) { /* egal */ }
+        throw Object.assign(new Error('AudioContext ' + ac.state), { code: 'noaudio' });
+      }
       var src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
       var ratio = ac.sampleRate / OUT, cap = Math.floor(maxS * OUT), out = new Int16Array(cap), n = 0, acc = 0, accN = 0, pos = 0;
       var done = false, buf = new Float32Array(an.fftSize), tick = null;
@@ -267,8 +289,10 @@
           var blob = new Blob([wavHead(n, OUT), out.subarray(0, n)], { type: 'audio/wav' });
           out = null;
           return Promise.resolve({ blob: blob, dur: Math.min(maxS, n / OUT), mode: 'wav' });
-        }
+        },
+        metered: function () { return true; }
       };
+      });
     });
   }
 
