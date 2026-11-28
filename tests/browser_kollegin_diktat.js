@@ -198,9 +198,10 @@ async function partA(br, name, BRK) {
   await p.click('#sg-mic');
   await sleep(600);
   { const h = await p.evaluate(() => { const w = document.getElementById('sg-dict-where'); return { t: w && !w.hidden ? w.textContent : '', desc: document.getElementById('sg-mic').getAttribute('aria-describedby'),
-      rec: !document.querySelector('.sg-dict-rec').hidden, status: document.getElementById('sg-status').textContent }; });
+      rec: !document.querySelector('.sg-dict-rec').hidden, status: document.getElementById('sg-dict-live').textContent,
+      live: document.getElementById('sg-dict-live').getAttribute('role'), st: document.getElementById('sg-status').textContent }; });
     ok('erster Tipp: nur der Hinweis (stt.notice wortgleich), keine Aufnahme', h.t === V.status.home.notice && !h.rec && (await st(p)).st === 'hint', h);
-    ok('Hinweis ist Beschreibung des Knopfs und wird angesagt (role=status)', h.desc === 'sg-dict-where' && h.status === V.status.home.notice, h); }
+    ok('Hinweis ist Beschreibung des Knopfs und wird angesagt (role=status, sg-status bleibt frei)', h.st === '' && h.desc === 'sg-dict-where' && h.status === V.status.home.notice && h.live === 'status', h); }
   ok('erster Tipp: keine Anfrage an transcribe', seen.tr.length === 0, seen.tr.length);
   await shot(p, 'hinweis-dunkel');
   // zweiter Tipp nimmt auf
@@ -209,7 +210,7 @@ async function partA(br, name, BRK) {
   await sleep(1800);
   { const r = await p.evaluate(() => ({ where: document.getElementById('sg-dict-where').textContent, wh: document.getElementById('sg-dict-where').hidden,
       time: document.querySelector('.sg-dict-time').textContent, lab: document.querySelector('.sg-dict-lab').textContent,
-      lv: document.querySelector('.sg-dict-lv').style.transform, status: document.getElementById('sg-status').textContent,
+      lv: document.querySelector('.sg-dict-lv').style.transform, status: document.getElementById('sg-dict-live').textContent,
       micHidden: document.getElementById('sg-mic').hidden, done: document.querySelector('.sg-dict-done').textContent, cancel: document.querySelector('.sg-dict-cancel').textContent,
       focus: document.activeElement && document.activeElement.className, send: document.getElementById('sg-send').disabled }));
     ok('waehrend der Aufnahme: Hinweis, Zeit / 1:00, Pegel, ui.recording, Fertig/Abbrechen, Ansage', !r.wh && r.where === V.status.home.notice && /^0:0[1-3] \/ 1:00$/.test(r.time)
@@ -220,7 +221,7 @@ async function partA(br, name, BRK) {
   M.trDelay = 700;
   await p.click('.sg-dict-done');
   ok('„Wird zu Text …“ bis die Antwort da ist', await until(() => p.evaluate((w) => document.querySelector('.sg-dict-lab').textContent === w
-    && document.getElementById('sg-status').textContent === w, UI.working), 3000));
+    && document.getElementById('sg-dict-live').textContent === w, UI.working), 3000));
   await until(() => seen.tr.length >= 1, 8000); M.trDelay = 0;
   await until(async () => (await st(p)).st === 'idle', 8000);
   { const t = seen.tr[0] || { h: {}, body: Buffer.alloc(0), url: '' }, oi = oggInfo(t.body), u = new URL(t.url || BASE);
@@ -395,9 +396,9 @@ async function partA(br, name, BRK) {
     await p.click('#sg-mic'); if ((await st(p)).st === 'hint') await p.click('#sg-mic');
     await until(async () => (await st(p)).st === 'rec', 15000);
     const t0 = Date.now(); let sawLimit = false;
-    await until(async () => { const s = await p.evaluate(() => document.getElementById('sg-status').textContent); if (s.indexOf(UI.limit) >= 0) sawLimit = true; return seen.tr.length > n0; }, 80000);
+    await until(async () => { const s = await p.evaluate(() => document.getElementById('sg-dict-live').textContent); if (s.indexOf(UI.limit) >= 0) sawLimit = true; return seen.tr.length > n0; }, 80000);
     const took = (Date.now() - t0) / 1000;
-    await until(async () => { const s = await p.evaluate(() => document.getElementById('sg-status').textContent); if (s.indexOf(UI.limit) >= 0) sawLimit = true; return (await st(p)).st === 'idle'; }, 10000);
+    await until(async () => { const s = await p.evaluate(() => document.getElementById('sg-dict-live').textContent); if (s.indexOf(UI.limit) >= 0) sawLimit = true; return (await st(p)).st === 'idle'; }, 10000);
     M.trDelay = 0;
     const t = seen.tr[n0] || { h: {}, body: Buffer.alloc(0) }, inf = BRK === 'firefox' ? wavInfo(t.body) : oggInfo(t.body);
     ok('60 s: Aufnahme endet ohne Tippen, Anfrage geht raus (' + Math.round(took) + ' s)', seen.tr.length === n0 + 1 && took >= 59 && took < 75, took);
@@ -515,7 +516,7 @@ async function partHost(br, name) {
   await sleep(700); m = await msgs();
   ok('60 s: dictate.stop ohne Tippen', m[m.length - 1].action === 'dictate.stop' && m[m.length - 1].id === id3, m[m.length - 1]);
   await recv({ type: 'dictate.done', id: id3, text: 'Ende', dur: 60, limit: true, cut: false });
-  ok('60 s: ui.limit angesagt', await p.evaluate((t) => document.getElementById('sg-status').textContent === t, UI.limit));
+  ok('60 s: ui.limit angesagt', await p.evaluate((t) => document.getElementById('sg-dict-live').textContent === t, UI.limit));
   await p.reload(); await gotoSaga(p);
   // denied: ui.mic_denied, kein Rueckfall auf den Server
   M.stt = clone(V.status.home); await gotoSaga(p);

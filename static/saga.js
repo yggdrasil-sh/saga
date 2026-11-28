@@ -819,7 +819,10 @@
   function seen(way) { try { return localStorage.getItem(DI_SEEN) === dictKey(way); } catch (e) { return false; } }
   function markSeen(way) { try { localStorage.setItem(DI_SEEN, dictKey(way)); } catch (e) { /* egal */ } }
   function dictWhere(way) { return way === 'device' ? T('Auf diesem Gerät – die Aufnahme verlässt es nicht.') : ((dictStt() || {}).notice || ''); }
-  function dictSay(text) { var s = $('sg-status'); if (s && !G.run) { s.textContent = ''; s.textContent = text || ''; } }
+  function dictSay(text) {                             // Ansage (role=status, unsichtbar - sichtbar stehen Zeile und Aufnahme)
+    var U = dictBuild(); if (!U) return;
+    U.live.textContent = ''; U.live.textContent = text || '';
+  }
   function micSvg() {
     var s = HK.icon && HK.icon('mic', 20);
     if (s) return s;
@@ -852,6 +855,8 @@
     U.err = el('p', 'sg-dict-err'); U.err.setAttribute('role', 'alert'); U.err.hidden = true;
     U.box.appendChild(U.where); U.box.appendChild(U.row); U.box.appendChild(U.err);
     f.insertBefore(U.box, bar);
+    U.live = el('p', 'sr-only sg-dict-live'); U.live.id = 'sg-dict-live'; U.live.setAttribute('role', 'status');
+    f.appendChild(U.live);
     return U;
   }
   function dictErr(text) {
