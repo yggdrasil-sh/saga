@@ -116,6 +116,9 @@
     modeP = AudioEncoder.isConfigSupported(wcCfg(24)).then(function (s) { return s && s.supported ? 'wc' : fallback(); }, fallback);
     return modeP;
   }
+  // Firefox legt einen AudioContext, der erst nach dem (asynchronen) getUserMedia entsteht, angehalten an - ohne resume()
+  // laufen weder Pegel noch ScriptProcessor (Aufnahme leer). Bugs-DB 2274 (Diktat in Firefox gefunden).
+  function resume(ac) { try { if (ac.state === 'suspended' && ac.resume) ac.resume().catch(function () { /* egal */ }); } catch (e) { /* egal */ } }
   // opts: {kbps, maxS, onTick(sec, level 0..1), onLimit()} -> Promise<rec>; rec.stop() -> Promise<{blob, dur, wf}>, rec.cancel()
   function record(opts) {
     opts = opts || {};
@@ -126,6 +129,7 @@
         var AC = window.AudioContext || window.webkitAudioContext, ac;
         try { ac = new AC(md === 'wc' ? { sampleRate: RATE } : {}); } catch (e) { ac = new AC(); }
         if (md === 'wc' && ac.sampleRate !== RATE) { try { ac.close(); } catch (e) { /* egal */ } md = MediaRecorder && MediaRecorder.isTypeSupported(MR_OGG) ? 'mr-ogg' : 'mr-webm'; ac = new AC(); }
+        resume(ac);
         var src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
         var levels = [], t0 = performance.now(), done = false, tick = null, buf = new Float32Array(an.fftSize);
         var enc = null, pkts = [], samples = 0, preskip = 312, proc = null, mute = null, pcm = new Float32Array(960), fill = 0, mr = null, chunks = [];
@@ -225,7 +229,8 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !AC)
       return Promise.reject(Object.assign(new Error(T('Dieser Browser kann keine Sprachnachrichten aufnehmen.')), { code: 'unsupported' }));
     return navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
-      var ac = new AC(), src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
+      var ac = new AC(); resume(ac);
+      var src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
       var ratio = ac.sampleRate / OUT, cap = Math.floor(maxS * OUT), out = new Int16Array(cap), n = 0, acc = 0, accN = 0, pos = 0;
       var done = false, buf = new Float32Array(an.fftSize), tick = null;
       var proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain(); mute.gain.value = 0;
