@@ -88,7 +88,7 @@ def setup(uid, off=False):
             x, y = sorted((rows[a], rows[b]))
             z = now - ago * 86400
             c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft, gepinnt) "
-                      "VALUES (?,?,?,?,?,?,?,?,?,?)", (x, y, uid, g, 0.05, 1 if her == "gemeinsam" else 0, z, z, her, pin))
+                      "VALUES (?,?,?,?,?,?,?,?,?,? <> 0)", (x, y, uid, g, 0.05, 1 if her == "gemeinsam" else 0, z, z, her, int(pin)))
         for title, h in HITS:
             c.execute("INSERT INTO mem_trace (uid, at, quelle, frage_hash, stichworte, lim, treffer, neu) VALUES "
                       "(?, ?, 'trigramm', 'rig', 'rig', 5, CAST(? AS JSONB), CAST(? AS JSONB))",

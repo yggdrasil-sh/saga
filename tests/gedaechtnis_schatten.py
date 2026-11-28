@@ -253,16 +253,18 @@ def spread_case(sc):
 
 
 # --- 2. Integration -------------------------------------------------------------------------------------------------
-ROWS = [("Tomaten", "tomaten sonne wasser garten beet"), ("Basilikum", "basilikum tomaten garten beet schatten"),
-        ("Kompost", "kompost garten beet erde wurm"), ("Hochbeet", "hochbeet laub erde garten herbst"),
+# Schluessel, Inhalt (je 5 Woerter; verwandte Zeilen teilen 3-4 -> Kosinus 0,6-0,8 im Fake-Embedding). Titel = kurzer Code
+# aus 2 Zeichen (zaehlt im Fake-Embedding nicht mit)
+ROWS = [("Tomaten", "tomaten sonne wasser garten beet"), ("Basilikum", "tomaten sonne garten beet basilikum"),
+        ("Kompost", "kompost garten beet erde sonne"), ("Hochbeet", "hochbeet erde garten herbst laub"),
         ("Nachtzug", "nachtzug wien reise bett schlafwagen"), ("Wien", "wien reise strassenbahn kaffee museum"),
         ("Packliste", "packliste reise kabel adapter koffer"), ("Fahrrad", "fahrrad kette reise oel kilometer"),
         ("Kaffee", "kaffee bohnen grad wasser muehle"), ("Sauerteig", "sauerteig brot mehl wasser ruhe"),
-        ("Brot", "brot mehl ofen grad kruste"), ("Gewuerze", "gewuerze dunkel luftdicht kueche glas"),
-        ("Proxmox", "proxmox cluster ceph knoten speicher"), ("Ceph", "ceph speicher osd cluster platte"),
-        ("Backup", "backup restic speicher nacht cluster"), ("Netz", "netz vlan switch router knoten"),
+        ("Brot", "brot mehl ofen grad sauerteig"), ("Gewuerze", "gewuerze dunkel luftdicht kueche glas"),
+        ("Proxmox", "proxmox cluster ceph knoten speicher"), ("Ceph", "ceph speicher osd cluster knoten"),
+        ("Backup", "backup restic speicher cluster ceph"), ("Netz", "netz vlan switch router knoten"),
         ("Geheim", "geheim tomaten garten beet sonne"), ("Lied", "lied gitarre akkord musik abend"),
-        ("Gitarre", "gitarre saiten akkord stimmen musik"), ("Japan", "japan reise tokio zug museum")]
+        ("Gitarre", "gitarre saiten akkord musik lied"), ("Japan", "japan reise tokio zug museum")]
 QS = ["tomaten garten beet", "reise wien museum", "kaffee wasser grad", "brot mehl wasser", "proxmox ceph cluster",
       "speicher cluster backup", "gitarre akkord musik", "netz knoten router", "reise zug japan", "erde garten herbst laub",
       "fahrrad reise kette", "packliste koffer reise", "kompost erde beet", "sauerteig ruhe brot", "gewuerze kueche glas",
@@ -277,8 +279,8 @@ def part_setup_off():
     ok("Schattenmodus ohne Bindung -> 409 not_bound", st == 409 and d.get("code") == "not_bound", (st, d))
     memory.account_put(U, {"db": dbid})
     ids = {}
-    for t_, inh in ROWS:
-        st, d = memory.remember(U, {"titel": t_, "inhalt": inh, "art": "Fakt", "wichtigkeit": 6}, tk)
+    for k, (t_, inh) in enumerate(ROWS):
+        st, d = memory.remember(U, {"titel": "Z" + "abcdefghijklmnopqrstuvwxyz"[k], "inhalt": inh, "art": "Fakt", "wichtigkeit": 6}, tk)
         ids[t_] = d["id"]
     S["ids"] = ids
     S["snap"] = memory.nap(U, {"stimmung": "ruhig", "gedanke": "tomaten garten beet sonne wasser"}, tk)[1]["id"]
@@ -330,11 +332,11 @@ def part_on():
                        cwd=os.path.dirname(HERE), env=dict(os.environ, PYTHONPATH=os.path.dirname(HERE)))
     ok("CLI verknuepfen Konto ohne Gedaechtnis: Hinweis, rc 0", p.returncode == 0 and "kein Gedaechtnis" in p.stdout, p.stdout[-200:])
     # remember bei an: neue Zeile bekommt Links; sensible/Schnappschuss nie
-    st, d = memory.remember(U, {"titel": "Tomatensorten", "inhalt": "tomaten sorten garten beet sonne", "art": "Fakt"}, tok_obj(U))
+    st, d = memory.remember(U, {"titel": "Y1", "inhalt": "tomaten sorten garten beet sonne", "art": "Fakt"}, tok_obj(U))
     new = [k for k in links(U) if d["id"] in k]
     ok("remember bei an: Links „aehnlich“ zur neuen Zeile (nie zu sensibel/Schnappschuss)", new and not any(set(k) & bad for k in new), new)
     S["toms"] = d["id"]
-    st, d = memory.remember(U, {"titel": "Geheim 2", "inhalt": "tomaten garten beet sonne geheim", "sensibel": True}, tok_obj(U))
+    st, d = memory.remember(U, {"titel": "Y2", "inhalt": "tomaten garten beet sonne geheim", "sensibel": True}, tok_obj(U))
     ok("remember sensibel: keine Links", not [k for k in links(U) if d["id"] in k] and d["id"] in excl(U)[1], d)
 
 
@@ -433,7 +435,7 @@ def part_used():
        [(k, v, L2.get(k)) for k, v in L.items() if L2.get(k) != v][:3])
     S["Lg"] = {k: v for k, v in L2.items() if k not in L}
     # Auftauchen 3x: Paar ohne Link -> erst beim dritten Mal "gemeinsam"
-    q = "kaffee wasser grad bohnen"
+    q = "brot mehl wasser"
     r = memory.recall(U, q)
     hit = [x["id"] for x in r["treffer"] if x["id"] not in excl(U)[1]]
     ok("Testaufbau: >= 2 Basis-Treffer", len(hit) >= 2, hit)
@@ -528,7 +530,8 @@ def part_backup_delete():
         auth.create_user(W2, None, W2)
         with db.connect() as c, c:
             r = userbackup._import_memory(c, W2, {"settings": {"memory.db": "6", "memory.shadow": "1795000000"}}, {}, set())
-        ok("Einspielen ohne abgebildete Datenbank: memory.shadow nicht", r is False and not pg("SELECT 1 FROM user_kv WHERE uid=?", (W2,)))
+        ok("Einspielen ohne abgebildete Datenbank: memory.shadow nicht", r is False
+           and not pg("SELECT 1 FROM user_kv WHERE uid=? AND k LIKE 'memory.%'", (W2,)))
         delete_user_data(W2, drop_user=True)
     finally:
         delete_user_data(W, drop_user=True)
@@ -556,8 +559,8 @@ def part_report():
          (ids[0], ids[3], 0.3, 0.05, 0, False, "aehnlich"), (ids[1], ids[2], 0.25, 0.05, 0, True, "hand"),
          (ids[2], ids[3], 0.15, 0.05, 0, False, "aehnlich")]
     for a, b, g, u, t_, pin, her in L:
-        pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft, gepinnt) VALUES (?,?,?,?,?,?,?,?,?,?)",
-           (a, b, R, g, u, t_, now, now, her, pin))
+        pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft, gepinnt) VALUES "
+           "(?,?,?,?,?,?,?,?,?,? <> 0)", (a, b, R, g, u, t_, now, now, her, int(pin)))
     TR = []
     for k in range(12):
         neu = [ids[4]] if k % 2 == 0 else []

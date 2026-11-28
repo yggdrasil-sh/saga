@@ -207,7 +207,8 @@ def part_binding():
     ok("PUT weights ausserhalb des Bereichs -> 400", st == 400, (st, d))
     st, d = req("PUT", "/api/account/memory", {"db": S["db"], "core": S["core"], "weights": {"half_life_days": 30}}, uid=A)
     ok("PUT eigene Datenbank + Ich-Kern -> 200, Spalten erkannt",
-       st == 200 and d["db"]["id"] == S["db"] and d["core"]["id"] == S["core"] and all(v["ok"] for v in d["columns"].values())
+       st == 200 and d["db"]["id"] == S["db"] and d["core"]["id"] == S["core"]
+       and all(v["ok"] for k, v in d["columns"].items() if k != "sensibel") and not d["columns"]["sensibel"]["found"]
        and d["missing_required"] == [] and d["weights"] == memory.WEIGHTS, d)
     ok("user_kv: nur Abweichungen gespeichert (weights Standard = kein Schluessel)",
        sorted(r[0] for r in pg("SELECT k FROM user_kv WHERE uid=? AND k LIKE 'memory.%'", (A,))) == ["memory.core", "memory.db"])
@@ -435,7 +436,8 @@ def part_http():
     tm = token(A, ["mcp", "memory", "read:db"])
     st, d = req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, bearer=tm)
     names = [x["name"] for x in d["result"]["tools"]]
-    ok("MCP tools/list mit memory: recall, remember am Ende", st == 200 and names[-2:] == ["recall", "remember"], names)
+    ok("MCP tools/list mit memory: Gedaechtnis-Werkzeuge am Ende (2581: recall, remember; 2601/2603: nap, wake, recall_used, "
+       "shadow_report)", st == 200 and names[-6:] == ["recall", "remember", "nap", "wake", "recall_used", "shadow_report"], names)
     st, d = req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, bearer=t2)
     ok("MCP tools/list ohne memory: keine Gedaechtnis-Werkzeuge", "recall" not in [x["name"] for x in d["result"]["tools"]])
     st, d = req("POST", "/mcp", {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "recall", "arguments":
