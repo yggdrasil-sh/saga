@@ -142,6 +142,10 @@ let R = null;
         ok('Einstellungen: Nickerchen „3 Schnappschüsse · zuletzt …“', /^3 Schnappschüsse · zuletzt /.test(st.nap), st);
         ok('Einstellungen: Schattenmodus an, „9 Verknüpfungen · 5 Spuren (30 Tage)“, „Spuren löschen“ sichtbar', st.sw === true && st.sst === '9 Verknüpfungen · 5 Spuren (30 Tage)' && st.forget, st);
       }
+      // Bild: Dialog fuer das Bild nicht mehr scrollen lassen (CSSOM, CSP-konform), damit der ganze Bereich drauf ist
+      await s.evaluate(() => { for (let x = document.getElementById('hk-pane-memory'); x && x !== document.body; x = x.parentElement) {
+        x.style.maxHeight = 'none'; x.style.height = 'auto'; x.style.overflow = 'visible'; } });
+      await sleep(200);
       await shot(s, 'einstellungen-gedaechtnis-' + (dark ? 'dunkel' : 'hell'), { el: '#hk-pane-memory' });
       ok('Einstellungen: keine Seitenfehler (' + (dark ? 'dunkel' : 'hell') + ')', !s.errs.length, s.errs);
       await s.context().close();
