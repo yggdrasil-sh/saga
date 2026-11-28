@@ -242,7 +242,7 @@ def main():
             treesync._PRUNED[0] = 0.0
             sec, r, hung = timed(treesync._prune)
             ok(f"C2: _prune bei gesperrter Grenze gibt nach {sec:.1f} s auf (< {FAST:.0f} s, Sperr-Frist)",
-               not hung and sec < FAST and isinstance(r, Exception) and "lock" in str(r).lower(), (sec, repr(r)))
+               not hung and sec < FAST and getattr(r, "sqlstate", None) == "55P03", (sec, repr(r)))   # lock_not_available
             lk.rollback()
         ok("C2: dabei nichts entfernt (zurueckgerollt)", set(tombs(A, ids4)) == {ids4[0]}, tombs(A, ids4))
         treesync._PRUNED[0] = 0.0
