@@ -43,6 +43,18 @@
     return b;
   }
   function say(live, text) { if (live) { live.textContent = ''; live.textContent = text; } }
+  // 2.6 (Bugs-DB 2275 K-G, APP-API-KI 14.1): Herkunft eines Plans aus geteiltem Inhalt - Texte fertig vom Server
+  // (origin.text, bei warn ⚠ + warn_text: Symbol UND Text, nie nur Farbe). origin null = kein geteilter Inhalt.
+  function originNodes(o) {
+    var out = [];
+    if (!o || typeof o !== 'object' || !o.text) return out;
+    out.push(el('p', 'kj-origin', o.text));
+    if (o.warn && o.warn_text) {
+      var w = el('p', 'kj-warn'), sym = el('span', 'kj-warn-sym', '⚠'); sym.setAttribute('aria-hidden', 'true');
+      w.appendChild(sym); w.appendChild(el('span', 'kj-warn-t', o.warn_text)); out.push(w);
+    }
+    return out;
+  }
 
   // --- SSE: POST /api/ai/jobs ---------------------------------------------------------------------------------------
   function post(body, on) {
@@ -103,6 +115,7 @@
       });
       card.appendChild(ol);
       if (cur.read_text) card.appendChild(el('p', 'kj-read', cur.read_text));
+      originNodes(cur.origin).forEach(function (x) { card.appendChild(x); });   // 2275: unter "Ich lese dafür: …"
       var err = el('p', 'kj-err'); err.setAttribute('role', 'alert'); err.hidden = true; card.appendChild(err);
       var bar = el('div', 'kj-actions');
       if (editing) {
@@ -456,6 +469,9 @@
         if (d.plan && d.plan.read && d.plan.read.length) {
           var rs = el('section', 'kj-sec'); rs.appendChild(el('h4', null, T('Was ich gelesen habe')));
           rs.appendChild(el('p', null, d.plan.read.map(function (r) { return r.label; }).join(', '))); detailEl.appendChild(rs);
+        }
+        if (d.state !== 'wartet_ok' && d.plan && d.plan.origin) {   // 2275: Herkunft auch nach der Freigabe (Plan-Karte zeigt sie selbst)
+          var os = el('section', 'kj-sec kj-origin-sec'); originNodes(d.plan.origin).forEach(function (x) { os.appendChild(x); }); detailEl.appendChild(os);
         }
         var ev = el('section', 'kj-sec'); ev.appendChild(el('h4', null, T('Protokoll')));
         var ul = el('ul', 'kj-log');

@@ -153,3 +153,20 @@ body.saga-page>main.sg:focus{outline:none}
 .ai-info-b:hover,.ai-info-b:focus-visible{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 .ai-info-box{flex-basis:100%;margin:.2rem 0;padding:.45rem .65rem;border-left:3px solid var(--ai-edge,var(--sg-edge));font-size:.85rem}
 .ai-info-box p{margin:.15rem 0}
+/* 2.6 (Bugs-DB 2275 K-G): Teilen-Ziel der PWA - Auswahl nach dem Teilen, Zeile "Geteilt: host ×" ueber dem Feld */
+.sg-share{display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem}
+.sg-share-h{margin:0;font-size:1.05rem;font-weight:600;text-transform:none;letter-spacing:0;color:var(--fg)}
+.sg-share-prev{border-left:3px solid var(--border);padding:.1rem 0 .1rem .6rem;min-width:0}
+.sg-share-prev p{margin:0;overflow-wrap:anywhere}
+.sg-share-ti{font-weight:600}
+.sg-share-host{font-size:.9rem;color:var(--muted)}
+.sg-share-tx{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.sg-share-acts{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.sg-share-acts .btn{min-height:44px}
+.sg-share-drop{margin-left:auto}
+.sg-share-done{margin:0}
+@media (max-width:600px){.sg-share-acts .btn{flex:1 1 100%}.sg-share-drop{margin-left:0}}
+.sg-shared{display:flex;flex-direction:column;gap:.1rem}
+.sg-shared[hidden]{display:none}
+.sg-shared-n{margin:0;font-size:.85rem;color:var(--muted)}
+.sg-me-shared{margin:.15rem 0 0;font-size:.875rem;color:var(--muted)}

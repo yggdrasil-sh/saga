@@ -5871,5 +5871,17 @@
  "Angeregt durch: geteilten Inhalt": "มาจาก: เนื้อหาที่แชร์",
  "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "เนื้อหาที่แชร์มีคำสั่งถึง AI ซึ่งไม่นับเป็นคำขอของคุณ",
  "Was du teilst, liest die KI auf {where}.": "สิ่งที่คุณแชร์ จะถูกอ่านโดย AI ที่ {where}",
- "Es wurde nichts geteilt.": "ไม่มีอะไรถูกแชร์"
+ "Es wurde nichts geteilt.": "ไม่มีอะไรถูกแชร์",
+ "Geteilt: {what}": "แชร์แล้ว: {what}",
+ "Was soll {name} damit tun?": "{name} ควรทำอะไรกับสิ่งนี้",
+ "Geteiltes weglassen": "ไม่ใช้เนื้อหาที่แชร์",
+ "Geteilter Inhalt": "เนื้อหาที่แชร์",
+ "Was soll damit passieren?": "จะทำอะไรกับสิ่งนี้ดี",
+ "Im Eingang gespeichert.": "บันทึกไว้ในกล่องรับแล้ว",
+ "Aufgabe angelegt.": "สร้างงานแล้ว",
+ "Aufgaben ansehen": "ดูงาน",
+ "Als Seite speichern": "บันทึกเป็นหน้า",
+ "Als Aufgabe speichern": "บันทึกเป็นงาน",
+ "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.": "แชร์ไม่สำเร็จ – โปรดแชร์อีกครั้ง",
+ "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.": "เนื้อหาที่แชร์ไม่อยู่แล้ว – เปิดได้เพียงครั้งเดียวและไม่เกิน 10 นาที โปรดแชร์อีกครั้ง"
 }

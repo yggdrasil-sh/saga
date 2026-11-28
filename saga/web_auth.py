@@ -22,15 +22,16 @@ router = APIRouter()
 # --- Anmeldung, Registrierung, Abmeldung -------------------------------------------------------------
 # Erlaubte Ruecksprungziele nach dem Login - feste Positivliste statt beliebiger Pfade
 # (verhindert Open-Redirect ueber praeparierte Login-Links)
-NEXT_ALLOWED = {"/", "/notes", "/app/handoff", "/security", "/chats", "/dashboard"}
+NEXT_ALLOWED = {"/", "/notes", "/app/handoff", "/security", "/chats", "/dashboard", "/saga"}
 EMAIL_RE = re.compile(r"[^@\s]{1,100}@[^@\s]{1,150}\.[^@\s]{2,40}")
 
 
 _NEXT_OAUTH = re.compile(r"/oauth/authorize\?r=[A-Za-z0-9_-]{20,40}")    # 2.6 (Bugs-DB 2264): Zustimmung nach der Anmeldung
+_NEXT_SHARE = re.compile(r"/saga\?share=[0-9a-f]{32}")                     # 2.6 (Bugs-DB 2275): PWA-Teilen-Ziel nach der Anmeldung
 
 
 def _next(v):
-    return v if v in NEXT_ALLOWED or (isinstance(v, str) and _NEXT_OAUTH.fullmatch(v)) else "/"
+    return v if v in NEXT_ALLOWED or (isinstance(v, str) and (_NEXT_OAUTH.fullmatch(v) or _NEXT_SHARE.fullmatch(v))) else "/"
 
 
 PROXY_WARN = {"at": 0.0, "ip": ""}      # zuletzt erkannter, nicht vertrauter Reverse Proxy (Hinweis im Admin-Bereich)

@@ -91,3 +91,9 @@
 .kj-cancel{align-self:flex-start}
 @media (max-width:760px){.kj-actions .kj-go{flex:1 1 100%;min-height:44px}.kj-actions .kj-no{margin-left:0}.kj-card .btn,.kj-chip{min-height:44px}}
 .ai-jobs{flex:1;min-height:0;display:flex;flex-direction:column}
+/* 2.6 (Bugs-DB 2275 K-G): Herkunft eines Plans aus geteiltem Inhalt; Warnung mit Symbol und Text (nie nur Farbe) */
+.kj-origin{margin:0;font-size:14px;color:var(--muted)}
+.kj-warn{display:flex;gap:.4rem;align-items:flex-start;margin:0;padding:.4rem .6rem;border-radius:var(--r-sm,6px);
+  background:var(--warnbg);border:1px solid var(--warn);color:var(--fg);font-size:14px}
+.kj-warn-sym{flex:none;font-weight:700;color:var(--warn)}
+.kj-origin-sec .kj-warn{margin-top:.35rem}

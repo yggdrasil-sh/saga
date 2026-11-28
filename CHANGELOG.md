@@ -29,6 +29,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   (RT-17), jeder Bearer-Schlüssel 403. Kein „braucht dich“ beim Anlegen, nie `approve` aus Mitteilung/Widget/Siri
   (`act approve` → 409). `/api/ai/status` `share_notice` (du/Sie). Vertrag und Vektoren für die Apps:
   `tests/vectors/share_contract.json`; Siri nutzt `/api/ai/thread` und `sentence` aus `/api/ai/today` (§13.1 freigegeben).
+- **Web: Teilen-Ziel der PWA (2275 K-G, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14.5):** installiert teilt man
+  Texte und Links an Saga (Manifest `share_target`, immer POST). Der Service Worker fängt `POST /share` ab und hält den
+  Inhalt einmal lesbar höchstens 10 Minuten im Browser – der Text steht nie in einer Adresse oder im Zugriffs-Log; ohne
+  Service Worker antwortet der Server `303 /saga?share_failed=1`, ohne den Inhalt zu lesen. Im Ort „Saga“: „Als Seite
+  speichern“ (Eingang) · „Als Aufgabe speichern“ (auch ohne KI, neu `POST /api/capture` mit Sitzung) · „{Name} soll sich
+  kümmern …“ (Zeile „Geteilt: host ×“ und Hinweis, wohin der Text geht). Die Plan-Karte zeigt die Herkunft und bei
+  Anweisungen im geteilten Inhalt ⚠ + Warnung (auch im Detail). Nach der Anmeldung geht es mit dem Geteilten weiter.
 - **Gedächtnis Stufe 2: recall/remember (2581, `memory1`, [docs/MEMORY.md](docs/MEMORY.md)):** jede Person bindet unter
   Einstellungen › Gedächtnis *eine eigene* Datenbank als Gedächtnis und eine Seite als Ich-Kern (`GET/PUT
   /api/account/memory`, Spalten nach Namen, Gewichte/Schwellen je Konto). `POST /api/v1/memory/recall` holt die bis zu

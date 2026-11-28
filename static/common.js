@@ -748,4 +748,13 @@
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show); else show();
   })();
+  // 2.6 (Bugs-DB 2275 K-G): als PWA installiert (display-mode standalone) gibt es das Teilen-Ziel (Manifest share_target,
+  // POST /share) - dafuer muss der Service Worker schon laufen, bevor das erste Mal geteilt wird. Im Browser-Tab und in der
+  // Desktop-Huelle bleibt es wie bisher (Service Worker nur fuer Mitteilungen/Videos).
+  try {
+    if ('serviceWorker' in navigator && window.matchMedia && matchMedia('(display-mode: standalone)').matches
+        && !navigator.serviceWorker.controller && !document.body.classList.contains('embed')) {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () { /* kein Teilen-Ziel, Server-Rueckfall */ });
+    }
+  } catch (e) { /* aeltere Browser */ }
 })();

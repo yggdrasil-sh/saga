@@ -37,7 +37,8 @@ Aufbewahrung (M11): Gespraech ohne Verlauf 24 h, mit Verlauf wie ai_history (hoe
 (Klartext 30, Protokoll 90 Tage). Kontoloeschung: USER_TABLES ai_consent, ai_thread, ai_turn.
 
 Endpunkte (Sitzung oder Geraete-Anmeldung, X-Saga: 1 - wie alle /api/ai/*):
-  GET    /saga                         Ort "Saga" (Web)
+  GET    /saga                         Ort "Saga" (Web); ?share=<schluessel> / ?share_failed=1 auch ohne KI (Teilen-Ziel, 2275)
+  POST   /share                        Rueckfall des PWA-Teilen-Ziels ohne Service Worker -> 303 /saga?share_failed=1
   POST   /api/ai/consent {answer: ideas|no_ideas|later, version}   -> {consent}
   DELETE /api/ai/consent                                            -> {consent, paused}
   GET/PUT /api/ai/prefs (Endpunkt in saga/ai_say.py, K-H) + Felder ideas, sources, history, notify_content, dictation
@@ -52,7 +53,7 @@ import re
 import time
 import unicodedata
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -863,19 +864,34 @@ def saga_page(request: Request):
     from saga import avatars, chat, mfa
     from saga.core import ASSET_V, SEC_HEADERS, _session_user, remember_ui_lang, title, tmpl
     uid = _session_user(request)
-    if not uid:
-        return RedirectResponse("/login?next=/saga", status_code=303)
+    key = request.query_params.get("share") or ""
+    key = key if SHARE_KEY.fullmatch(key) else ""
+    shared = bool(key) or request.query_params.get("share_failed") == "1"
+    if not uid:                                  # 2275: der Schluessel ueberlebt die Anmeldung (Inhalt liegt im Browser)
+        return RedirectResponse("/login?next=" + (quote("/saga?share=" + key, safe="") if key else "/saga"), status_code=303)
     if (go := mfa.setup_redirect(request, uid)) is not None:
         return go
-    if not side_on(uid):
+    on = side_on(uid)
+    if not on and not shared:                    # F10: geteilt wird auch ohne KI (nur Seite / Aufgabe)
         return RedirectResponse("/dashboard", status_code=303)
     remember_ui_lang(uid, request)
     with _db() as c:
         n_chat = chat.unread_total(c, uid)
     html = tmpl.get_template("saga.html").render(title=title(), name=request.session.get("name", uid), uid=uid, v=ASSET_V,
                                                  chat_enabled=chat.enabled(), chat_unread=n_chat, me_avatar=avatars.my_url(uid),
-                                                 side_cur="saga", saga_on=True)
+                                                 side_cur="saga", saga_on=on)
     return HTMLResponse(html, headers=dict(SEC_HEADERS))
+
+
+SHARE_KEY = re.compile(r"[0-9a-f]{32}")          # Schluessel des Service Workers (static/sw.js shareIn, 128 Bit)
+
+
+@router.post("/share")
+def share_fallback():
+    """2.6 (Bugs-DB 2275 K-G, APP-API-KI 14.5): Teilen-Ziel der PWA ohne aktiven Service Worker. Der Inhalt wird weder
+    gelesen noch gespiegelt (keine Adresse, keine Seite, kein Log - uvicorn schreibt nur "POST /share"); die Seite zeigt
+    "hat nicht geklappt". Kein Anmelde-Zwang: die Umleitung allein verraet nichts (/saga prueft die Sitzung selbst)."""
+    return RedirectResponse("/saga?share_failed=1", status_code=303, headers={"Cache-Control": "no-store"})
 
 
 def _guard(request):

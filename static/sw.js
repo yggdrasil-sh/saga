@@ -9,12 +9,18 @@
 //   Klartext im Cache-Speicher. Schluessel nur im Speicher (Map), Kennung je Wiedergabe zufaellig (128 Bit), nur eigene
 //   Origin; "clear" beim Abmelden. Der fetch-Handler kuemmert sich um /_m/ und (fuer die Offline-Seite) um
 //   GET-Navigationen - alles andere geht unveraendert ans Netz (in Chromium per Static Routing, ohne den Service Worker zu starten).
+// - Teilen-Ziel der installierten PWA (2.6, Bugs-DB 2275 K-G, APP-API-KI 14.5): das Manifest schickt geteilte Inhalte
+//   per POST multipart/form-data an /share. Der Service Worker liest title/text/url, legt sie EINMAL lesbar unter einem
+//   zufaelligen Schluessel (128 Bit) im Cache "saga-share" ab (hoechstens 10 min, hoechstens 5 Eintraege) und antwortet
+//   mit 303 /saga?share=<schluessel> - der Text erreicht weder eine Adresse noch das Zugriffs-Log des Servers.
+//   static/saga.js holt den Eintrag ab und loescht ihn. Ohne Service Worker antwortet der Server mit 303 share_failed.
 // - Offline-Seite (2.5, Desktop-Huelle O0): /static/offline.html liegt im Cache; schlaegt eine Seiten-Navigation
 //   (GET, eigene Origin) im Netz fehl, zeigt der Service Worker sie an Stelle der Seite. HTTP-Fehler des Servers bleiben,
 //   wie sie sind; andere Anfragen beruehrt das nicht.
 'use strict';
 var V = '__SAGA_V__';
 var OFF = 'saga-offline-', OFF_URL = '/static/offline.html';
+var SHARE = 'saga-share', SHARE_TTL = 10 * 60 * 1000, SHARE_MAX = 5;
 
 self.addEventListener('install', function (e) {
   self.skipWaiting();
@@ -23,8 +29,10 @@ self.addEventListener('install', function (e) {
   if (e.addRoutes) {
     try {
       var net = { condition: { not: { urlPattern: new URLPattern({ pathname: '/_m/*' }) } }, source: 'network' };
-      e.waitUntil(e.addRoutes([{ condition: { requestMode: 'navigate', requestMethod: 'GET' }, source: 'fetch-event' }, net])
-        .catch(function () { return e.addRoutes([net]); }).catch(function () {}));
+      // 2275: /share (Teilen-Ziel, POST) immer an den fetch-Handler - vor der Netz-Regel, sonst sieht der Server den Inhalt
+      var shr = { condition: { urlPattern: new URLPattern({ pathname: '/share' }) }, source: 'fetch-event' };
+      e.waitUntil(e.addRoutes([shr, { condition: { requestMode: 'navigate', requestMethod: 'GET' }, source: 'fetch-event' }, net])
+        .catch(function () { return e.addRoutes([shr, net]); }).catch(function () {}));
     } catch (x) { /* aeltere Fassung der Schnittstelle: dann eben ueber den fetch-Handler */ }
   }
   e.waitUntil(caches.open(OFF + V).then(function (c) { return c.add(new Request(OFF_URL, { cache: 'reload' })); }).catch(function () {}));
@@ -227,13 +235,16 @@ self.addEventListener('message', function (e) {
     M.delete(d.id);
   } else if (d.op === 'clear') {                                // Abmelden, "Neu beginnen", Geraet entfernt
     M.clear();
-    if (port) port.postMessage({ ok: true });
+    // 2275: nicht abgeholtes Geteiltes auch - waitUntil haelt den Service Worker bis zum Loeschen wach, Antwort erst danach
+    var del = caches.delete(SHARE).catch(function () {}).then(function () { if (port) port.postMessage({ ok: true }); });
+    if (e.waitUntil) e.waitUntil(del);
   }
 });
 
 self.addEventListener('fetch', function (e) {
   var u;
   try { u = new URL(e.request.url); } catch (x) { return; }
+  if (u.origin === self.location.origin && u.pathname === '/share' && e.request.method === 'POST') { e.respondWith(shareIn(e.request)); return; }
   if (u.origin !== self.location.origin || e.request.method !== 'GET') return;
   if (e.request.mode === 'navigate' && u.pathname.indexOf('/_m/') !== 0) {
     // Netz wie immer; nur wenn es gar nicht antwortet (offline, Server weg): Offline-Seite aus dem Cache
@@ -248,6 +259,38 @@ self.addEventListener('fetch', function (e) {
   if (u.pathname.indexOf('/_m/') !== 0) return;
   e.respondWith(media(e, u));
 });
+
+// --- Teilen-Ziel (2275): POST /share -> Cache (einmal, <= 10 min) -> 303 /saga?share=<schluessel> ----------------------
+function shareStr(v, max) {                          // nur Text (Dateien fallen weg), Steuerzeichen ausser \n/\t weg
+  return typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').slice(0, max) : '';
+}
+function sharePrune(c) {                            // abgelaufene und ueberzaehlige Eintraege weg (aelteste zuerst)
+  return c.keys().then(function (ks) {
+    return Promise.all(ks.map(function (k) { return c.match(k).then(function (r) { return r ? r.clone().json().then(function (d) { return { k: k, at: +d.at || 0 }; }, function () { return { k: k, at: 0 }; }) : { k: k, at: 0 }; }); }));
+  }).then(function (xs) {
+    xs.sort(function (a, b) { return b.at - a.at; });
+    var now = Date.now();
+    return Promise.all(xs.filter(function (x, i) { return i >= SHARE_MAX - 1 || now - x.at > SHARE_TTL || x.at > now + 60000; })
+      .map(function (x) { return c.delete(x.k); }));
+  });
+}
+function shareIn(req) {
+  var to = function (q) { return Response.redirect(self.location.origin + '/saga?' + q, 303); };
+  return req.formData().then(function (f) {
+    var title = shareStr(f.get('title'), 200).trim(), text = shareStr(f.get('text'), 20000).trim(), url = shareStr(f.get('url'), 2000).trim();
+    if (!/^https?:\/\/[^\s<>"]+$/i.test(url)) url = '';      // nur http(s), sonst weg (nie javascript:/data:)
+    if (!url && /^https?:\/\/[^\s<>"]{1,2000}$/i.test(text)) { url = text; text = ''; }   // Android: Adresse oft nur in text
+    if (!title && !text && !url) return to('share_failed=1');
+    var b = new Uint8Array(16); self.crypto.getRandomValues(b);
+    var key = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    return caches.open(SHARE).then(function (c) {
+      return sharePrune(c).then(function () {
+        return c.put(new Request('/_share/' + key), new Response(JSON.stringify({ title: title, text: text, url: url, at: Date.now() }),
+          { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }));
+      });
+    }).then(function () { return to('share=' + key); });
+  }).catch(function () { return to('share_failed=1'); });
+}
 
 // Kennung unbekannt (Service Worker wurde zwischendurch beendet): die Seiten fragen, die die Wiedergabe angemeldet haben
 function ask(id) {

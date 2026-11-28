@@ -5871,5 +5871,17 @@
  "Angeregt durch: geteilten Inhalt": "Источник: присланный материал",
  "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "Присланный материал содержит указания для ИИ. Они не считаются твоей просьбой.",
  "Was du teilst, liest die KI auf {where}.": "То, чем ты делишься, читает ИИ на {where}.",
- "Es wurde nichts geteilt.": "Ничего не было отправлено."
+ "Es wurde nichts geteilt.": "Ничего не было отправлено.",
+ "Geteilt: {what}": "Прислано: {what}",
+ "Was soll {name} damit tun?": "Что {name} с этим сделать?",
+ "Geteiltes weglassen": "Убрать присланное",
+ "Geteilter Inhalt": "Присланный материал",
+ "Was soll damit passieren?": "Что с этим сделать?",
+ "Im Eingang gespeichert.": "Сохранено во входящих.",
+ "Aufgabe angelegt.": "Задача создана.",
+ "Aufgaben ansehen": "Открыть задачи",
+ "Als Seite speichern": "Сохранить как страницу",
+ "Als Aufgabe speichern": "Сохранить как задачу",
+ "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.": "Поделиться не получилось – пожалуйста, поделись ещё раз.",
+ "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.": "Присланного материала больше нет – его можно открыть только один раз и не дольше 10 минут. Пожалуйста, поделись ещё раз."
 }

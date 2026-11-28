@@ -5871,5 +5871,17 @@
  "Angeregt durch: geteilten Inhalt": "Prompted by: shared content",
  "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "The shared content contains instructions for the AI. They don't count as your request.",
  "Was du teilst, liest die KI auf {where}.": "What you share is read by the AI at {where}.",
- "Es wurde nichts geteilt.": "Nothing was shared."
+ "Es wurde nichts geteilt.": "Nothing was shared.",
+ "Geteilt: {what}": "Shared: {what}",
+ "Was soll {name} damit tun?": "What should {name} do with it?",
+ "Geteiltes weglassen": "Leave out the shared content",
+ "Geteilter Inhalt": "Shared content",
+ "Was soll damit passieren?": "What should happen with it?",
+ "Im Eingang gespeichert.": "Saved to your Inbox.",
+ "Aufgabe angelegt.": "Task created.",
+ "Aufgaben ansehen": "View tasks",
+ "Als Seite speichern": "Save as page",
+ "Als Aufgabe speichern": "Save as task",
+ "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.": "Sharing didn't work – please share it again.",
+ "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.": "The shared content is no longer here – it can only be opened once and for at most 10 minutes. Please share it again."
 }

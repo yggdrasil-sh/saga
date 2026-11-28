@@ -786,7 +786,8 @@ Plänen ohne geteilten Inhalt; „Ändern“ behält die Herkunft):
 
 **Hinweis vor dem ersten Senden** – `GET /api/ai/status` → `share_notice` (am Ende, ältere Felder unverändert):
 „Was du teilst, liest die KI auf {endpoint.label}.“ in der Anrede der Person (du/Sie wie Abschnitt 11.2). Die App zeigt
-ihn im Teilen-Dialog über dem Knopf (RT-17: man sieht vor dem Senden, wohin der Text geht).
+ihn vor dem ersten Senden – im Ort „Saga“ unter der Zeile „Geteilt: …“, direkt über Feld und Knopf (Web, Android, iOS
+gleich; RT-17: man sieht vor dem Senden, wohin der Text geht).
 
 **Mitteilungen und Knöpfe** (F8, K15): Ein geteilter Auftrag verhält sich wie einer aus dem Ort „Saga“ – **keine**
 Mitteilung „braucht dich“ beim Anlegen bzw. in `wartet_ok` (die Person sieht die Plan-Karte gerade), und **nie** ein
@@ -827,7 +828,34 @@ Groß „Wartet auf dich“ (`line.waiting.text`) als Link. Keine Knöpfe im Wid
 
 ### 14.5 Web (PWA-Teilen-Ziel)
 
-Absatz folgt mit dem Web-Teil von K-G (Teilen-Ziel per POST, nie GET; geteilter Text nie in Adresse oder Zugriffslog).
+Nur für die installierte PWA (Chromium-Browser, `display-mode: standalone`); im Browser-Tab und in der Desktop-Hülle
+gibt es kein Teilen-Ziel. Ablauf:
+
+1. **Manifest** (`/manifest.webmanifest`): `"share_target": {"action": "/share", "method": "POST", "enctype":
+   "multipart/form-data", "params": {"title": "title", "text": "text", "url": "url"}}` – **nie GET**: uvicorn schreibt
+   Adressen ins Zugriffs-Log (`run.py`), ein GET-Ziel legte den geteilten Text dort und im Verlauf des Browsers ab.
+   Dateien nimmt das Ziel nicht an.
+2. **Service Worker** (`/sw.js`, in der installierten PWA von `static/common.js` registriert; Static Routing leitet
+   `/share` an den fetch-Handler): fängt `POST /share` ab, liest `title` (≤ 200), `text` (≤ 20 000), `url` (nur
+   `http(s)`, ≤ 2 000, sonst verworfen; steht nur eine Adresse in `text`, wird sie zur `url`), legt `{title, text, url,
+   at}` unter einem Zufallsschlüssel (128 Bit, 32 Hex-Zeichen) im Cache `saga-share` ab – höchstens 5 Einträge, ältere
+   als 10 Minuten fallen weg, „Abmelden“ (`op: "clear"`) leert ihn – und antwortet `303 /saga?share=<schlüssel>`.
+   Leer oder nicht lesbar → `303 /saga?share_failed=1`.
+3. **Ort „Saga“** (`static/saga.js`) holt den Eintrag **einmal** ab und löscht ihn (älter als 10 Minuten = weg →
+   „nicht mehr da“), die Adresse wird sofort zu `/saga`. Auswahl:
+   - „Als Seite speichern“ / „Als Aufgabe speichern“ → `POST /api/capture {kind: "page"|"task", title, text, url}` (Sitzung
+     + `X-Saga`, Antwort wie `POST /api/app/capture` in APP-API.md; mit `Authorization`-Kopf `401`). Geht auch ohne
+     Fähigkeit `ai` (F10): `/saga?share=…` und `/saga?share_failed=1` öffnen den Ort dann ohne KI-Teil, sonst leitet `/saga`
+     wie bisher zu „Heute“.
+   - „{Name} soll sich kümmern …“ nur mit `aishare1` (`/api/version`), `jobs`, Fähigkeit `ai_act` und erteilter
+     Einwilligung: Zeile „Geteilt: {host} ×“ über dem Feld, darunter `share_notice`; Platzhalter „Was soll {Name} damit
+     tun?“; Senden (auch ohne eigene Worte) → 14.1 mit `shared.from: "web"`. Nach einer Rückfrage geht `shared` mit
+     `choice` erneut mit; nach Plan/Rückfrage/Absage ist das Geteilte verbraucht.
+4. **Rückfall ohne Service Worker** (nicht installiert, Service Worker noch nicht aktiv): der Server beantwortet
+   `POST /share` mit `303 /saga?share_failed=1` und liest den Inhalt nicht – keine Spiegelung in Adresse, Seite oder Log;
+   die Seite meldet „Das Teilen hat nicht geklappt …“. `GET /share` gibt es nicht (`405`).
+5. **Nicht angemeldet:** `/saga?share=<schlüssel>` → `/login?next=%2Fsaga%3Fshare%3D<schlüssel>`, nach der Anmeldung
+   zurück (der Inhalt liegt weiter im Browser, solange die 10 Minuten nicht um sind).
 
 ### 14.6 Aus einer Seite und „Deine Bitte“ (2508, 2531)
 

@@ -1638,7 +1638,8 @@ wurde nach 20 Fehlschlägen abgeschaltet. Apps zeigen sie wie andere System-Mitt
 
 ## Teilen und Kurzbefehle: `POST /api/app/capture`
 
-Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`).
+Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`). (2.6: Das PWA-Teilen-Ziel im Web nimmt denselben Weg mit
+Sitzung über `POST /api/capture`, siehe APP-API-KI.md §14.5 – für Apps ohne Bedeutung.)
 
 - `{kind: "page", title?, text?, url?}` → neue Seite im „📥 Eingang“ → `{ok, kind: "page", id, url}`.
 - `{kind: "task", title?, text?, url?, due?}` → Inbox-Aufgabe (Text = Titel bzw. erste Zeile, Link angehängt) →

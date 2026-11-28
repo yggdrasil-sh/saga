@@ -5871,5 +5871,17 @@
  "Angeregt durch: geteilten Inhalt": "Sugerido por: contenido compartido",
  "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "El contenido compartido contiene instrucciones para la IA. No cuentan como tu petición.",
  "Was du teilst, liest die KI auf {where}.": "Lo que compartes lo lee la IA en {where}.",
- "Es wurde nichts geteilt.": "No se ha compartido nada."
+ "Es wurde nichts geteilt.": "No se ha compartido nada.",
+ "Geteilt: {what}": "Compartido: {what}",
+ "Was soll {name} damit tun?": "¿Qué debe hacer {name} con esto?",
+ "Geteiltes weglassen": "Quitar lo compartido",
+ "Geteilter Inhalt": "Contenido compartido",
+ "Was soll damit passieren?": "¿Qué hacemos con esto?",
+ "Im Eingang gespeichert.": "Guardado en la bandeja de entrada.",
+ "Aufgabe angelegt.": "Tarea creada.",
+ "Aufgaben ansehen": "Ver tareas",
+ "Als Seite speichern": "Guardar como página",
+ "Als Aufgabe speichern": "Guardar como tarea",
+ "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.": "No se pudo compartir; vuelve a compartirlo.",
+ "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.": "El contenido compartido ya no está: solo se puede abrir una vez y durante 10 minutos como máximo. Vuelve a compartirlo."
 }

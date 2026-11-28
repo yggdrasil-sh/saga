@@ -102,6 +102,22 @@ async def api_app_capture(request: Request):
     uid = _app_uid(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return await _capture(request, uid)
+
+
+@router.post("/api/capture")
+async def api_web_capture(request: Request):
+    """2.6 (Bugs-DB 2275 K-G): dasselbe fuer das PWA-Teilen-Ziel (static/saga.js, Auswahl nach dem Teilen) - mit Sitzung +
+    X-Saga, nie mit Schluessel (Apps nehmen /api/app/capture). Auch ohne KI (F10). APP-API-KI 14.5."""
+    if request.headers.get("authorization"):
+        return _bad("unauthorized", 401)
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    return await _capture(request, uid)
+
+
+async def _capture(request, uid):
     b = await _body(request) or {}
     kind = b.get("kind") if b.get("kind") in ("page", "task") else "page"
     if b.get("src") is not None:                  # Neue Aufgabe mit Ziel (docs/APP-API.md "Aufgabenquellen")

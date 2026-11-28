@@ -8,7 +8,12 @@
    web-saga (W2, UX §2/R3/R4, K1/K10): Reiter "Gespraech / Auftraege"; im Gespraech gibt der Umschalter "Als Auftrag" die
    Bitte als Auftrag (POST /api/ai/jobs mit thread: true). Plan-Karte, Rueckfrage, Absage und Rueckmeldung sind DIESELBEN
    Bausteine wie im Ort "Auftraege" (static/ai-jobs.js, HKJobs) - es gibt nur ein Freigabe-Muster. Zuege mit job_id zeigt
-   der Verlauf im jeweils aktuellen Stand (Plan-Karte, Rueckmeldung mit Rueckgaengig oder Zustand + "Ansehen"). */
+   der Verlauf im jeweils aktuellen Stand (Plan-Karte, Rueckmeldung mit Rueckgaengig oder Zustand + "Ansehen").
+   kg-web (2.6, Bugs-DB 2275 K-G, APP-API-KI 14.5): Teilen-Ziel der PWA. static/sw.js legt Geteiltes einmal lesbar im Cache
+   "saga-share" ab und leitet nach /saga?share=<schluessel>; hier die Auswahl "Als Seite speichern" / "Als Aufgabe
+   speichern" (POST /api/capture, auch ohne KI) / "{name} soll sich kuemmern …" (nur mit aishare1, Auftraegen, ai_act und
+   Einwilligung) -> Zeile "Geteilt: host ×" ueber dem Feld (wie 2508), Auftrag mit source "share" + shared (from "web").
+   /saga?share_failed=1 (Server-Rueckfall ohne Service Worker): nur ein Hinweis - der Inhalt kam nie hier an. */
 (function () {
   'use strict';
   var HK = window.HK;
@@ -263,7 +268,10 @@
     if (tn.role === 'me') {
       var me = el('div', 'sg-me' + (tn.zug === 'job' ? ' sg-me-job' : ''));
       if (tn.zug === 'job') me.appendChild(el('span', 'sg-me-tag', T('Auftrag')));
-      me.appendChild(el('p', 'sg-me-t', tn.text)); return me;
+      me.appendChild(el('p', 'sg-me-t', tn.text));
+      var shf = tn.fields && tn.fields.shared;            // 2275: Auftrag zu geteiltem Inhalt (nur Host, nie der Text)
+      if (shf) me.appendChild(el('p', 'sg-me-shared', shareLabel(shf.host, shf.title)));
+      return me;
     }
     if (jobsOn() && (tn.zug === 'plan' && tn.job_id || tn.zug === 'ask' || tn.zug === 'refuse')) return jobTurn(tn);
     var c = el('article', 'sg-card sg-ai');
@@ -284,7 +292,10 @@
     feed.appendChild(node); return node;
   };
 
-  var G = { run: null, turns: [], mode: 'ask', tab: 'talk', jobs: null, note: null };
+  var G = { run: null, turns: [], mode: 'ask', tab: 'talk', jobs: null, note: null, share: null };
+  function shareLabel(host, title) {                 // "Geteilt: schule.example" (Titel nur, wenn es keinen Host gibt)
+    return host ? T('Geteilt: {what}', { what: host }) : title ? T('Geteilt: {what}', { what: '„' + title + '“' }) : T('Geteilt');
+  }
 
   // --- Auftraege im Gespraech (web-saga, UX R3/R4; Bausteine aus static/ai-jobs.js) ---------------------------------
   function jobsOn() { return !!(S.st && S.st.jobs && window.HKJobs); }
@@ -337,8 +348,8 @@
         c.appendChild(el('p', 'kj-lead', T('Diesen Auftrag gibt es nicht mehr.'))); w.appendChild(c); w.dataset.state = 'weg'; }
     });
   }
-  function askNode(d, q) {
-    return HKJobs.askCard(d, function (ch) { giveJob(q, { choice: ch }, ch); });
+  function askNode(d, q, sh) {                       // sh: geteilter Inhalt geht mit der Antwort erneut mit (14.1)
+    return HKJobs.askCard(d, function (ch) { giveJob(q, sh ? { choice: ch, source: 'share', shared: sh } : { choice: ch }, ch); });
   }
   function refuseNode(d, q) {
     return HKJobs.refuseCard(d, function (alt) { giveJob(q || ' ', { recipe: alt.recipe, fields: alt.fields }, alt.label || T('Als Aufgabe anlegen')); },
@@ -355,24 +366,29 @@
   }
   function giveJob(text, extra, said) {
     text = String(text || '');
-    if ((!text.trim() && !extra) || G.run) return;
+    var sh = !extra && G.share ? G.share : null;       // 2275: Geteiltes geht nur mit einem neuen Auftrag (nie mit recipe)
+    if ((!text.trim() && !extra && !sh) || G.run) return;
     var feed = $('sg-feed'), e = $('sg-empty'); if (e) e.remove(); feed.hidden = false;
-    feed.appendChild(turnNode({ role: 'me', zug: 'job', text: said || text }));
+    var shBody = sh ? sharedBody(sh) : (extra && extra.shared) || null;
+    feed.appendChild(turnNode({ role: 'me', zug: 'job', text: said || text.trim() || T('Kümmere dich darum.'),
+                                fields: shBody ? { shared: { host: hostOf(shBody.url), title: shBody.title } } : null }));
     var wait = el('article', 'kj-card kj-wait sg-live'); wait.appendChild(HKJobs.head(''));
     var dots = el('p', 'kj-thinking', T('{name} denkt nach …', { name: P().name })); wait.appendChild(dots);
     feed.appendChild(wait);
     var ta = $('sg-ta'); if (!extra) ta.value = '';
     busy(true);
-    var body = Object.assign({ text: text, thread: true }, extra || {}), out = null;
+    var body = Object.assign({ text: sh ? text.trim() : text, thread: true }, extra || {}), out = null;
     if (G.note && !body.recipe && !body.context) body.context = { note: G.note.id };   // 2508: Auftrag zu einer offenen Seite
+    if (sh) { body.source = 'share'; body.shared = shBody; }
     G.run = HKJobs.post(body, function (ev, d) {
       if (ev === 'status') { if (d && d.text) dots.textContent = d.text; return; }
       var node;
+      if (sh && (ev === 'plan' || ev === 'ask' || ev === 'refuse')) { G.share = null; setMode(G.mode); }   // einmal verbraucht (Zeile + Platzhalter)
       if (ev === 'plan') {
         node = jobWrap(d.job); node.dataset.state = 'wartet_ok'; node.appendChild(planCardFor(d, node));
         out = T('Plan bereit – wartet auf dein OK');
         if (G.jobs) G.jobs.refresh();
-      } else if (ev === 'ask') node = askNode(d, text);
+      } else if (ev === 'ask') node = askNode(d, text, shBody);
       else if (ev === 'refuse') node = refuseNode(d, text);
       else {
         node = el('div', 'kj-card'); node.appendChild(HKJobs.head(''));
@@ -394,9 +410,11 @@
     var b = $('sg-mode'), ta = $('sg-ta'), job = G.mode === 'job';
     if (b) b.setAttribute('aria-pressed', job ? 'true' : 'false');
     $('sg-send').textContent = job ? T('Auftrag geben') : T('Senden');
-    ta.placeholder = job ? T('Sag {name}, was du brauchst …', { name: P().name }) : T('Schreib {name} …', { name: P().name });
+    ta.placeholder = job ? (G.share ? T('Was soll {name} damit tun?', { name: P().name }) : T('Sag {name}, was du brauchst …', { name: P().name }))
+      : T('Schreib {name} …', { name: P().name });
     ta.setAttribute('aria-label', job ? T('Auftrag an {name}', { name: P().name }) : T('Nachricht an {name}', { name: P().name }));
     noteLine();
+    shareLine();
   }
   // 2508: aus dem KI-Bereich einer Seite ("{name} soll sich kümmern …" -> /saga?note=<id>): Auftraege im Gespraech gehen mit
   // context.note an den Server (der prueft das Leserecht). Zeile ueber dem Eingabefeld, mit × wieder weg.
@@ -412,6 +430,117 @@
     ln.appendChild(x);
   }
   var NOTE_Q = /[?&]note=(\d{1,18})\b/.exec(location.search);      // vor dem ersten replaceState merken (auch ueber das Kennenlernen)
+  // 2275: Teilen-Ziel - Schluessel des Service Workers bzw. Rueckfall des Servers (vor dem ersten replaceState merken)
+  var SHARE_Q = /[?&]share=([0-9a-f]{32})(?:&|$)/.exec(location.search) || (/[?&]share_failed=1(?:&|$)/.test(location.search) ? 'failed' : null);
+  var SHARE_TTL = 10 * 60 * 1000;
+  function hostOf(url) {                             // wie der Server (ai_plan.share_host, nur Anzeige): klein, ohne Port und
+    var h;                                           // Punkte am Rand, "www." nur weg, wenn danach noch ein Punkt kommt
+    try { var u = new URL(url); if (!/^https?:$/.test(u.protocol)) return ''; h = u.hostname; } catch (e) { return ''; }
+    h = h.replace(/^\[|\]$/g, '').replace(/^\.+|\.+$/g, '').toLowerCase();
+    if (h.indexOf('www.') === 0 && (h.match(/\./g) || []).length >= 2) h = h.slice(4);
+    return h.slice(0, 253);
+  }
+  S.hostOf = hostOf;                                 // fuer den Test (Vergleich mit dem Server)
+  function sharedBody(sh) {                          // POST /api/ai/jobs shared (14.1) - leere Felder weglassen
+    var b = { from: 'web' };
+    if (sh.text) b.text = sh.text;
+    if (sh.url) b.url = sh.url;
+    if (sh.title) b.title = sh.title;
+    return b;
+  }
+  // Zeile "Geteilt: host ×" ueber dem Feld (nur bei "Als Auftrag"), darunter share_notice (RT-17: vor dem Senden sichtbar)
+  function shareLine() {
+    var f = $('sg-ask'), ln = $('sg-shared');
+    if (!f) return;
+    if (!G.share || G.mode !== 'job') { if (ln) ln.hidden = true; return; }
+    if (!ln) { ln = el('div', 'sg-shared'); ln.id = 'sg-shared'; f.insertBefore(ln, $('sg-ta')); }
+    ln.textContent = ''; ln.hidden = false;
+    var row = el('p', 'sg-note');
+    row.appendChild(el('span', 'sg-note-t', shareLabel(G.share.host, G.share.title)));
+    var x = el('button', 'icon-btn sg-note-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Geteiltes weglassen'));
+    x.addEventListener('click', function () { G.share = null; setMode(G.mode); try { $('sg-ta').focus(); } catch (e) { /* egal */ } });
+    row.appendChild(x); ln.appendChild(row);
+    if (S.st && S.st.share_notice) ln.appendChild(el('p', 'sg-shared-n', S.st.share_notice));
+  }
+  function shareTake(key) {                          // einmal lesbar: holen und sofort loeschen; aelter als 10 min = weg
+    if (!window.caches) return Promise.resolve(null);
+    return caches.open('saga-share').then(function (c) {
+      var k = '/_share/' + key;
+      return c.match(k).then(function (r) {
+        return c.delete(k).then(function () { return r ? r.json() : null; });
+      });
+    }).then(function (d) {
+      var now = Date.now();
+      if (!d || typeof d !== 'object' || !(+d.at) || now - d.at > SHARE_TTL || d.at > now + 60000) return null;
+      var str = function (v, n) { return typeof v === 'string' ? v.slice(0, n) : ''; };
+      var url = str(d.url, 2000); if (!/^https?:\/\/[^\s<>"]+$/i.test(url)) url = '';
+      var sh = { title: str(d.title, 200).trim(), text: str(d.text, 20000).trim(), url: url };
+      sh.host = hostOf(sh.url);
+      return sh.title || sh.text || sh.url ? sh : null;
+    }).catch(function () { return null; });
+  }
+  function canJobShare(feat) {                       // F10: "kuemmern" nur mit aishare1, Auftraegen, ai_act und Einwilligung
+    return !!(feat && jobsOn() && consentOk() && S.st.caps && S.st.caps.indexOf('ai_act') >= 0);
+  }
+  function shareCard(sh, err, feat) {
+    var old = $('sg-share'); if (old) old.remove();
+    var c = el('section', 'sg-card sg-share'); c.id = 'sg-share'; c.setAttribute('aria-label', T('Geteilter Inhalt'));
+    var talk = $('sg-talk'); talk.insertBefore(c, talk.firstChild); talk.hidden = false;
+    function close() { c.remove(); try { $('sg-ta').focus(); } catch (e) { /* egal */ } }
+    if (err) {
+      var p = el('p', 'sg-err', err); p.setAttribute('role', 'alert'); c.appendChild(p);
+      var bx = el('div', 'sg-share-acts'), cl = el('button', 'btn btn-quiet sg-share-drop', T('Schließen')); cl.type = 'button';
+      cl.addEventListener('click', close); bx.appendChild(cl); c.appendChild(bx);
+      return c;
+    }
+    c.appendChild(el('h2', 'sg-share-h', T('Was soll damit passieren?')));
+    var pv = el('div', 'sg-share-prev');
+    if (sh.title) pv.appendChild(el('p', 'sg-share-ti', sh.title));
+    if (sh.host) pv.appendChild(el('p', 'sg-share-host', sh.host));
+    if (sh.text) pv.appendChild(el('p', 'sg-share-tx', sh.text.slice(0, 400)));
+    c.appendChild(pv);
+    var acts = el('div', 'sg-share-acts'), msg = el('p', 'sg-err'); msg.setAttribute('role', 'alert'); msg.hidden = true;
+    function save(kind, b) {
+      [].forEach.call(acts.querySelectorAll('button'), function (x) { x.disabled = true; });
+      api('POST', '/api/capture', { kind: kind, title: sh.title, text: sh.text, url: sh.url }).then(function (r) {
+        acts.remove(); msg.remove();
+        var d = el('p', 'sg-share-done'); d.setAttribute('role', 'status'); d.tabIndex = -1;
+        d.appendChild(document.createTextNode((kind === 'page' ? T('Im Eingang gespeichert.') : T('Aufgabe angelegt.')) + ' '));
+        var a = el('a', 'sg-share-open', kind === 'page' ? T('Öffnen') : T('Aufgaben ansehen'));
+        a.href = kind === 'page' ? '/notes#' + (+r.id) : '/notes?v=tasks'; d.appendChild(a);
+        c.appendChild(d); try { d.focus(); } catch (e) { /* egal */ }
+      }).catch(function (e) {
+        [].forEach.call(acts.querySelectorAll('button'), function (x) { x.disabled = false; });
+        msg.textContent = e.message; msg.hidden = false; if (b) b.focus();
+      });
+    }
+    function btn(label, cls, fn) {
+      var b = el('button', 'btn ' + cls, label); b.type = 'button';
+      b.addEventListener('click', function () { fn(b); }); acts.appendChild(b); return b;
+    }
+    btn(T('Als Seite speichern'), 'sg-share-page', function (b) { save('page', b); });
+    btn(T('Als Aufgabe speichern'), 'sg-share-task', function (b) { save('task', b); });
+    if (canJobShare(feat)) btn(T('{name} soll sich kümmern …', { name: P().name }), 'sg-share-job', function () {
+      G.share = sh; c.remove();
+      tab('talk', false); setMode('job');
+      var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+    });
+    btn(T('Verwerfen'), 'btn-quiet linkbtn sg-share-drop', close);
+    c.appendChild(acts); c.appendChild(msg);
+    return c;
+  }
+  function shareFromUrl() {
+    var m = SHARE_Q; SHARE_Q = null;
+    if (!m) return;
+    try { history.replaceState(null, '', '/saga'); } catch (e) { /* egal */ }
+    if (m === 'failed') { shareCard(null, T('Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.')); return; }
+    var feat = fetch('/api/version', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (v) { return (v.features || []).indexOf('aishare1') >= 0; }).catch(function () { return false; });
+    Promise.all([shareTake(m[1]), feat]).then(function (x) {
+      if (!x[0]) shareCard(null, T('Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.'));
+      else shareCard(x[0], null, x[1]);
+    });
+  }
   // 2.6 (2270 K-C): /saga?tab=jobs&job=<id> (Mitteilung, Glocke, saga://job/<id>) oeffnet das Detail des Auftrags
   var JOB_Q = /[?&]tab=jobs\b/.test(location.search) && /[?&]job=(\d{1,18})(?:&|$)/.exec(location.search);
   function jobFromUrl() {
@@ -427,7 +556,7 @@
       var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
     }).catch(function () { HK.toast(T('Diese Seite kannst du nicht öffnen.')); });
   }
-  function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }
+  function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }   // mit G.share auch ohne eigene Worte
   function openJob(id) { tab('jobs', false); if (G.jobs && id != null) G.jobs.open(id, true); }
   S.openJob = function (id) { if (onPage && jobsOn()) openJob(id); };   // Glocke auf derselben Seite (static/live.js, 2270)
   function tab(k, focusTab) {
@@ -607,7 +736,11 @@
     $('sg-title').textContent = kiName();
     bar();
     var slot = $('sg-intro'), form = $('sg-ask');
-    if (!st) { slot.hidden = false; slot.textContent = ''; slot.appendChild(el('p', 'sg-err', T('Der KI-Assistent ist für dich nicht eingeschaltet.'))); form.hidden = true; return; }
+    if (!st) {                                         // 2275: zum Teilen auch ohne KI hier (nur Seite / Aufgabe)
+      slot.hidden = false; slot.textContent = ''; form.hidden = true; $('sg-title').textContent = T('Saga');
+      slot.appendChild(el('p', SHARE_Q ? 'hk-hint' : 'sg-err', T('Der KI-Assistent ist für dich nicht eingeschaltet.')));
+      return;
+    }
     $('sg-mode').hidden = !jobsOn(); setMode(G.mode);
     if (!consentOk()) {                                // vor der Einwilligung: nur die Karte, keine Eingabe (nichts ans Modell)
       form.hidden = true; $('sg-feed').hidden = true; $('sg-keep').hidden = true; $('sg-tabs').hidden = true; tab('talk', false);
@@ -644,7 +777,7 @@
       if (!consentOk() || $('sg-ask').hidden) return;
       api('GET', '/api/ai/thread').then(keepLine).catch(function () { /* naechstes Laden */ });
     });
-    S.load().then(page).catch(function (e) { HK.toast(e.message); });
+    S.load().then(page).catch(function (e) { HK.toast(e.message); }).then(shareFromUrl);
   }
 
   // --- Einstellungen > Saga (+ "Meine Daten", M7) -------------------------------------------------------------------

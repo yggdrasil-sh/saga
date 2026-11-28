@@ -326,6 +326,11 @@ def manifest():
             {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
             {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"},
         ],
+        # 2.6 (Bugs-DB 2275 K-G): Teilen-Ziel der installierten PWA - immer POST (ein GET schriebe den geteilten Text in
+        # Adresse und Zugriffs-Log). static/sw.js faengt POST /share ab; ohne Service Worker antwortet saga/ai_saga.py mit
+        # 303 /saga?share_failed=1 (docs/APP-API-KI.md 14.5).
+        "share_target": {"action": "/share", "method": "POST", "enctype": "multipart/form-data",
+                         "params": {"title": "title", "text": "text", "url": "url"}},
     }, media_type="application/manifest+json")
 
 # --- Bereiche (Reihenfolge wie bisher: zuerst registrierte Pfade gewinnen) ---

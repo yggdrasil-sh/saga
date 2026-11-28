@@ -5871,5 +5871,17 @@
  "Angeregt durch: geteilten Inhalt": "Angeregt durch: geteilten Inhalt",
  "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.",
  "Was du teilst, liest die KI auf {where}.": "Was du teilst, liest die KI auf {where}.",
- "Es wurde nichts geteilt.": "Es wurde nichts geteilt."
+ "Es wurde nichts geteilt.": "Es wurde nichts geteilt.",
+ "Geteilt: {what}": "Geteilt: {what}",
+ "Was soll {name} damit tun?": "Was soll {name} damit tun?",
+ "Geteiltes weglassen": "Geteiltes weglassen",
+ "Geteilter Inhalt": "Geteilter Inhalt",
+ "Was soll damit passieren?": "Was soll damit passieren?",
+ "Im Eingang gespeichert.": "Im Eingang gespeichert.",
+ "Aufgabe angelegt.": "Aufgabe angelegt.",
+ "Aufgaben ansehen": "Aufgaben ansehen",
+ "Als Seite speichern": "Als Seite speichern",
+ "Als Aufgabe speichern": "Als Aufgabe speichern",
+ "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.": "Das Teilen hat nicht geklappt – bitte teile den Inhalt noch einmal.",
+ "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal.": "Der geteilte Inhalt ist nicht mehr da – er lässt sich nur einmal und höchstens 10 Minuten lang öffnen. Bitte teile ihn noch einmal."
 }
