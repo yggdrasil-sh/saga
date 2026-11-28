@@ -88,7 +88,7 @@ async function shot(p, name) {
   if (!SHOTS) return;
   fs.mkdirSync(SHOTS, { recursive: true });
   await sleep(400);
-  await p.screenshot({ path: path.join(SHOTS, PREFIX + '-' + name + '.png') });
+  await p.screenshot({ path: path.join(SHOTS, PREFIX + '-' + name + (/firefox/.test(TAG) ? '-firefox' : '') + '.png') });   // Firefox ueberschreibt Chromium nicht
 }
 
 // Abfangen (Teil A): Status mit stt aus den Vektoren, Version ohne/mit aistt1, prefs.dictation, Transkription, Auftrag (SSE)
