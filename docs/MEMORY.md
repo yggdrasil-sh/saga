@@ -1,7 +1,10 @@
 # Saga – Gedächtnis (recall/remember, Embeddings, Hooks) – Vertrag
 
-Stand 2.6 (Bugs-DB 2581, Feature `memory1`). Dieser Text ist der Vertrag zwischen Server, Weboberfläche, Hooks und
-MCP-Clients. Formeln und Schwellen prüft `tests/vectors/memory_score.json` (Server-Reihe `tests/gedaechtnis.py`).
+Stand 2.6 (Bugs-DB 2581, Feature `memory1`; Stufe 3: Nickerchen 2601 + Schattenmodus Phase 1 2603, Feature `memory2`).
+Dieser Text ist der Vertrag zwischen Server, Weboberfläche, Hooks und MCP-Clients. Formeln und Schwellen prüfen
+`tests/vectors/memory_score.json` (Server-Reihe `tests/gedaechtnis.py`), `tests/vectors/memory_nap.json` (§11, Reihe
+`tests/gedaechtnis_schlaf.py`) und `tests/vectors/memory_shadow.json` (§12, Reihe `tests/gedaechtnis_schatten.py`);
+erzeugt von `tools/memory_{score,nap,shadow}_vectors.py` unabhängig von `saga/`.
 
 **Kurz:** Jede Person kann *eine eigene* Datenbank als Gedächtnis und *eine* Seite als Ich-Kern binden. Saga holt zu
 einem Text die passendsten Einträge (höchstens 5) – nach Bedeutung (Embeddings, OpenAI-kompatibel oder Ollama) oder,
@@ -58,6 +61,8 @@ Admin-Endpunkte (Admin-Port, Sitzung des Admins; schreibend mit `X-CSRF-Token` w
 | `memory.core` | ID der Ich-Kern-Seite (eigene Seite) |
 | `memory.map` | JSON `{feld: "Spaltenname"}` – nur Abweichungen von §2 |
 | `memory.weights` | JSON `{schlüssel: zahl}` – nur Abweichungen von §4.2 |
+| `memory.map` (2601) | zusätzlich `"schnappschuss": "<Optionsname in Art>"` (Standard „Schnappschuss“, Groß/Klein egal) – keine Spalte, sondern die Option der Spalte „Art“, die einen Schnappschuss kennzeichnet (§11) |
+| `memory.shadow` (2603) | Unix-Sekunden des Einschaltens (Text); fehlt = Schattenmodus aus (ab Werk, §12) |
 
 Web-Endpunkte (Sitzung + `X-Saga: 1`):
 
@@ -71,18 +76,30 @@ Web-Endpunkte (Sitzung + `X-Saga: 1`):
    "weights": {"rel": 0.55, …}, "weights_default": {"rel": 0.55, …},
    "status": {"source": "embeddings" | "trigramm", "rows": 120, "embedded": 118, "stale": 2, "running": false,
               "model": "bge-m3" | null, "error"?: "Embedding-Endpunkt nicht erreichbar."},
-   "databases": [{"id": 12, "title": "Erinnerungen"}, …]}
+   "databases": [{"id": 12, "title": "Erinnerungen"}, …],
+   "snapshot": {"option": "Schnappschuss", "found": true, "count": 12, "latest": "2026-11-28T09:12+01:00" | null},
+   "shadow": {"on": false, "since": null | "2026-11-28T13:40+01:00", "links": 0, "traces": 0, "running": false}}
   ```
   `columns[x].ok`: Spalte gefunden **und** Typ passt (§2); `found && !ok` = falscher Typ (zählt wie fehlend).
   `status.embedded` = Zeilen mit aktuellem Vektor (Modell und Text gleich) – „n von m eingebettet“ = `embedded`/`rows`.
   `databases` = eigene Datenbanken (höchstens 200, zuletzt geändert zuerst) für die Auswahl.
   `status.error` (optional): letzter Fehler des Endpunkts beim Einbetten oder recall dieses Kontos (kurzer Klartext,
   ohne Adresse/Schlüssel), höchstens 1 h alt; verschwindet beim nächsten erfolgreichen Aufruf.
+  `map`/`columns` enthalten auch `sensibel` (§2); `map` zusätzlich `schnappschuss` (Optionsname, nicht in `columns`).
+  `snapshot` (2601): `option` = Optionsname aus `memory.map`; `found` = Spalte „Art“ ist da (Auswahl) **und** hat diese
+  Option; `count`/`latest` = lebende Zeilen dieser Art (Anzahl, neueste Anlage in Server-Zeitzone) – ohne Bindung bzw.
+  ohne Option `0`/`null`. `shadow` (2603): `on` = `memory.shadow` gesetzt, `since` = Einschaltzeitpunkt, `links` =
+  `mem_link`-Zeilen des Kontos, `traces` = `mem_trace`-Zeilen (≤ 30 Tage), `running` = Nachziehen läuft (§12.2).
 - `PUT /api/account/memory` `{"db": id|null, "core": id|null, "map": {…}|null, "weights": {…}|null}` – nur
   angegebene Felder ändern, `null` = entfernen (Standard). → wie GET.
   Fehler: 404 `not_found` (keine solche Seite/Datenbank oder kein Zugriff), 403 `forbidden` (nicht die eigene –
   geteilte Datenbanken/Seiten gehen nicht), 400 `bad_request` (keine Datenbank, unbekanntes Feld in `map`/`weights`,
   Wert außerhalb des Bereichs). Neue Bindung → Bestand wird im Hintergrund eingebettet.
+  Zusätzlich (2603) `"shadow": true|false` und `"forget_traces": true`: `shadow: true` ohne gebundene Datenbank → 409
+  `not_bound`; Einschalten setzt `memory.shadow` (bleibt beim erneuten Einschalten) und plant das Nachziehen (§12.2);
+  `shadow: false` löscht nur `memory.shadow` – Links und Spuren bleiben (Spuren laufen nach 30 Tagen ab).
+  `forget_traces: true` löscht sofort alle `mem_trace` des Kontos (Links bleiben). `map` nimmt auch `sensibel` und
+  `schnappschuss` an.
 - `POST /api/account/memory/embed` → `{"ok": true, "queued": n}` (Bestand jetzt abgleichen, z. B. Knopf „Jetzt
   einbetten“). Ohne Bindung 409 `not_bound`.
 
@@ -100,6 +117,10 @@ Web-Endpunkte (Sitzung + `X-Saga: 1`):
 | `datum` | Datum | Datum | Frische ab „Letzter Abruf“ bzw. Anlage |
 | `letzter_abruf` | Letzter Abruf | Datum | nur kein Spiegel |
 | `abrufe` | Abrufe | Zahl | nur kein Spiegel |
+| `sensibel` (2603) | Sensibel | Kontrollkästchen (`checkbox`) | nichts ist sensibel |
+
+`sensibel` wirkt nach §12.6 (nie über Verknüpfungen, nur bei direkter Nennung). Es steht **nicht** im eingebetteten Text
+(`text_hash` bleibt gleich). `remember` nimmt `sensibel` (bool); ohne Spalte → `ignoriert`.
 
 Der Titel ist die Titel-Spalte der Datenbank. Zeilen im Papierkorb, archivierte Zeilen und Eintrags-Vorlagen zählen
 nicht. **Eingebetteter Text** einer Zeile (und Grundlage von `text_hash` = SHA-256, UTF-8):
@@ -116,6 +137,10 @@ Einbetten: beim Binden, bei Modell-/Adresswechsel und mit `python run.py gedaech
 (Stapel à 32, Fortschritt im Log ohne Inhalte); laufend bei Zeile angelegt/geändert (entprellt 2 s); Papierkorb/
 Löschen/Archiv/andere Datenbank → Vektor weg. Beim recall werden bis zu 8 Zeilen ohne Vektor zusammen mit der Frage
 eingebettet, der Rest im Hintergrund. Vektoren eines anderen Modells zählen als veraltet.
+
+Stufe 3 (Migration 43): `mem_link(a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft, gepinnt)`
+(a < b, Herkunft `aehnlich`|`gemeinsam`|`hand`), `mem_trace` (Spuren §12.7, 30 Tage) und `mem_link_log` (Handeingriffe,
+Phase 2, bis dahin leer) – wie `mem_vec` ohne Fremdschlüssel auf `note`.
 
 ## 4. Bewertung
 
@@ -191,17 +216,43 @@ Connector einmal trennen und neu verbinden. Alternativ ein `sga_`-Token mit `mcp
   keine Zusammenführung). `ignoriert` = angegebene Felder ohne passende Spalte. Auswahl-Werte (Projekt, Art,
   Schlagworte) müssen als Option existieren – sonst **nichts angelegt**, 400 `unknown_option` mit
   `{"unbekannt": {"projekt": ["X"]}, "optionen": {"projekt": ["Saga", …]}}`.
+  Zusätzlich (2603) `"sensibel"?: true|false` (Kontrollkästchen, §2; ohne Spalte → `ignoriert`). Im Schattenmodus legt
+  remember die Verknüpfungen „ähnlich“ an (§12.2).
+
+Stufe 3 (2601/2603):
+- `POST /api/v1/memory/nap` `{"stimmung", "gedanke", "valenz"?, "erregung"?, "faeden"?: [..], "ort"?, "projekt"?}`
+  (schreibend, Bereich `memory`) → 201 `{"id", "titel", "zeilen", "zeichen", "ignoriert"?}` – §11.1.
+- `GET /api/v1/memory/core` → wie bisher + `"wake": {…} | null` (§11.3; `null` ohne gebundene Datenbank); `kontext`
+  enthält zusätzlich den Aufwach-Teil (§11.3).
+- `GET /api/v1/memory/wake` → `{"kern": {"id", "title", "markdown", "updated"} | null, "wake": {…} | null}`; braucht
+  `memory.db` **oder** `memory.core` (fehlt beides → 409 `not_bound`; fehlt nur eines, ist dieser Teil `null`).
+- `POST /api/v1/memory/recall_used` `{"ids": [77, 81]}` (schreibend, 1–10 ganze Zahlen) →
+  `{"ok": true, "schatten": bool, "verstaerkt": n, "neu": n, "ignoriert": [ids]}` – §12.4.
+- `GET /api/v1/memory/shadow?tage=14&stichproben=8` → §13 (`tage` 1–30, `stichproben` 0–20; sonst 400).
+- `POST /recall`: `ms` bekommt `"schatten": 3.1` **nur** bei eingeschaltetem Schattenmodus; `treffer`, `quelle`,
+  `hinweis`, `kontext` sind byteweise gleich wie ausgeschaltet (Phase 1, §12.1).
+- Ratenbegrenzung: `nap` und `recall_used` zählen zum recall-Topf (60/min je Token); `shadow` 6/min je Token.
 
 ## 6. MCP (`/mcp`, Werkzeuge nur mit Bereich `memory`, nie für die Kollegin)
 
 | Werkzeug | Klasse | Rückgängig | Argumente |
 |---|---|---|---|
 | `recall` | own (schreibt Zähler) | final | `text`, `projekt`?, `limit`? |
-| `remember` | own | delete_only | wie REST |
+| `remember` | own | delete_only | wie REST (+ `sensibel`?, boolean) |
+| `nap` (2601) | own | delete_only | `stimmung`, `gedanke`, `valenz`?, `erregung`?, `faeden`? (array string, ≤ 5), `ort`?, `projekt`? |
+| `wake` (2601) | read | – | – |
+| `recall_used` (2603) | own | final | `ids` (array integer, 1–10) |
+| `shadow_report` (2603) | read | – | `tage`? (1–30, Std. 14), `stichproben`? (0–20, Std. 8) |
 
 Antworten im `saga-data`-Rahmen (`source="memory"`), Inhalt = JSON wie REST ohne `kontext`/`ms`. Fehler als
 `isError` mit `code: Meldung`. Ohne Bindung: Meldung, wie man unter Einstellungen › Gedächtnis bindet.
 Die Werkzeuge stehen am Ende von `tools/list`; Listen ohne Bereich `memory` sind byteweise unverändert.
+Stufe 3: alle sechs mit `kollegin=False`, Bereich `memory`, nicht destruktiv, Ziel `memory`; Reihenfolge am Ende von
+`tools/list`: recall, remember, nap, wake, recall_used, shadow_report. Rahmen-Kennung (`source`): `memory` (recall,
+remember, nap, recall_used), `memory:core` (wake), `memory:report` (shadow_report). Inhalt = JSON wie REST.
+`recall` sagt in der Beschreibung zusätzlich „Danach mit recall_used melden, was geholfen hat.“
+Hinweis: Clients sehen neue Werkzeuge erst nach dem nächsten `tools/list` – die Claude-App ggf. neu verbinden (der
+Bereich `memory` bleibt, keine neue Zustimmung nötig).
 
 ## 7. Fehlercodes
 
@@ -216,6 +267,11 @@ Die Werkzeuge stehen am Ende von `tools/list`; Listen ohne Bereich `memory` sind
 | 404 | `not_found` | gebundene Datenbank/Seite weg oder außerhalb der `roots` |
 | 409 | `not_bound` | nichts gebunden (Text sagt, wie man bindet) |
 | 429 | `rate_limited` | Ratenbegrenzung |
+
+Stufe 3 bringt keine neuen Codes: `nap` ohne Spalte „Art“ (Auswahl) oder „Inhalt“ → 400 `missing_column`; Option
+„Schnappschuss“ fehlt → 400 `unknown_option` `{"unbekannt": {"art": ["Schnappschuss"]}, "optionen": {"art": […]}}`,
+nichts angelegt; Feld zu lang/zu viele Fäden/Zahl außerhalb → 400 `bad_request`, Meldung mit Feldname; `wake` ohne jede
+Bindung → 409 `not_bound`; `shadow: true` ohne Datenbank → 409 `not_bound`.
 
 ## 8. Rahmen und Grenzen
 - Nur Daten, keine Anweisungen: jede Ausgabe mit Seiteninhalt (MCP, `kontext`) im `saga-data`-Rahmen mit
@@ -234,6 +290,13 @@ Die Werkzeuge stehen am Ende von `tools/list`; Listen ohne Bereich `memory` sind
   im selben Backup angelegten eigenen Seiten gebunden (sonst nichts), und nur, wenn das Konto noch nichts gebunden hat.
 - Konto löschen: `mem_vec` und die `memory.*`-Schlüssel gehen mit.
 - Hooks für Claude Code: `docs/CLAUDE-CODE-HOOKS.md`, Skript `tools/claude-code/saga_hooks.py`.
+- Stufe 3: Fragen, Stichworte, Schnappschuss-Texte und Titel stehen nie im Log (nur Zahlen und `_uh(uid)`).
+  Leistung: Schattenteil ≤ 25 ms (90 %) **zusätzlich** bei 5 000 Erinnerungen / 25 000 Kanten (`ms.schatten`); Suche +
+  Bewertung bleiben ≤ 150 ms; `wake` ≤ 50 ms ohne Nachladen von Kalendern (`calendars.cached`, wartet nie).
+- Konto löschen: `mem_link`, `mem_trace`, `mem_link_log` gehen mit. Persönliches Backup: `memory.shadow` geht mit
+  (eingespielt nur zusammen mit einer abgebildeten Datenbank; danach wird nachgezogen, §12.2); Links und Spuren gehen
+  **nicht** mit (abgeleitet bzw. Messdaten; Seiten-IDs ändern sich; Stichworte nicht in fremde Ziele). Server-Backup
+  (`pg_dump`) enthält alles.
 
 ## 9. Bekannte Grenzen
 - **Veraltete Clients und die Spiegelung:** Schreibt ein Client, der die Zeile vor einer Spiegelung geladen hat, die
@@ -281,3 +344,182 @@ Datenbank) bekommen nichts. Kein Ereignis ohne Treffer und für interne Abrufe o
 - Schalter „Gedächtnis hervorheben“ (Einstellungen › Anzeige, nur sichtbar mit `mem`), Standard an, gespeichert wie die
   übrigen Graph-Einstellungen (`saga-graph` → `mem`). Legende „Kürzlich abgerufen“, Karte/Ansage „n Abrufe“.
 
+
+### 10.4 Graph mit Schattenmodus (Stufe 3, 2601/2603)
+`mem` bekommt zusätzlich:
+```json
+"core": 40 | null, "snap": [81, 90], "shadow": true | false,
+"links": [[77, 81, 0.412, "a", 0]], "links_total": 312,
+"hits24": [[78, 3, 1764299000]]
+```
+- `core` = ID der Ich-Kern-Seite, wenn sie im Graph als Knoten steht, sonst `null`.
+- `snap` = Schnappschuss-Zeilen (§11) unter den Knoten, aufsteigend.
+- `shadow` = Schattenmodus an. `links`, `links_total` und `hits24` gibt es **nur** bei eingeschaltetem Modus.
+- `links` = `[a, b, gewicht, herkunft, gepinnt]`, a < b, **beide Enden Knoten**; `gewicht` = w_eff(now) (§12.3) auf
+  3 Stellen; `herkunft` `a` (ähnlich) | `g` (gemeinsam) | `h` (Hand); `gepinnt` 0/1. Höchstens 20 000 – bei mehr die
+  stärksten (w_eff absteigend, dann a, b) –, ausgegeben nach (a, b). `links_total` = alle Links mit beiden Enden als
+  Knoten (vor der Kürzung).
+- `hits24` = `[id, n, last]`: Zeilen, die in den letzten 24 h nur dank Verknüpfung aufgetaucht wären (`neu`, §12.5),
+  Anzahl und letzter Zeitpunkt (Unix-Sekunden, ganzzahlig); nur Knoten, nach id.
+- Je eine Abfrage für Zeilen, Links und Spuren der letzten 24 h (kein N+1).
+- Live-Ereignis `memory.recalled` (§10.2) bekommt bei eingeschaltetem Modus `"schatten": [ids]` (nur `neu`, nur wenn
+  nicht leer). Nur dann kann `ids` auch leer sein (keine Basis-Treffer, aber Schatten-Treffer); ausgeschaltet bleibt
+  §10.2 unverändert.
+
+## 11. Nickerchen und Aufwachen (Stufe 3, Bugs-DB 2601)
+
+Ein **Schnappschuss** ist eine Zeile der gebundenen Gedächtnis-Datenbank mit der Art-Option „Schnappschuss“
+(`memory.map.schnappschuss`). Saga legt die Option nie selbst an. Der Hauptweg ist das Modell selbst: es ruft `nap` bei
+der Verabschiedung und nach großen Runden und liest beim Start `wake` (bzw. `memory/core`). Claude-Code-Hooks sind
+Nebenweg (SessionStart zeigt den Aufwach-Teil über `kontext`; PreCompact/SessionEnd schreiben nichts, siehe
+`docs/CLAUDE-CODE-HOOKS.md`). Schnappschüsse werden nie gelöscht.
+
+### 11.1 `nap`
+Felder (Leerraum zusammengefasst, Zeilenumbrüche → Leerzeichen, leer = fehlend): `stimmung` ≤ 40 Zeichen (Pflicht),
+`gedanke` ≤ 240 (Pflicht), `ort` ≤ 100, `faeden` Liste von Texten (leere fallen weg), ≤ 5 je ≤ 130, `valenz` −1…1,
+`erregung` 0…1, `projekt` (vorhandene Option der Spalte „Projekt“, sonst `unknown_option`). Überschreitung → 400
+`bad_request` mit Feldname, **nichts gekürzt**, nichts angelegt.
+
+Text in der **Kontosprache** (Konto > Server-Standard), feste Reihenfolge, leere Teile entfallen (≤ 9 Zeilen):
+```
+Stimmung: neugierig (Valenz +0,4 · Erregung 0,6)
+Ort: Saga – Gedächtnis Stufe 3
+Offene Fäden:
+- Migration 43 prüfen
+Letzter Gedanke: Morgen zuerst die Vektoren.
+```
+Zahlen mit 1 Nachkommastelle (Komma de/es/ru, Punkt en/th); Valenz mit Vorzeichen (`+0,4`, `-0,3`; gerundet 0 → `0,0`
+ohne Vorzeichen); fehlt eine Zahl, fehlt ihr Teil in der Klammer, fehlen beide, die Klammer. Nach dem Zusammensetzen hart
+≤ 1 200 Zeichen und ≤ 10 Zeilen, sonst 400 (`text`). Texte und Grenzfälle: `tests/vectors/memory_nap.json`.
+
+Zeile: Titel `"<Optionsname> JJJJ-MM-TT HH:MM"` in der Konto-Zeitzone; `art` = Schnappschuss-Option, `inhalt` = Text,
+`valenz`/`erregung` zusätzlich in ihre Spalten (ohne Spalte → `ignoriert`), `projekt` optional, `datum` heute (Server-
+Zeitzone), `abrufe` 0. Kein `aehnlich`, keine Verknüpfung; eingebettet wird im Hintergrund. Antwort 201
+`{"id", "titel", "zeilen", "zeichen", "ignoriert"?}`.
+
+### 11.2 Ausschluss
+Zeilen mit Art = Schnappschuss-Option sind aus allem ausgeschlossen, **bevor** die Kandidaten (`CAND_MAX`) gezählt
+werden: recall (Embeddings: Maske auf den Kosinus-Werten; Trigramme: nicht im Wortindex), `aehnlich` bei remember,
+Verknüpfungen, Ausbreitung und die Hub-Zählung N (§12). Ohne Spalte „Art“ oder ohne die Option ist nichts
+ausgeschlossen. Schnappschüsse werden trotzdem eingebettet („n von m eingebettet“ zählt sie mit).
+
+### 11.3 `wake`
+```json
+{"since": "2026-11-26T22:14+01:00" | null, "seit_s": 191400 | null,
+ "text": "Letztes Nickerchen: vor 2 Tagen, 5 Stunden. Seitdem 7 Seiten geändert.",
+ "schnappschuss": {"id": 90, "titel": "…", "inhalt": "…", "valenz": 0.4 | null, "erregung": 0.6 | null,
+                   "datum": "2026-11-26" | null} | null,
+ "anzahl": 12,
+ "heute": "<sentence aus /api/ai/today>" | null,
+ "geaendert": {"n": 7, "seiten": [{"id": 5, "titel": "…"}]} | null,
+ "hinweis"?: "no_snapshot_option"}
+```
+- Neuester Schnappschuss = größtes `created` unter den lebenden Schnappschuss-Zeilen (Gleichstand: größere id),
+  unabhängig von „Datum“. `since` = dessen Anlage (Konto-Zeitzone, Minuten), `seit_s` = Sekunden bis jetzt, `anzahl` =
+  lebende Schnappschüsse. Ohne Option bzw. Spalte: `hinweis: "no_snapshot_option"`, `anzahl` 0.
+- Zeitangabe (abgerundet, höchstens 2 Einheiten): < 60 s „gerade eben“; < 1 h „vor {m} Minuten“; < 24 h „vor {h}
+  Stunden[, {m} Minuten]“ (Minuten nur > 0); < 7 Tage „vor {d} Tagen[, {h} Stunden]“ (Stunden nur > 0); ab 7 Tagen
+  „vor {d} Tagen“; Einzahl/Mehrzahl je Sprache. `text` = „Letztes Nickerchen: {wann}. Seitdem {n} Seiten geändert.“
+  (ohne `geaendert`: nur der erste Satz; ohne Schnappschuss „Noch kein Nickerchen.“). Vektoren `memory_nap.json`.
+- `geaendert`: eigene Seiten (Konto), `updated > since`, nicht im Papierkorb, nicht archiviert, keine Vorlage, **ohne**
+  die gebundene Gedächtnis-Datenbank und alle ihre Zeilen; die Ich-Kern-Seite zählt mit. `seiten` = die 5 zuletzt
+  geänderten. Ohne Schnappschuss `null`.
+- `heute` = `sentence` aus `/api/ai/today` (Konto-Zeitzone und -sprache, ohne Modell); ohne Fähigkeit „ai“ oder bei
+  einem Fehler `null`. Ein Fehler in einem Teil macht nur diesen Teil `null`.
+- `kontext` von `/core`: Rahmen `memory:core` mit `# Titel`, Markdown, dann `## Aufwachen` mit `text`, `heute` und dem
+  `inhalt` des Schnappschusses. Die Hooks geben ihn unverändert weiter.
+
+## 12. Schattenmodus Phase 1 – nur messen (Bugs-DB 2603)
+
+### 12.1 Grundsatz
+Ab Werk aus; aus = es wird nichts geschrieben. Eingeschaltet rechnet jeder **gezählte** recall (REST, MCP, Hooks) im
+Hintergrund mit, wie Verknüpfungen das Ergebnis verändern würden, und legt eine Spur an. Die Antwort von recall bleibt
+unverändert (außer dem Schnappschuss-Ausschluss §11.2, der immer gilt). Fehler im Schattenteil werden gefangen; im Log
+steht nur `gedaechtnis: Schatten <Typ>` ohne Inhalte. Phase 2 (scharf schalten, Handeingriffe) ist nicht Teil dieses
+Vertrags; die Tabelle `mem_link_log` (Migration 43) bleibt bis dahin leer.
+
+### 12.2 Verknüpfungen (`mem_link`, a < b)
+Nie zu Schnappschüssen, nie zu sensiblen Zeilen, nie zu sich selbst. Entstehen nur bei eingeschaltetem Modus:
+- **ähnlich:** bei jedem neuen/geänderten Vektor (remember, Abgleich) zu den besten K = 5 Nachbarn mit Kosinus ≥ 0,55
+  (Trigramme: rel ≥ 0,50). Startgewicht `g0 = 0,2 + 0,4·clamp((cos − 0,55)/0,45, 0, 1)` (Trigramme
+  `0,2 + 0,4·clamp((rel − 0,50)/0,50, 0, 1)`), Untergrenze `u = 0,05`, treffer 0. Vorhandene bleiben unverändert.
+- **Nachziehen:** beim Einschalten (Hintergrund, `shadow.running`) und mit `python run.py gedaechtnis verknuepfen
+  [--konto <name>]` für den ganzen Bestand, Blöcke à 256, Log nur Zahlen.
+- **gemeinsam:** ein Paar aus den **Basis-Treffern** eines recall (nie aus der Schatten-Menge – Rückkopplung), noch ohne
+  Link, das in ≥ 3 Spuren der letzten 30 Tage gemeinsam unter `treffer` steht (die aktuelle zählt mit): `g0 = 0,15`,
+  `u = 0,05`. Auftauchen allein verändert vorhandene Links nie.
+- **genutzt:** §12.4.
+
+### 12.3 Gewicht (lazy)
+`w_eff(t) = u + (g − u) · 0,5^(max(0, t − zuletzt) / H_L)`, H_L = 60 Tage; gepinnt: `w_eff = g`. Abklingen schreibt
+nie; immer 0 ≤ u ≤ w_eff ≤ g ≤ 1. Nichts wird vergessen: das Gewicht sinkt höchstens bis zur Untergrenze.
+
+### 12.4 Verstärkung nur über `recall_used`
+Gültige ids = Zeilen der gebundenen Datenbank, die in einer Spur des Kontos der letzten 2 h unter `treffer` stehen
+(sonst `ignoriert`); jede gültige id wird in der jüngsten passenden Spur unter `genutzt` vermerkt. Je Paar gültiger ids
+(beide nicht sensibel, keine Schnappschüsse): Link vorhanden → `w = w_eff(t)`, `g' = w + 0,2·(1 − w)`,
+`u' = min(0,5, u + 0,05, g')`, treffer + 1, zuletzt = t (`verstaerkt`); kein Link → neu mit Herkunft gemeinsam, g = 0,30,
+u = 0,10, treffer 1 (`neu`). Modus aus: 200 mit `schatten: false`, keine Wirkung. Nur das verstärkt Gewichte.
+
+### 12.5 Ausbreitung und Gesamtwert (je gezähltem recall bei an)
+- Seeds S = Kandidaten mit rel ≥ Tor (`rel_min` bzw. `rel_min_trgm`), höchstens 50, ohne sensible.
+- Hub-Dämpfung `h(i) = ln(1 + N/(1 + deg_i)) / ln(1 + N)`; N = lebende Zeilen ohne Schnappschüsse (N ≤ 1 → h = 1);
+  deg_i = Links zu lebenden, nicht sensiblen Nicht-Schnappschüssen.
+- Übertrag `t(i→j) = w_eff(i,j) · δ · √(h(i)·h(j))`, δ = 0,5.
+- `A1(j) = max_{s∈S, s≠j} rel(s)·t(s→j)`; `A2(k) = max über einfache Pfade s → j → k (s ≠ k, j ≠ k, j nicht sensibel)
+  von rel(s)·t(s→j)·t(j→k)` – ein Seed bekommt kein Echo seiner eigenen Relevanz. `A = max(A1, A2)`, A < 0,02 → 0.
+  Sensible Zeilen sind nie Ziel und nie Durchgang. `via` = unmittelbarer Vorgänger, `hop` 1 oder 2 (Gleichstand:
+  kleinere via-ID; hop 1 vor 2).
+- `r* = min(1, rel + A)`; rel für Nicht-Kandidaten exakt (Skalarprodukt bzw. Trigramm-rel, < 0 → 0).
+  `gesamt = score(factors(r*, …))` nach §4.1/§4.2 mit den Gewichten des Kontos.
+- Schatten-Menge aus Kandidaten und erreichten Zeilen (A > 0): r* ≥ Tor **und** gesamt ≥ score_min, **ohne Limit**,
+  Reihenfolge (−gesamt, −r*, id). Obergrenze für eingespielten Text: Summe `len(titel) + len(inhalt[:2000])` ≤ 2 000,
+  das erste Element immer; ab dem ersten Element, das die Summe überschreiten würde, ist der Rest `gekappt` (gezählt).
+- `neu` = Elemente der Schatten-Menge außerhalb der Basis-Treffer, die ohne A kein Treffer wären (nur dank
+  Verknüpfung); `neu_limit` = übrige Neue (nur wegen des Limits 5 bisher nicht dabei); `verdraengt` = Basis-Treffer,
+  die nicht in der Schatten-Menge sind (in Phase 1 nur durch die Obergrenze). Vektoren: `memory_shadow.json`.
+
+### 12.6 Sensibel
+Nie automatische Links, keine Ausbreitung über oder zu diesen Zeilen; im normalen recall unverändert (nur direkte
+Relevanz). Wird eine Zeile später sensibel, bleiben ihre Links, werden aber ignoriert.
+
+### 12.7 Spur `mem_trace`
+Je gezähltem recall bei an: `at`, `quelle`, `frage_hash`, `stichworte`, `lim`, `treffer` (Basis-IDs), `neu`, `genutzt`,
+`gekappt`, `zeichen`, `daten = {"w": {"tor", "score_min"}, "projekt": bool, "basis": [[id, rel, score]],
+"schatten": [[id, rel, akt, gesamt, via, hop]] (≤ 30), "neu_limit": [ids], "verdraengt": [ids], "ms": 3.1}`.
+`frage_hash` = HMAC-SHA256 (Schlüssel aus dem Server-Geheimnis) über `uid + "\n" + Frage` (NFKC, casefold, Leerraum
+zusammengefasst), 32 Hex-Zeichen. `stichworte = ", ".join(keywords(frage)[:8])[:160]` (§4.4). **Nie der Fragetext.**
+Aufräumen: stündlich Spuren älter als 30 Tage; täglich Links, deren a oder b nicht mehr in `note` existiert (Zeilen im
+Papierkorb bleiben verknüpft, werden aber ignoriert).
+
+## 13. Auswertung (`shadow_report`, `GET /api/v1/memory/shadow`)
+```json
+{"schatten": true, "seit": "2026-11-28T13:40+01:00", "tage": 14,
+ "abrufe": {"n": 212, "mit_treffern": 180, "genutzt_gemeldet": 95, "quote_genutzt": 0.53},
+ "schatten_treffer": {"abrufe_mit_neu": 37, "neu_je_abruf": 0.4, "neu_limit_je_abruf": 0.9, "verdraengt": 2,
+                      "gekappt": 3, "zeichen_median": 1420, "zeichen_p90": 1980},
+ "kanten": {"n": 312, "herkunft": {"aehnlich": 280, "gemeinsam": 32, "hand": 0}, "gepinnt": 0,
+            "gewicht": {"faecher": [[0.0, 0.1, 40], …], "median": 0.31, "p90": 0.55}, "verstaerkt": 22},
+ "hubs": [{"id": 77, "titel": "…", "grad": 41, "daempfung": 0.42}],
+ "oft_feuernd": [{"a": {"id", "titel"}, "b": {"id", "titel"}, "anteil": 0.18, "gewicht": 0.62}],
+ "ausreisser": [{"art": "dauerbrenner", "id", "titel", "anteil"} | {"art": "starke_kante", "a", "b", "gewicht"}
+                | {"art": "gekappt", "am", "gekappt", "zeichen"}],
+ "sensibel": 3,
+ "stichproben": [{"am": "…", "stichworte": "…", "treffer": [{"id", "titel", "rel", "score"}],
+                  "waere": [{"id", "titel", "vorschau", "rel", "akt", "gesamt", "ueber": {"id", "titel"} | null}]}]}
+```
+- Zeitraum: Spuren der letzten `tage` Tage. `abrufe`: n = Spuren, `mit_treffern` = Spuren mit Basis-Treffern,
+  `genutzt_gemeldet` = Spuren mit `genutzt`, `quote_genutzt` = genutzt_gemeldet / mit_treffern (0 ohne).
+- `schatten_treffer`: `abrufe_mit_neu` = Spuren mit `neu`; `neu_je_abruf`/`neu_limit_je_abruf` = Summe / n;
+  `verdraengt` = Summe; `gekappt` = Spuren, in denen die Obergrenze griff; Median/90 %-Wert von `zeichen` über Spuren mit
+  Schatten-Menge.
+- `kanten`: Links des Kontos (ohne die zu gelöschten Zeilen), `gewicht` über w_eff(jetzt): 10 Fächer à 0,1 `[von, bis,
+  Anzahl]`, Median, 90 %-Wert; `verstaerkt` = Links mit treffer > 0.
+- `hubs` = die 5 Zeilen mit dem höchsten Grad (> 0) samt Dämpfung h; `oft_feuernd` = die 5 Kanten (via, id), über die
+  `neu`-Einträge am häufigsten kamen, `anteil` = Anteil der Spuren; `ausreisser` (≤ 5, in dieser Reihenfolge):
+  Zeilen in ≥ 25 % der Schatten-Mengen (erst ab 4 Spuren mit Schatten-Menge), Kanten mit w_eff ≥ 0,9 ohne Pin, Spuren
+  mit Kappung. `sensibel` = Anzahl lebender sensibler Zeilen.
+- `stichproben`: aus den m Spuren mit `neu` gleichmäßig verteilt (Index `round(i·(m−1)/(n−1))`, n = min(stichproben, m);
+  n = 1 → die erste), älteste zuerst, deterministisch. Titel und Vorschau (120 Zeichen) kommen live aus der Datenbank,
+  gelöschte Zeilen heißen „(gelöscht)“. Die ganze Ausgabe ≤ 15 000 Zeichen (sonst fallen hintere Stichproben weg).
+- Modus aus und keine Spuren: alle Zahlen 0, Listen leer, `schatten: false` – kein Fehler.

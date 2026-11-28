@@ -1,0 +1,575 @@
+{
+ "note": "Nickerchen/Aufwachen (Bugs-DB 2601, docs/MEMORY.md 11) - Referenz unabhaengig von saga/",
+ "grenzen": {
+  "stimmung": 40,
+  "gedanke": 240,
+  "ort": 100,
+  "faden": 130,
+  "faeden": 5,
+  "zeichen": 1200,
+  "zeilen": 10
+ },
+ "texte": [
+  {
+   "name": "alle Zeilen",
+   "lang": "de",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "faeden": [
+     "Migration 43 prüfen",
+     "Gold neu erzeugen"
+    ],
+    "ort": "Saga – Gedächtnis Stufe 3"
+   },
+   "text": "Stimmung: neugierig (Valenz +0,4 · Erregung 0,6)\nOrt: Saga – Gedächtnis Stufe 3\nOffene Fäden:\n- Migration 43 prüfen\n- Gold neu erzeugen\nLetzter Gedanke: Morgen zuerst die Vektoren.",
+   "zeilen": 6,
+   "zeichen": 180
+  },
+  {
+   "name": "alle Zeilen",
+   "lang": "en",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "faeden": [
+     "Migration 43 prüfen",
+     "Gold neu erzeugen"
+    ],
+    "ort": "Saga – Gedächtnis Stufe 3"
+   },
+   "text": "Mood: neugierig (valence +0.4 · arousal 0.6)\nPlace: Saga – Gedächtnis Stufe 3\nOpen threads:\n- Migration 43 prüfen\n- Gold neu erzeugen\nLast thought: Morgen zuerst die Vektoren.",
+   "zeilen": 6,
+   "zeichen": 175
+  },
+  {
+   "name": "ohne Ort",
+   "lang": "de",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "faeden": [
+     "Migration 43 prüfen",
+     "Gold neu erzeugen"
+    ]
+   },
+   "text": "Stimmung: neugierig (Valenz +0,4 · Erregung 0,6)\nOffene Fäden:\n- Migration 43 prüfen\n- Gold neu erzeugen\nLetzter Gedanke: Morgen zuerst die Vektoren.",
+   "zeilen": 5,
+   "zeichen": 149
+  },
+  {
+   "name": "ohne Ort",
+   "lang": "en",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "faeden": [
+     "Migration 43 prüfen",
+     "Gold neu erzeugen"
+    ]
+   },
+   "text": "Mood: neugierig (valence +0.4 · arousal 0.6)\nOpen threads:\n- Migration 43 prüfen\n- Gold neu erzeugen\nLast thought: Morgen zuerst die Vektoren.",
+   "zeilen": 5,
+   "zeichen": 142
+  },
+  {
+   "name": "ohne Faeden",
+   "lang": "de",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "ort": "Saga – Gedächtnis Stufe 3"
+   },
+   "text": "Stimmung: neugierig (Valenz +0,4 · Erregung 0,6)\nOrt: Saga – Gedächtnis Stufe 3\nLetzter Gedanke: Morgen zuerst die Vektoren.",
+   "zeilen": 3,
+   "zeichen": 124
+  },
+  {
+   "name": "ohne Faeden",
+   "lang": "en",
+   "in": {
+    "stimmung": "neugierig",
+    "gedanke": "Morgen zuerst die Vektoren.",
+    "valenz": 0.4,
+    "erregung": 0.6,
+    "ort": "Saga – Gedächtnis Stufe 3"
+   },
+   "text": "Mood: neugierig (valence +0.4 · arousal 0.6)\nPlace: Saga – Gedächtnis Stufe 3\nLast thought: Morgen zuerst die Vektoren.",
+   "zeilen": 3,
+   "zeichen": 119
+  },
+  {
+   "name": "ohne Zahlen",
+   "lang": "de",
+   "in": {
+    "stimmung": "ruhig",
+    "gedanke": "Gute Nacht."
+   },
+   "text": "Stimmung: ruhig\nLetzter Gedanke: Gute Nacht.",
+   "zeilen": 2,
+   "zeichen": 44
+  },
+  {
+   "name": "ohne Zahlen",
+   "lang": "en",
+   "in": {
+    "stimmung": "ruhig",
+    "gedanke": "Gute Nacht."
+   },
+   "text": "Mood: ruhig\nLast thought: Gute Nacht.",
+   "zeilen": 2,
+   "zeichen": 37
+  },
+  {
+   "name": "nur Valenz negativ",
+   "lang": "de",
+   "in": {
+    "stimmung": "müde",
+    "gedanke": "Zu lang gearbeitet.",
+    "valenz": -0.3
+   },
+   "text": "Stimmung: müde (Valenz -0,3)\nLetzter Gedanke: Zu lang gearbeitet.",
+   "zeilen": 2,
+   "zeichen": 65
+  },
+  {
+   "name": "nur Valenz negativ",
+   "lang": "en",
+   "in": {
+    "stimmung": "müde",
+    "gedanke": "Zu lang gearbeitet.",
+    "valenz": -0.3
+   },
+   "text": "Mood: müde (valence -0.3)\nLast thought: Zu lang gearbeitet.",
+   "zeilen": 2,
+   "zeichen": 59
+  },
+  {
+   "name": "nur Erregung",
+   "lang": "de",
+   "in": {
+    "stimmung": "wach",
+    "gedanke": "Weiter.",
+    "erregung": 1
+   },
+   "text": "Stimmung: wach (Erregung 1,0)\nLetzter Gedanke: Weiter.",
+   "zeilen": 2,
+   "zeichen": 54
+  },
+  {
+   "name": "nur Erregung",
+   "lang": "en",
+   "in": {
+    "stimmung": "wach",
+    "gedanke": "Weiter.",
+    "erregung": 1
+   },
+   "text": "Mood: wach (arousal 1.0)\nLast thought: Weiter.",
+   "zeilen": 2,
+   "zeichen": 46
+  },
+  {
+   "name": "Valenz 0 ohne Vorzeichen, -0,04 -> 0,0",
+   "lang": "de",
+   "in": {
+    "stimmung": "neutral",
+    "gedanke": "Mal sehen.",
+    "valenz": -0.04,
+    "erregung": 0
+   },
+   "text": "Stimmung: neutral (Valenz 0,0 · Erregung 0,0)\nLetzter Gedanke: Mal sehen.",
+   "zeilen": 2,
+   "zeichen": 73
+  },
+  {
+   "name": "Valenz 0 ohne Vorzeichen, -0,04 -> 0,0",
+   "lang": "en",
+   "in": {
+    "stimmung": "neutral",
+    "gedanke": "Mal sehen.",
+    "valenz": -0.04,
+    "erregung": 0
+   },
+   "text": "Mood: neutral (valence 0.0 · arousal 0.0)\nLast thought: Mal sehen.",
+   "zeilen": 2,
+   "zeichen": 66
+  },
+  {
+   "name": "Leerraum zusammengefasst, Zeilenumbrueche -> Leerzeichen, leere Faeden weg",
+   "lang": "de",
+   "in": {
+    "stimmung": "  sehr\nfroh ",
+    "gedanke": "Erst\n\ndas,\tdann das.",
+    "faeden": [
+     "  a  b ",
+     "",
+     "   ",
+     "c"
+    ],
+    "ort": " \n "
+   },
+   "text": "Stimmung: sehr froh\nOffene Fäden:\n- a b\n- c\nLetzter Gedanke: Erst das, dann das.",
+   "zeilen": 5,
+   "zeichen": 80
+  },
+  {
+   "name": "Leerraum zusammengefasst, Zeilenumbrueche -> Leerzeichen, leere Faeden weg",
+   "lang": "en",
+   "in": {
+    "stimmung": "  sehr\nfroh ",
+    "gedanke": "Erst\n\ndas,\tdann das.",
+    "faeden": [
+     "  a  b ",
+     "",
+     "   ",
+     "c"
+    ],
+    "ort": " \n "
+   },
+   "text": "Mood: sehr froh\nOpen threads:\n- a b\n- c\nLast thought: Erst das, dann das.",
+   "zeilen": 5,
+   "zeichen": 73
+  },
+  {
+   "name": "5 Faeden, Grenzen genau",
+   "lang": "de",
+   "in": {
+    "stimmung": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "gedanke": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+    "ort": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
+    "faeden": [
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ],
+    "valenz": 1,
+    "erregung": 1
+   },
+   "text": "Stimmung: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (Valenz +1,0 · Erregung 1,0)\nOrt: oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo\nOffene Fäden:\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\nLetzter Gedanke: gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+   "zeilen": 9,
+   "zeichen": 1122
+  },
+  {
+   "name": "5 Faeden, Grenzen genau",
+   "lang": "en",
+   "in": {
+    "stimmung": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "gedanke": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+    "ort": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
+    "faeden": [
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ],
+    "valenz": 1,
+    "erregung": 1
+   },
+   "text": "Mood: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (valence +1.0 · arousal 1.0)\nPlace: oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo\nOpen threads:\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n- ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\nLast thought: gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+   "zeilen": 9,
+   "zeichen": 1117
+  }
+ ],
+ "fehler": [
+  {
+   "name": "stimmung fehlt",
+   "in": {
+    "gedanke": "x"
+   },
+   "feld": "stimmung"
+  },
+  {
+   "name": "stimmung leer (nur Leerraum)",
+   "in": {
+    "stimmung": " \n ",
+    "gedanke": "x"
+   },
+   "feld": "stimmung"
+  },
+  {
+   "name": "stimmung 41",
+   "in": {
+    "stimmung": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "gedanke": "x"
+   },
+   "feld": "stimmung"
+  },
+  {
+   "name": "stimmung keine Zeichenkette",
+   "in": {
+    "stimmung": 5,
+    "gedanke": "x"
+   },
+   "feld": "stimmung"
+  },
+  {
+   "name": "gedanke fehlt",
+   "in": {
+    "stimmung": "x"
+   },
+   "feld": "gedanke"
+  },
+  {
+   "name": "gedanke 241",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+   },
+   "feld": "gedanke"
+  },
+  {
+   "name": "ort 101",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "ort": "ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+   },
+   "feld": "ort"
+  },
+  {
+   "name": "ort keine Zeichenkette",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "ort": [
+     "a"
+    ]
+   },
+   "feld": "ort"
+  },
+  {
+   "name": "6 Faeden",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "faeden": [
+     "a",
+     "b",
+     "c",
+     "d",
+     "e",
+     "f"
+    ]
+   },
+   "feld": "faeden"
+  },
+  {
+   "name": "Faden 131",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "faeden": [
+     "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ]
+   },
+   "feld": "faeden"
+  },
+  {
+   "name": "faeden keine Liste",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "faeden": "a, b"
+   },
+   "feld": "faeden"
+  },
+  {
+   "name": "faeden mit Zahl",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "faeden": [
+     "a",
+     3
+    ]
+   },
+   "feld": "faeden"
+  },
+  {
+   "name": "valenz 1,5",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "valenz": 1.5
+   },
+   "feld": "valenz"
+  },
+  {
+   "name": "valenz Text",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "valenz": "gut"
+   },
+   "feld": "valenz"
+  },
+  {
+   "name": "valenz true",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "valenz": true
+   },
+   "feld": "valenz"
+  },
+  {
+   "name": "erregung -0,1",
+   "in": {
+    "stimmung": "x",
+    "gedanke": "x",
+    "erregung": -0.1
+   },
+   "feld": "erregung"
+  }
+ ],
+ "wann": [
+  {
+   "name": "30 s",
+   "sekunden": 30,
+   "de": "gerade eben",
+   "en": "just now"
+  },
+  {
+   "name": "61 s",
+   "sekunden": 61,
+   "de": "vor 1 Minute",
+   "en": "1 minute ago"
+  },
+  {
+   "name": "59 min",
+   "sekunden": 3540,
+   "de": "vor 59 Minuten",
+   "en": "59 minutes ago"
+  },
+  {
+   "name": "1 h",
+   "sekunden": 3600,
+   "de": "vor 1 Stunde",
+   "en": "1 hour ago"
+  },
+  {
+   "name": "1 h 1 min",
+   "sekunden": 3660,
+   "de": "vor 1 Stunde, 1 Minute",
+   "en": "1 hour, 1 minute ago"
+  },
+  {
+   "name": "5 h 7 min",
+   "sekunden": 18420,
+   "de": "vor 5 Stunden, 7 Minuten",
+   "en": "5 hours, 7 minutes ago"
+  },
+  {
+   "name": "23 h 59 min 59 s",
+   "sekunden": 86399,
+   "de": "vor 23 Stunden, 59 Minuten",
+   "en": "23 hours, 59 minutes ago"
+  },
+  {
+   "name": "1 d",
+   "sekunden": 86400,
+   "de": "vor 1 Tag",
+   "en": "1 day ago"
+  },
+  {
+   "name": "2 d 5 h",
+   "sekunden": 190800,
+   "de": "vor 2 Tagen, 5 Stunden",
+   "en": "2 days, 5 hours ago"
+  },
+  {
+   "name": "6 d 23 h 59 min",
+   "sekunden": 604740,
+   "de": "vor 6 Tagen, 23 Stunden",
+   "en": "6 days, 23 hours ago"
+  },
+  {
+   "name": "7 d 3 h",
+   "sekunden": 615600,
+   "de": "vor 7 Tagen",
+   "en": "7 days ago"
+  },
+  {
+   "name": "40 d",
+   "sekunden": 3456000,
+   "de": "vor 40 Tagen",
+   "en": "40 days ago"
+  },
+  {
+   "name": "negativ -> gerade eben",
+   "sekunden": -5,
+   "de": "gerade eben",
+   "en": "just now"
+  }
+ ],
+ "satz": [
+  {
+   "name": "mit geaenderten Seiten",
+   "sekunden": 190800,
+   "n": 7,
+   "de": "Letztes Nickerchen: vor 2 Tagen, 5 Stunden. Seitdem 7 Seiten geändert.",
+   "en": "Last nap: 2 days, 5 hours ago. 7 pages changed since."
+  },
+  {
+   "name": "eine Seite",
+   "sekunden": 180,
+   "n": 1,
+   "de": "Letztes Nickerchen: vor 3 Minuten. Seitdem 1 Seite geändert.",
+   "en": "Last nap: 3 minutes ago. 1 page changed since."
+  },
+  {
+   "name": "keine Seite",
+   "sekunden": 30,
+   "n": 0,
+   "de": "Letztes Nickerchen: gerade eben. Seitdem 0 Seiten geändert.",
+   "en": "Last nap: just now. 0 pages changed since."
+  },
+  {
+   "name": "Seiten unbekannt (Fehler)",
+   "sekunden": 18000,
+   "n": null,
+   "de": "Letztes Nickerchen: vor 5 Stunden.",
+   "en": "Last nap: 5 hours ago."
+  },
+  {
+   "name": "kein Schnappschuss",
+   "sekunden": null,
+   "n": null,
+   "de": "Noch kein Nickerchen.",
+   "en": "No nap yet."
+  }
+ ],
+ "titel": [
+  {
+   "zone": "Europe/Berlin",
+   "ts": 1795853550.0,
+   "option": "Schnappschuss",
+   "titel": "Schnappschuss 2026-11-28 09:12"
+  },
+  {
+   "zone": "America/New_York",
+   "ts": 1795835100.0,
+   "option": "Schnappschuss",
+   "titel": "Schnappschuss 2026-11-27 22:05"
+  },
+  {
+   "zone": "UTC",
+   "ts": 1798761599.0,
+   "option": "Schnappschuss",
+   "titel": "Schnappschuss 2026-12-31 23:59"
+  }
+ ]
+}
