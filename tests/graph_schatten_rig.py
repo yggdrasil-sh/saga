@@ -6,8 +6,8 @@ Verknuepfungen (mem_link) mit verschiedenen Gewichten und Herkunft (aehnlich/gem
 Spuren der letzten 24 h (mem_trace mit neu -> hits24), dazu ein echter API-Token mit Bereich memory. Embeddings aus
 (Rueckfall Trigramme). Die Frage "query" (POST /api/v1/memory/recall) trifft "Tomaten" und bringt ueber den gepinnten
 Link "Basilikum" als Schatten-Treffer (Live-Ereignis memory.recalled mit schatten). Erfundene Testdaten.
-  PYTHONPATH=tests/pgshim:. python tests/graph_schatten_rig.py setup <konto> [--aus]   -> JSON {db, core, rows, snaps, sensibel,
-                                                                                         links, query, schatten_id, token, shadow}
+  PYTHONPATH=tests/pgshim:. python tests/graph_schatten_rig.py setup <konto> [--aus]   -> eine JSON-Zeile auf stdout {db, core,
+                                                       rows, snaps, sensibel, links, query, schatten_id, token, shadow} (Log auf stderr)
   PYTHONPATH=tests/pgshim:. python tests/graph_schatten_rig.py clean <konto>
 --aus: alles gleich, aber Schattenmodus aus (memory.shadow fehlt; Graph ohne links/hits24, Einstellungen ohne Schalter).
 Zustand (angelegte IDs) in GS_STATE (Standard /tmp/graph-schatten-<konto>.json)."""
@@ -107,7 +107,8 @@ def setup(uid, off=False):
           "query": "Tomaten Sonne Wasser", "schatten_id": rows["Basilikum"]}
     with open(_state(uid), "w") as f:
         json.dump(st, f)
-    print(json.dumps(dict(st, token=raw)))
+    sys.__stdout__.write(json.dumps(dict(st, token=raw)) + "\n")       # stdout: nur diese eine JSON-Zeile
+    sys.__stdout__.flush()
 
 
 def clean(uid, quiet=False):
@@ -133,6 +134,8 @@ def clean(uid, quiet=False):
 if __name__ == "__main__":
     a = sys.argv[1] if len(sys.argv) > 1 else "setup"
     if a == "setup":
-        setup(sys.argv[2], "--aus" in sys.argv[3:])
+        import contextlib
+        with contextlib.redirect_stdout(sys.stderr):      # Log-Zeilen (z. B. "gedaechtnis: ... Nickerchen") nach stderr
+            setup(sys.argv[2], "--aus" in sys.argv[3:])
     else:
         clean(sys.argv[2])
