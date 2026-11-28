@@ -165,7 +165,8 @@ def main():
         tw = memory.mcp_wake(tok_obj(P, 41), {})
         trp = memory.mcp_shadow_report(tok_obj(P, 42), {})
         ok("D MCP wake/shadow_report: genau ein schliessender Rahmen (Inhalt entschaerft)",
-           tw.count("</saga-data") == 1 and tw.count("<saga-data") == 1 and trp.count("</saga-data") == 1, tw[-400:])
+           tw.count("</saga-data") == 1 and trp.count("</saga-data") == 1 and '[/saga-data id=\\"x\\">' in tw
+           and '<saga-data source="evil">' not in tw, tw[-400:])
         # E) recall_used mehrfach
         r = memory.recall(P, "tomaten garten beet")
         hit = [x["id"] for x in r["treffer"] if x["id"] != ids["Geheim"]][:2]

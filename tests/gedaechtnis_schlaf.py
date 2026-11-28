@@ -375,7 +375,7 @@ def part_wake():
         wr = memory.wake(A, trt, now=now)
         ok("wake mit roots [DB, eine Seite]: geaendert nur diese Seite (n 1), heute null, Schnappschuss da",
            wr["geaendert"] == {"n": 1, "seiten": [{"id": p_new[5], "titel": "Neu 5"}]} and wr["heute"] is None
-           and wr["schnappschuss"]["id"] == newest and wr["text"].endswith("Seitdem 1 Seite geändert."), wr)
+           and wr["schnappschuss"]["id"] == max(newest, snaps[9]) and wr["text"].endswith("Seitdem 1 Seite geändert."), wr)
         ok("wake mit roots ohne die Gedaechtnis-DB: None",
            memory.wake(A, apitok.Tok(10 ** 9 + 26018, A, "gs", "sga_gs", apitok.SCOPES, [p_new[5]], None), now=now) is None)
         wb = memory.wake(B, tok_obj(B, 1), now=now)
