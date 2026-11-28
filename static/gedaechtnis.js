@@ -284,7 +284,7 @@
       var p = el('p', 'hk-hint hk-mem-shadow-txt');
       p.appendChild(document.createTextNode(T('Saga probiert im Hintergrund aus, ob verknüpfte Erinnerungen deinem Assistenten helfen würden. Antworten ändern sich nicht; gespeichert werden 30 Tage lang nur Zahlen und Stichworte, nie die Fragen.') + ' '));
       var si = info([T('Saga verknüpft ähnliche und oft gemeinsam gebrauchte Erinnerungen und merkt sich bei jedem Abruf, was zusätzlich aufgetaucht wäre. Meldet dein Assistent mit recall_used, was geholfen hat, werden diese Verknüpfungen stärker. Die Auswertung holt er mit shadow_report.'),
-                     T('Erinnerungen mit „Sensibel“ werden nie verknüpft. Ausschalten behält Verknüpfungen und Spuren; Spuren verfallen nach 30 Tagen.')], T('Was misst der Schattenmodus?'));
+                     T('Erinnerungen mit „{name}“ werden nie verknüpft. Ausschalten behält Verknüpfungen und Spuren; Spuren verfallen nach 30 Tagen.', { name: ((d.columns || {}).sensibel || {}).name || 'Sensibel' })], T('Was misst der Schattenmodus?'));
       p.appendChild(si.btn); box.appendChild(p); box.appendChild(si.box);
       us.state = el('p', 'hk-mem-state hk-mem-shadow-state'); us.state.id = 'hk-mem-shadow-state'; box.appendChild(us.state);
       us.run = el('p', 'hk-hint hk-mem-shadow-run', T('Wird aufgebaut …')); box.appendChild(us.run);
