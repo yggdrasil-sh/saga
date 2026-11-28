@@ -3645,6 +3645,7 @@ a.kb-line-v:hover{text-decoration:underline}
 .hk-mem-cs{flex:1;min-width:0;color:var(--muted);font-size:var(--fs-sm)}
 .hk-mem-col.ok .hk-mem-cs{color:var(--ok)}
 .hk-mem-warn{color:var(--down)}
+.hk-mem-napwarn{color:var(--warn)}   /* 2601: Option „Schnappschuss“ fehlt (Hinweis, kein Fehler) */
 .hk-mem-state{margin:.2rem 0;font-size:var(--fs-base)}
 @media (max-width:560px){.hk-mem-cols{grid-template-columns:minmax(0,1fr)}}
 @media (pointer:coarse){.hk-mem-ib{min-width:2.75rem;min-height:2.75rem}}

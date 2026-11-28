@@ -264,7 +264,7 @@
       var st = el('p', 'hk-mem-state hk-mem-nap'); st.id = 'hk-mem-nap';
       var cols = d.columns || {}, art = cols.art || {};
       if (!sn.found) {
-        st.className = 'hk-hint hk-mem-warn hk-mem-nap'; st.setAttribute('role', 'note');
+        st.className = 'hk-hint hk-mem-napwarn hk-mem-nap'; st.setAttribute('role', 'note');
         st.textContent = art.ok ? T('Lege in der Spalte „{col}“ die Option „{opt}“ an, damit dein Assistent Schnappschüsse ablegen kann.', { col: art.name || 'Art', opt: sn.option })
           : T('Für Schnappschüsse braucht die Datenbank eine Auswahl-Spalte „{col}“ mit der Option „{opt}“.', { col: art.name || 'Art', opt: sn.option });
       } else if (!sn.count) {

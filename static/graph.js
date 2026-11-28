@@ -481,25 +481,25 @@
       });
     });
     // 2603: Schatten-Treffer (24 h) - ruhiger gestrichelter Ring in --gr-shadow; live: Ring dehnt sich 1,2 s aus
+    // Unter den Strichen wird zuerst ausgestanzt (Hof/Kanten), sonst mischt sich Tuerkis mit dem Bernstein des Nachleuchtens
+    function sring(x, y, R, w, a) {
+      ctx.beginPath(); ctx.arc(x, y, R, 0, 6.2832);
+      ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = Math.min(1, a * 1.5); ctx.lineWidth = w + 1 / k; ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.lineWidth = w; ctx.stroke();
+    }
     ctx.strokeStyle = P.shadow;
     shr.forEach(function (n) {
       var r = self.rr(n), da = Math.max(dimA, ease(n.e || 0));
       ctx.setLineDash([2.5 / k, 2 / k]);
-      if (n.sh) {
-        ctx.globalAlpha = (0.4 + 0.12 * Math.min(5, n.sh)) * da; ctx.lineWidth = 1.4 / k;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + 3 / k, 0, 6.2832); ctx.stroke();
-      }
-      if (n.sr) {
-        ctx.globalAlpha = 0.95; ctx.lineWidth = 2.2 / k;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + 6 / k, 0, 6.2832); ctx.stroke();
-      } else if (n.sz) {
+      if (n.sh) sring(n.x, n.y, r + 3 / k, 1.4 / k, (0.4 + 0.12 * Math.min(5, n.sh)) * da);
+      if (n.sr) sring(n.x, n.y, r + 6 / k, 2.2 / k, 0.95);
+      else if (n.sz) {
         np++;
         var q = Math.min(1, (tP - n.sz) / SH_PULSE), e3 = 1 - (1 - q) * (1 - q);
-        ctx.globalAlpha = 0.95 * (1 - q); ctx.lineWidth = (2.4 - 1.2 * q) / k;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + (3 + 20 * e3) / k, 0, 6.2832); ctx.stroke();
+        sring(n.x, n.y, r + (3 + 20 * e3) / k, (2.4 - 1.2 * q) / k, 0.95 * (1 - q));
       }
     });
-    ctx.setLineDash([]);
+    ctx.globalCompositeOperation = 'source-over'; ctx.setLineDash([]);
     this.npulse = np;
     ctx.lineWidth = lw;
     // Beschriftungen: feste Bildschirmgroesse, Rand in Hintergrundfarbe; hervorgehobene zuletzt (oben)

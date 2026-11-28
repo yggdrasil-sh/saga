@@ -354,7 +354,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
     const li = document.querySelector('.hk-mem-col[data-f=sensibel]'), nap = document.getElementById('hk-mem-nap'), sw = document.getElementById('hk-mem-shadow');
     const sst = document.getElementById('hk-mem-shadow-state'), fg = document.getElementById('hk-mem-forget');
     return { sens: li && { cls: li.className, name: li.querySelector('.hk-mem-cn').textContent, st: li.querySelector('.hk-mem-cs').textContent },
-      nap: nap && nap.textContent, napWarn: !!nap && nap.classList.contains('hk-mem-warn'), sw: sw && sw.checked, swRole: sw && sw.getAttribute('role'),
+      nap: nap && nap.textContent, napWarn: !!nap && nap.classList.contains('hk-mem-napwarn'), sw: sw && sw.checked, swRole: sw && sw.getAttribute('role'),
       sst: sst && sst.textContent, sstHid: !sst || sst.hidden, fgHid: !fg || fg.closest('.hk-actions').hidden,
       run: !!document.querySelector('.hk-mem-shadow-run:not([hidden])'), h4: [...document.querySelectorAll('#hk-pane-memory h4')].map((h) => h.textContent) };
   });

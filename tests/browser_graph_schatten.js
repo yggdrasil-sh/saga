@@ -189,9 +189,9 @@ let R = null;
     ok('Ich-Kern: Radius x1,15', Math.abs(nC.rad / nC.base - 1.15) < 0.02, nC);
     await p.evaluate((id) => window.__camNode(id, 2), R.core); await sleep(60);
     const rC = await p.evaluate((id) => window.__ring(id, 1.2, 'amb'), R.core);
-    await p.evaluate((id) => window.__camNode(id, 2), R.db); await sleep(60);
-    const rD = await p.evaluate((id) => window.__ring(id, 1.2, 'amb'), R.db);
-    ok('bewusst: Ring in --gr-mem um den Ich-Kern, keiner um die Datenbank', rC > 0.3 && rD < 0.05, [rC, rD]);
+    const rCo = await p.evaluate((id) => window.__ring(id, 6, 'amb'), R.core);
+    const nD = await node(p, R.db);
+    ok('bewusst: Ring in --gr-mem dicht um den Ich-Kern (nicht weiter außen), Datenbank nicht bewusst', rC > 0.5 && rC > rCo + 0.3 && !nD.aw, [rC, rCo, nD]);
     // --- Schatten-Treffer 24 h --------------------------------------------------------------------------------------------
     const ringOf = async (id) => { await p.evaluate((id) => window.__camNode(id, 2), id); await sleep(60); return p.evaluate((id) => window.__ring(id, 3, 'teal'), id); };
     const tH = await ringOf(ROW.Hochbeet), tK = await ringOf(ROW.Kompost), tB0 = await ringOf(ROW.Basilikum);
