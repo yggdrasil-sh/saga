@@ -7,7 +7,8 @@ Einheiten (K21): 1 Einheit ~ 4 Zeichen (ungefaehr ein Token, gleich fuer jedes M
   Anfrage 0 (wie beim Anfragen-Zaehler). Echte Tokens des Endpunkts (Ollama prompt_eval_count/eval_count, OpenAI usage mit
   stream_options.include_usage) stehen nur zur Anzeige in real_in/real_out - gerechnet wird mit Zeichen.
 Pools je Person und Tag (fest): ask 60 % (Fragen, Seiten-Hilfen, Chat-Zuruf), job 30 % (Auftraege der Kollegin),
-  idea 10 % (Ideen); stt kommt mit K-F. Tagesbudget = Admin-Kontingent "Anfragen je Person und Tag" x PER_REQUEST
+  idea 10 % (Ideen). Dazu nur gemessen (MEASURED, ohne Budget, nicht in left()): stt = Diktat (2.6 K-F 2274, saga/ai_stt.py,
+  Einheiten = Zeichen des Textes/4, real_in = Sekunden Ton; measure()). Tagesbudget = Admin-Kontingent "Anfragen je Person und Tag" x PER_REQUEST
   x Anteil; Kontingent 0 = unbegrenzt (dann wird nur gemessen).
 Uebergang ohne Bruch (Abweichung c): die Frage-Spur bleibt beim Anfragen-Zaehler (saga.ai: ai_usage, _take_quota,
   quota_left - unveraendert in /api/ai/status und 'done'); fuer ask wird hier nur gemessen, reserve lehnt nie ab.
@@ -44,6 +45,7 @@ PER_REQUEST = 4000                                   # Einheiten je Anfrage des 
 PCT = {"ask": 60, "job": 30, "idea": 10}             # feste Aufteilung in Prozent (ganzzahlig gerechnet)
 SPLIT = {k: v / 100 for k, v in PCT.items()}
 POOLS = tuple(PCT)
+MEASURED = ("stt",)                                  # nur gemessen (K-F 2274): kein Budget, nicht in left(), eigener Wert im Admin
 KEEP_DAYS = 90
 MIN_ACCOUNTS = 5                                     # ab so vielen aktiven Konten: Ampel je Person (sonst nur Summen)
 LIGHTS = ((0.8, "gruen"), (1.0, "gelb"))             # Anteil des Tagesbudgets: < 80 % gruen, < 100 % gelb, sonst rot
@@ -169,11 +171,25 @@ def cancel(res):
     return settle(res, 0, 0)
 
 
+def measure(uid, pool, units, real_in=0, real_out=0, conn=None):
+    """Nur messen (MEASURED, z. B. stt): Einheiten und echte Werte dazuzaehlen, nie ablehnen. -> units."""
+    if pool not in MEASURED:
+        raise ValueError(f"kein Mess-Pool: {pool}")
+    if conn is None:
+        with _db() as c, c:
+            return measure(uid, pool, units, real_in, real_out, c)
+    day = today()
+    _ensure(conn, uid, day, pool)
+    conn.execute("UPDATE ai_units SET units = units + ?, real_in = real_in + ?, real_out = real_out + ? WHERE uid=? AND day=? AND pool=?",
+                 (max(0, int(units or 0)), max(0, int(real_in or 0)), max(0, int(real_out or 0)), uid, day, pool))
+    return units
+
+
 def used(uid, day=None):
-    """-> {pool: {units, real_in, real_out}} fuer einen Tag (Standard heute)."""
+    """-> {pool: {units, real_in, real_out}} fuer einen Tag (Standard heute), auch die Mess-Pools (MEASURED)."""
     with _db() as c:
         rows = c.execute("SELECT pool, units, real_in, real_out FROM ai_units WHERE uid=? AND day=?", (uid, day or today())).fetchall()
-    out = {p: {"units": 0, "real_in": 0, "real_out": 0} for p in POOLS}
+    out = {p: {"units": 0, "real_in": 0, "real_out": 0} for p in POOLS + MEASURED}
     for p, u, ri, ro in rows:
         out[p] = {"units": int(u), "real_in": int(ri), "real_out": int(ro)}
     return out
@@ -185,7 +201,7 @@ def left(uid, cfg=None):
     of = sum(budget(uid, p, cfg) or 0 for p in POOLS) if int(cfg.get("quota") or 0) > 0 else None
     if of is None:
         return {"left": None, "of": None}
-    n = sum(v["units"] for v in used(uid).values())
+    n = sum(v["units"] for p, v in used(uid).items() if p in POOLS)          # Mess-Pools (stt) zaehlen nicht mit
     return {"left": max(0, of - n), "of": of}
 
 
@@ -201,7 +217,7 @@ def light(units, of):
 
 def admin_view(cfg=None, accounts=None):
     """Admin-Bereich (M8, K21), nur Zahlen von heute: {day, accounts, people, units: {pool: n}, total, real_in, real_out,
-    lights}. lights = None bei weniger als MIN_ACCOUNTS aktiven Konten (nur Summen), sonst nur Anzahlen je Farbe
+    lights, stt: {units, seconds}}. lights = None bei weniger als MIN_ACCOUNTS aktiven Konten (nur Summen), sonst nur Anzahlen je Farbe
     {gruen, gelb, rot} - nie eine Kennung oder Einheiten einer Person (K21: Admin sieht keine Einzelpersonen). Die Ampel
     rechnet nur mit den Pools, die wirklich begrenzt werden (LIMITED: Auftraege, Ideen) - Fragen sind nur gemessen und
     werden ueber "Anfragen/Tag" begrenzt. accounts: Zahl aktiver Konten (Standard: aus der Datenbank)."""
@@ -211,8 +227,13 @@ def admin_view(cfg=None, accounts=None):
         if accounts is None:
             accounts = int(c.execute("SELECT count(*) FROM users WHERE disabled=0").fetchone()[0])
     sums, per, lim = {p: 0 for p in POOLS}, {}, {}
+    meas = {p: {"units": 0, "seconds": 0} for p in MEASURED}            # nur Summen (K21), keine Personen-Zahl
     rin = rout = 0
     for uid, pool, u, ri, ro in rows:
+        if pool in MEASURED:                         # K-F (2274): Diktat getrennt (units/total/Ampel bleiben wie bisher)
+            m = meas[pool]
+            m["units"], m["seconds"] = m["units"] + int(u), m["seconds"] + int(ri)
+            continue
         sums[pool] = sums.get(pool, 0) + int(u)
         per[uid] = per.get(uid, 0) + int(u)
         if pool in LIMITED:
@@ -220,7 +241,7 @@ def admin_view(cfg=None, accounts=None):
         rin, rout = rin + int(ri), rout + int(ro)
     people = len([u for u, n in per.items() if n > 0])
     out = {"day": day, "accounts": accounts, "people": people, "units": sums, "total": sum(sums.values()),
-           "real_in": rin, "real_out": rout, "lights": None}
+           "real_in": rin, "real_out": rout, "lights": None, **meas}
     if accounts >= MIN_ACCOUNTS:
         of = sum(budget("", p, cfg) or 0 for p in LIMITED) if int(cfg.get("quota") or 0) > 0 else None
         counts = {"gruen": 0, "gelb": 0, "rot": 0}

@@ -188,6 +188,26 @@ don't kick in.
   a 1 right away. In the developer tools (network), `/api/events` then stays open as “eventsource”. If a proxy buffers
   or drops the connection, Saga switches to polling every 60 seconds on its own: everything still arrives, just later.
 
+**Dictation (2.6):** If the admin sets up a Whisper-compatible service under AI assistant › "Dictation", browsers and
+apps send short recordings (at most 60 s, 2 MB) to `POST /api/ai/transcribe`. Saga only keeps them in memory and never
+stores them – nginx, however, buffers requests above 8–16 KB to disk in `client_body_temp` by default. Turn buffering off
+for this path (its own block inside `server { … }`):
+
+```nginx
+    location /api/ai/transcribe {          # dictation: don't buffer the recording to disk
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        client_body_buffer_size 2100k;     # fits in memory entirely if it is buffered after all
+        client_max_body_size 3m;
+    }
+```
+
+Caddy and Traefik don't buffer requests to disk (don't put a `buffering` middleware on the router).
+
 **Request size:** Saga itself rejects requests that are too large with 413 – in general above 2 MB
 (`REQUEST_MAX_MB`), file uploads above `ATTACH_MAX_MB` (plus a little form overhead), the admin area above 1 MB.
 A limit in the reverse proxy (as above, slightly above `ATTACH_MAX_MB`) is still recommended: huge requests then

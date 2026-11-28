@@ -97,6 +97,55 @@
     inp('url').addEventListener('input', where);
     keep(); where();
   })(ef);
+  // 2.6 (Bugs-DB 2274 K-F): Admin -> KI-Assistent -> Diktat (docs/APP-API-KI.md 15.8) - wie die Embeddings: JSON mit CSRF,
+  // der Schluessel kommt nie zurueck; Texte uebersetzt in data-* der Vorlage.
+  var sf = document.querySelector('form[data-stt]');
+  if (sf) (function (f) {
+    var D = f.dataset, $ = function (id) { return document.getElementById(id); };
+    var inp = function (n) { return f.querySelector('[name=' + n + ']'); };
+    var out = $('stt-out'), save = $('stt-save'), test = $('stt-test');
+    function csrf() { var c = f.querySelector('input[name=csrf]'); return c ? c.value : ''; }
+    function vals() {
+      return { enabled: inp('enabled').checked, url: inp('url').value.trim(), model: inp('model').value.trim(),
+               api_key: inp('api_key').value.trim(), clear_key: inp('clear_key').checked, language: inp('language').value,
+               cloud: inp('cloud').checked, timeout: parseInt(inp('timeout').value, 10) || null, note: inp('note').value.trim() };
+    }
+    function send(method, url, body) {
+      return fetch(url, { method: method, credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf(), 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); });
+    }
+    function show(txt, cls) { out.hidden = false; out.textContent = txt; out.className = 'adm-test' + (cls ? ' ' + cls : ''); }
+    function apply(d) {
+      var s = d.settings || {};
+      inp('enabled').checked = !!s.enabled; inp('cloud').checked = !!s.cloud;
+      inp('url').value = s.url || ''; inp('model').value = s.model || ''; inp('language').value = s.language || '';
+      if (s.timeout != null) inp('timeout').value = s.timeout;
+      inp('note').value = s.note || ''; inp('api_key').value = ''; inp('clear_key').checked = false;
+      $('stt-key-hint').textContent = s.has_key ? D.keySet : D.keyNone;
+      $('stt-clear').hidden = !s.has_key;
+      $('stt-blocked').hidden = !d.blocked;
+      $('stt-where').textContent = d.where ? D.shows.replace('{label}', d.where.label) : '';
+      $('stt-formats').textContent = s.url ? D.formats.replace('{f}', (s.formats || []).join(', ').toUpperCase() || '–') : '';
+    }
+    function busy(on) { save.disabled = test.disabled = on; }
+    function doSave() {
+      busy(true); show(D.busy);
+      send('PUT', '/api/ai/stt', vals()).then(function (d) { apply(d); show(D.saved, 'ok'); })
+        .catch(function (e) { show(D.fail.replace('{err}', e.message), 'err'); }).then(function () { busy(false); });
+    }
+    save.addEventListener('click', doSave);
+    test.addEventListener('click', function () {
+      busy(true); show(D.busy);
+      send('POST', '/api/ai/stt/test', vals()).then(function (d) {
+        show((d.lines || []).join('\n'), d.ok ? 'ok' : 'err');
+        return send('GET', '/api/ai/stt').catch(function () { return null; });
+      }).then(function (d) { if (d && d.settings) $('stt-formats').textContent = d.settings.url ? D.formats.replace('{f}', (d.settings.formats || []).join(', ').toUpperCase() || '–') : ''; })
+        .catch(function (e) { show('✗ ' + e.message, 'err'); }).then(function () { busy(false); });
+    });
+    f.addEventListener('submit', function (e) { e.preventDefault(); doSave(); });
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') { e.preventDefault(); doSave(); } });
+  })(sf);
   document.querySelectorAll('form[data-confirm]').forEach(function (f) {
     f.addEventListener('submit', function (e) {
       var b = e.submitter;

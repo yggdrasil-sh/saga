@@ -86,6 +86,11 @@ DEFAULTS = {
     # timeout = Sekunden je Stapel, query_timeout_ms = Einbetten der Frage beim recall (danach Trigramm-Rueckfall)
     "ai_embed": {"enabled": False, "provider": "ollama", "url": "", "model": "bge-m3", "api_key": "", "keep_alive": "30m",
                  "timeout": 15, "query_timeout_ms": 1200, "pinned": []},
+    # Diktat (2.6, Bugs-DB 2274 K-F, saga/ai_stt.py, docs/APP-API-KI.md 15): Whisper-kompatibler Dienst, nur Durchreiche.
+    # url ohne /v1/audio/transcriptions, pinned wie bei "ai"; cloud aus = nur Adressen im eigenen Netz; formats setzt der
+    # Verbindungstest; note = Zusatzsatz zum Hinweis; timeout = Sekunden (5-60)
+    "ai_stt": {"enabled": False, "url": "", "model": "whisper-1", "api_key": "", "language": "", "cloud": False,
+               "timeout": 30, "formats": ["ogg", "wav"], "pinned": [], "note": ""},
     # Persona der KI (2.1): Name (leer = "Saga KI"), Tonfall als Stil-Zusatz im System-Prompt; das Bild liegt in avatar_img
     "ai_persona": {"name": "", "tone": ""},
     # Zweiter Faktor (2.1, saga/mfa.py): require = none | admins | all (wer verlangt wird und keinen hat, wird nach der
@@ -143,7 +148,7 @@ DEFAULTS = {
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),
                  ("backup", "s3_secret"), ("horn", "sign_sk"), ("horn_cf", "token"),
-                 ("weather", "api_key"), ("ai_embed", "api_key")}
+                 ("weather", "api_key"), ("ai_embed", "api_key"), ("ai_stt", "api_key")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

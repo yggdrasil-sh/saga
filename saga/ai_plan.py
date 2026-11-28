@@ -910,12 +910,14 @@ def _ask_model(uid, c, msgs, schema, emit_status, stop):
 
 
 def plan(uid, q, *, note=None, choice=None, recipe=None, fields=None, source="saga", emit_status=None, stop=None, cfg=None,
-         shared=None):
+         shared=None, dictated=False):
     """Bitte -> Result. recipe/fields: Rezept direkt (ohne Modell, z. B. "Als Aufgabe anlegen"); sonst Kontext waehlen,
     Modell fragen (Schema, Rueckfall Zeilenformat), pruefen, hoechstens einmal reparieren, Auftrag anlegen.
     shared (K-G 2275, geprueft von ai_jobs.parse_shared): geteilter Inhalt {text, url, title, from} - fremder Inhalt (K17):
     nur im Datenrahmen, Kontext nur ueber die eigenen Worte und den Titel (K7/RT-04), eigene Worte leer -> Systembitte;
-    gespeichert als plan.shared + plan.origin (Warnung aus ai_origin ohne Modell), reads + SHARE_REF erst nach rights()."""
+    gespeichert als plan.shared + plan.origin (Warnung aus ai_origin ohne Modell), reads + SHARE_REF erst nach rights().
+    dictated (K-F 2274, input "dictation"): die Bitte bleibt die Bitte der Person (kein Datenrahmen), plan.origin
+    {kind: dictation, warn} - warn nur bei ai_origin strong/exfil (eine Anrede allein warnt beim Diktat nicht)."""
     pc = settings_raw() if cfg is None else cfg
     lvl = level(pc)
     if lvl == "answers":
@@ -985,10 +987,17 @@ def plan(uid, q, *, note=None, choice=None, recipe=None, fields=None, source="sa
         return _refuse("cant", "model", alt, uid=uid)
     if shared is not None:
         return _store(uid, res, reads, lvl, own, "share", shared=shared)
-    return _store(uid, res, reads, lvl, q, source)
+    return _store(uid, res, reads, lvl, q, source, dictated=dictated)
 
 
-def _store(uid, res, reads, lvl, q, source, shared=None):
+def dictation_origin(q):
+    """K-F (2274): Herkunft eines diktierten Auftrags -> {kind: dictation, warn}. warn nur bei strong/exfil (ai_origin)."""
+    from saga import ai_origin
+    why = ai_origin.reasons(q or "", names=("saga", ai.persona_name()))
+    return {"kind": "dictation", "warn": bool({"strong", "exfil"} & set(why))}
+
+
+def _store(uid, res, reads, lvl, q, source, shared=None, dictated=False):
     """Gepruefter Plan -> Auftrag (wartet_ok) -> Result(type=plan, ...). shared (K-G 2275): plan.shared/plan.origin,
     reads + SHARE_REF (nach rights() - check_plan kennt die Kennung nicht)."""
     steps = res["steps"]
@@ -1007,6 +1016,8 @@ def _store(uid, res, reads, lvl, q, source, shared=None):
         extra = {"shared": {"text": shared.get("text") or "", "url": shared.get("url"), "title": shared.get("title"),
                             "from": shared.get("from") or "app"},
                  "origin": {"kind": "share", "host": host, "from": shared.get("from") or "app", "warn": bool(warn)}}
+    elif dictated:
+        extra = {"origin": dictation_origin(q)}
     first = steps[0]["args"] if steps else {}
     sv = {"recipe": res.get("recipe"), "item": res["title"], "deadline": first.get("due") or first.get("start")}
     pj = {"v": 1, "level": lvl, "recipe": res.get("recipe"), "reads": reads, "labels": labels, "title": res["title"],
@@ -1151,13 +1162,23 @@ def plan_view(job_id, uid):
             "read_text": (t("Ich lese dafür:") + " " + ", ".join(x["label"] for x in rl)) if rl else "",
             "wording": [s["wording"] for s in steps], "classes": [s["undo_class"] for s in steps],
             "say": say("plan"), "recipe": pj.get("recipe"), "edited": bool(pj.get("edited")) and r[4] == "wartet_ok",
-            "origin": origin_view(pj)}
+            "origin": origin_view(pj, uid)}
 
 
-def origin_view(pj):
+def origin_view(pj, uid=None):
     """Herkunft fuer die Plan-Karte (K-G 2275, K17/G7) -> {kind, host, from, text, warn, warn_text} oder None (Systemtext
     in der Sprache der Anfrage; warn stammt aus ai_origin beim Planen und gehoert zum Plan-Hash)."""
     o = pj.get("origin") if isinstance(pj, dict) else None
+    if isinstance(o, dict) and o.get("kind") == "dictation":                 # K-F (2274): "Diktiert" (+ Warnung du/Sie)
+        from saga import ai_say, ai_stt
+        warn = bool(o.get("warn"))
+        wt = None
+        if warn:
+            try:
+                wt = ai_stt.warn_text(ai_say.persona_for(uid) if uid else None)
+            except Exception:  # noqa: BLE001 - Anrede unbekannt: du
+                wt = ai_stt.warn_text()
+        return {"kind": "dictation", "text": ai_stt.origin_text(), "warn": warn, "warn_text": wt}
     if not isinstance(o, dict) or o.get("kind") != "share":
         return None
     host = o.get("host") or None

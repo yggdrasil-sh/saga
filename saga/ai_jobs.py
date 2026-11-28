@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from db import connect as _db
-from saga import ai, ai_plan, ai_undo, caps, jobs
+from saga import ai, ai_plan, ai_stt, ai_undo, caps, jobs
 from saga.core import _api_guard, _bad, _body, t
 
 router = APIRouter()
@@ -338,12 +338,12 @@ def to_thread(uid, text, choice, recipe, res, shared=None):
 
 
 def plan_job(uid, text, *, note=None, choice=None, recipe=None, fields=None, source="saga", emit_status=None, stop=None,
-             into_thread=False, shared=None):
+             into_thread=False, shared=None, input="text"):
     """Planen (ai_plan.plan) und - aus dem Gespraech - die Zuege anlegen -> Ergebnis (dict). Die Zuege entstehen immer,
     sobald es einen Auftrag gibt, auch wenn die Verbindung inzwischen gerissen ist (pweb 4: sonst ein verwaister Auftrag
     ohne Zug im Verlauf); genau einmal je Bitte - nur hier, nie beim Laden des Gespraechs."""
     res = dict(ai_plan.plan(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
-                            emit_status=emit_status, stop=stop, shared=shared))
+                            emit_status=emit_status, stop=stop, shared=shared, dictated=input == "dictation"))
     if into_thread:
         to_thread(uid, text, choice, recipe, res, shared=shared)
     return res
@@ -351,7 +351,7 @@ def plan_job(uid, text, *, note=None, choice=None, recipe=None, fields=None, sou
 
 @router.post("/api/ai/jobs")
 async def api_jobs_create(request: Request):
-    """{text, source?, context?: {note}, choice?, thread?, shared?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt,
+    """{text, source?, context?: {note}, choice?, thread?, shared?, input?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt,
     ohne Modell - z. B. "Als Aufgabe anlegen"). thread: true = aus dem Gespraech im Ort "Saga" (Zuege im Verlauf,
     to_thread). source "share" + shared {text, url, title, from} = Teilen -> Auftrag (K-G 2275, parse_shared): geteilter
     Inhalt nur als Daten (ai_plan), nur mit Faehigkeit ai_act (RT-17), eigene Worte in text duerfen leer sein.
@@ -373,6 +373,10 @@ async def api_jobs_create(request: Request):
     shared, serr = parse_shared(b, source)                           # K-G (2275): Teilen -> Auftrag (APP-API-KI 14.1)
     if serr is not None:
         return serr
+    inp = b.get("input") if b.get("input") is not None else "text"   # K-F (2274): diktiert (APP-API-KI 15.5)
+    if inp not in ai_stt.INPUTS or (inp == "dictation" and (not text.strip() or recipe is not None or shared is not None
+                                                             or source == "share")):
+        return JSONResponse({"error": ai_stt.message("input"), "code": "input"}, status_code=400)
     if recipe is None and not text.strip() and shared is None:
         return _bad(t("Bitte sag mir, was ich tun soll."))
     ctxb = b.get("context") if isinstance(b.get("context"), dict) else {}
@@ -411,7 +415,8 @@ async def api_jobs_create(request: Request):
     def work():
         try:
             res = plan_job(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
-                           emit_status=lambda d: put(("status", d)), stop=halt.is_set, into_thread=into_thread, shared=shared)
+                           emit_status=lambda d: put(("status", d)), stop=halt.is_set, into_thread=into_thread, shared=shared,
+                           input=inp)
             put(("res", res))
         except Exception as ex:  # noqa: BLE001 - nie Inhalte loggen
             print(f"ai_jobs: {type(ex).__name__}: {ex}", flush=True)

@@ -73,6 +73,10 @@ dem Update einmal Admin › Anrufe › **„Proxy reicht WebSocket durch?“ →
 WebSocket antwortet `/api/sfu/ws` mit 426; Einzelheiten und Fehlersuche in
 [UPGRADE-2.5.md, Abschnitt 3](UPGRADE-2.5.md#3-reverse-proxy).
 
+**Neu nur, wenn du Diktat über den Server einrichtest** (Admin › KI-Assistent › „Diktat“): hinter **nginx** für
+`/api/ai/transcribe` `proxy_request_buffering off` setzen, sonst legt nginx die Aufnahmen kurz in `client_body_temp`
+auf der Platte ab – Block in der [Anleitung](ANLEITUNG.md), Abschnitt Reverse-Proxy („Diktat“). Caddy/Traefik: nichts zu tun.
+
 ## 5. Föderation
 
 **Große Anrufe über Servergrenzen** brauchen **alle beteiligten Server auf 2.6** (Bugs-DB 2439: ab etwa 12 Geräten

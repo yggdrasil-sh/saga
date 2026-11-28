@@ -65,6 +65,7 @@ from saga import ai_jobs                      # 2.6 (K-B 2267): Planer + Auftrae
 from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einwilligung, Meine Daten
 from saga import ai_notify  # noqa: F401 - 2.6 (K-C 2270): Glocke/Push zu Auftraegen, Knoepfe (saga/ai_act.py)
 from saga import ai_today                     # 2.6 (K-D 2271): Tageszeile /api/ai/today, /api/ai/today/quiet
+from saga import ai_stt                       # 2.6 (K-F 2274): Diktat POST /api/ai/transcribe (Durchreiche, Ton nie gespeichert)
 from saga import widget_push                  # 2.6 (Bugs-DB 2188): stiller Widget-Push, /api/app/widgets
 from saga import memory                       # 2.6 (Bugs-DB 2581): Gedaechtnis /api/v1/memory/..., /api/account/memory
 
@@ -263,7 +264,8 @@ app.add_middleware(BodyLimit, default=REQUEST_MAX,
                           ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
                           ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024)),
                           ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024),
-                          ("POST", re.compile(r"/api/import/upload"), import_common.IMPORT_MAX + 1024 * 1024)])
+                          ("POST", re.compile(r"/api/import/upload"), import_common.IMPORT_MAX + 1024 * 1024),
+                          ("POST", re.compile(r"/api/ai/transcribe"), ai_stt.BODY_LIMIT)])        # 2.6 (K-F 2274): Diktat 2 MiB
 # 2.5: eigene Push-Verbindung der Apps (WebSocket /api/push/stream) - als letzte registriert = ganz aussen, ohne die
 # Middlewares und das Routing darunter (spart Speicher je ruhender Verbindung, saga.push_stream.Front)
 app.add_middleware(push_stream.Front)
@@ -377,6 +379,7 @@ app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/c
 app.include_router(ai_jobs.router)          # 2.6 (K-B 2267): Auftraege der Kollegin /api/ai/jobs/...
 app.include_router(ai_saga.router)          # 2.6 (K-I 2269): /saga, /api/ai/consent|prefs|thread|mydata
 app.include_router(ai_today.router)         # 2.6 (K-D 2271): GET/PUT /api/ai/today, POST|DELETE /api/ai/today/quiet
+app.include_router(ai_stt.router)           # 2.6 (K-F 2274): POST /api/ai/transcribe
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
 app.include_router(clientlog.router)        # 2.5: Fehlerberichte und "Diagnose senden" (Feature clientlog1)
 app.include_router(calldiag.router)         # vor calls.router: /api/calls/diag ist kein Anruf {cid}

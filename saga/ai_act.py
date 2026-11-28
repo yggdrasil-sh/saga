@@ -64,12 +64,17 @@ def _hint():
     return t("Der Knopf gilt nicht mehr – bitte in Saga ansehen.")
 
 
+def _dictated(plan):
+    pj = plan if isinstance(plan, dict) else {}
+    return isinstance(pj.get("origin"), dict) and pj["origin"].get("kind") == "dictation"
+
+
 def act(uid, key, device, job_id, action, atok, pv):
     """key: "session" | "hkd" | "hk"; device: Geraete-Anmeldung des Aufrufs (oder None). -> (status, body)."""
     if key == "hk" and action not in REST:
         return _err(403, "key", t("Das geht nur in der App."))
     with _db() as c:
-        j = c.execute("SELECT state, plan_v, plan_hash, undo_at, source FROM job WHERE id=? AND uid=? AND kind=?",
+        j = c.execute("SELECT state, plan_v, plan_hash, undo_at, source, plan FROM job WHERE id=? AND uid=? AND kind=?",
                       (job_id, uid, ai_plan.KIND)).fetchone()
     if not j:
         return 404, {"error": "not found"}
@@ -80,6 +85,8 @@ def act(uid, key, device, job_id, action, atok, pv):
     if action == "open":
         return 200, {"ok": True, "action": "open", "url": f"/saga?tab=jobs&job={job_id}"}
     if action == "approve" and j[4] == "share":       # K-G (2275, K17/F8): Geteiltes nur ueber die Plan-Karte freigeben
+        return _err(409, "open", t("Das geht nur in Saga selbst."), job_id)
+    if action == "approve" and _dictated(j[5]):       # K-F (2274, RT-18): Diktiertes ebenso (Fernseher im Raum)
         return _err(409, "open", t("Das geht nur in Saga selbst."), job_id)
     if not isinstance(atok, str) or not 16 <= len(atok) <= 64:
         return _err(410, "gone", _hint())

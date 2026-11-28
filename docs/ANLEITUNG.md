@@ -189,6 +189,26 @@ Heartbeat-Zeile, damit Leerlauf-Timeouts nicht greifen.
   Puffert ein Proxy oder bricht er die Verbindung ab, schaltet Saga von selbst auf Abfrage alle 60 Sekunden um: Alles
   kommt an, nur später.
 
+**Diktat (2.6):** Richtet der Admin unter KI-Assistent › „Diktat“ einen Whisper-kompatiblen Dienst ein, schicken Browser
+und Apps kurze Aufnahmen (höchstens 60 s, 2 MB) an `POST /api/ai/transcribe`. Saga behält sie nur im Speicher und
+speichert sie nie – nginx dagegen puffert Anfragen über 8–16 KB ab Werk in `client_body_temp` auf der Platte. Für diesen
+Pfad das Puffern abschalten (eigener Block im `server { … }`):
+
+```nginx
+    location /api/ai/transcribe {          # Diktat: Aufnahme nicht auf die Platte puffern
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        client_body_buffer_size 2100k;     # passt ganz in den Speicher, falls doch gepuffert wird
+        client_max_body_size 3m;
+    }
+```
+
+Caddy und Traefik puffern Anfragen nicht auf die Platte (keine `buffering`-Middleware auf den Router legen).
+
 **Push ohne Verteiler (Android-App, 2.5):** Ist auf einem Android-Handy kein UnifiedPush-Verteiler (ntfy, NextPush …)
 installiert, hält die Saga-App selbst eine Verbindung zu `GET /api/push/stream` (WebSocket, derselbe Port). Die App
 schickt nur alle paar Minuten ein winziges Lebenszeichen – je seltener, desto besser für den Akku. Der Proxy muss

@@ -57,6 +57,10 @@ to do; nginx: upgrade headers). Since calls now go through the built-in node by 
 Admin › Calls › **"Does the proxy pass WebSocket through?" → Check now** – "Yes ✓" is right. Without WebSocket,
 `/api/sfu/ws` answers 426; details and troubleshooting in [UPGRADE-2.5.md, section 3](UPGRADE-2.5.md#3-reverse-proxy).
 
+**New only if you set up dictation through the server** (Admin › AI assistant › "Dictation"): behind **nginx**, set
+`proxy_request_buffering off` for `/api/ai/transcribe`, otherwise nginx briefly writes recordings to `client_body_temp`
+on disk – block in the [guide](GUIDE.md), reverse proxy section ("Dictation"). Caddy/Traefik: nothing to do.
+
 ## 5. Federation
 
 **Large calls across servers** need **all involved servers on 2.6** (bugs DB 2439: otherwise, from about 12 devices on,

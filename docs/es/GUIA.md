@@ -190,6 +190,26 @@ línea de latido para que no salten los tiempos de inactividad.
   «eventsource». Si un proxy usa búfer o corta la conexión, Saga pasa por sí mismo a consultar cada 60 segundos: todo
   llega, solo que más tarde.
 
+**Dictado (2.6):** Si el administrador configura un servicio compatible con Whisper en Asistente de IA › «Dictado», los
+navegadores y las apps envían grabaciones cortas (como máximo 60 s, 2 MB) a `POST /api/ai/transcribe`. Saga solo las
+mantiene en memoria y nunca las guarda; nginx, en cambio, guarda por defecto en disco (`client_body_temp`) las peticiones
+de más de 8–16 KB. Desactiva el búfer para esta ruta (bloque propio dentro de `server { … }`):
+
+```nginx
+    location /api/ai/transcribe {          # dictado: no guardar la grabación en disco
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        client_body_buffer_size 2100k;     # cabe entera en memoria si aun así se usa búfer
+        client_max_body_size 3m;
+    }
+```
+
+Caddy y Traefik no guardan las peticiones en disco (no pongas un middleware `buffering` en el router).
+
 **Tamaño de las peticiones:** Saga rechaza por sí mismo las peticiones demasiado grandes con 413: en general por
 encima de 2 MB (`REQUEST_MAX_MB`), las subidas de archivos por encima de `ATTACH_MAX_MB` (más un pequeño margen del
 formulario) y el área de administración por encima de 1 MB. Aun así, conviene poner un límite en el proxy inverso

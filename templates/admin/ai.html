@@ -43,7 +43,7 @@
     {% else %}<label class="adm-check"><input type="checkbox" name="web" value="1" disabled><span>{{ _("Websuche erlauben") }}<small>{{ _("Nicht verfügbar: Dafür muss die Websuche (SearXNG) eingerichtet sein – SEARXNG_URL in der .env, siehe Anleitung „Websuche“.") }}</small></span></label>{% endif %}
     <p class="hk-hint">{{ _("Heute: {n} Anfragen von {p} Personen · höchstens {k} gleichzeitig (AI_MAX_PARALLEL)", n=used, p=people, k=parallel) }}</p>
     {# 2.6 (Bugs-DB 2266 K-A5, M8): Einheiten nur als kleiner Messwert - Stellgroesse bleibt "Anfragen je Person und Tag" #}
-    <p class="hk-hint" id="ai-units"><small>{{ _("Messwert heute in Einheiten (etwa Zeichen/4): Fragen {a} · Aufträge {j} · Ideen {i}", a=units.units.ask, j=units.units.job, i=units.units.idea) }}{% if units.real_in or units.real_out %} · {{ _("echte Tokens laut Endpunkt: {i} ein, {o} aus", i=units.real_in, o=units.real_out) }}{% endif %}{% if units.lights is none %} · {{ _("weniger als {n} Konten: nur Summen", n=5) }}{% elif units.lights.gruen or units.lights.gelb or units.lights.rot %} · {{ _("je Person nur Ampel:") }} {% set parts = [] %}{% for k, name in [("gruen", _("Grün")), ("gelb", _("Gelb")), ("rot", _("Rot"))] if units.lights[k] %}{% if parts.append(units.lights[k]|string ~ " × " ~ name) %}{% endif %}{% endfor %}{{ parts|join(", ") }}{% endif %}</small></p>
+    <p class="hk-hint" id="ai-units"><small>{{ _("Messwert heute in Einheiten (etwa Zeichen/4): Fragen {a} · Aufträge {j} · Ideen {i}", a=units.units.ask, j=units.units.job, i=units.units.idea) }}{% if units.stt and (units.stt.units or units.stt.seconds) %} · {{ _("Diktat {u} ({s} s Aufnahme)", u=units.stt.units, s=units.stt.seconds) }}{% endif %}{% if units.real_in or units.real_out %} · {{ _("echte Tokens laut Endpunkt: {i} ein, {o} aus", i=units.real_in, o=units.real_out) }}{% endif %}{% if units.lights is none %} · {{ _("weniger als {n} Konten: nur Summen", n=5) }}{% elif units.lights.gruen or units.lights.gelb or units.lights.rot %} · {{ _("je Person nur Ampel:") }} {% set parts = [] %}{% for k, name in [("gruen", _("Grün")), ("gelb", _("Gelb")), ("rot", _("Rot"))] if units.lights[k] %}{% if parts.append(units.lights[k]|string ~ " × " ~ name) %}{% endif %}{% endfor %}{{ parts|join(", ") }}{% endif %}</small></p>
     {# Bugs-DB 2349: Zwischenspeicher und Grenze geteilter Seiten - nur Zahlen dieses Prozesses, keine Personen/Titel #}
     <p class="hk-hint" id="ai-cache"><small>{{ _("Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)", d=cache.docs, m=cache.mb, c=cache.cap_docs, x=cache.cap_mb) }}{% if cache.shared_cut %} · {{ _("{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)", n=cache.shared_cut, k=cache.shared_max, h=cache.shared_cut_max) }}{% endif %}</small></p>
   </section>
@@ -93,6 +93,47 @@
       <button class="btn" type="button" id="emb-test">{{ _("Verbindung testen") }}</button>
     </div>
     <pre class="adm-test" id="emb-out" role="status" aria-live="polite" hidden></pre>
+  </section>
+</form>
+{% endif %}
+{# 2.6 (Bugs-DB 2274 K-F): Diktat ueber den Server (docs/APP-API-KI.md 15) - eigener Whisper-kompatibler Dienst, nur
+   Durchreiche. JSON wie die Embeddings (PUT /api/ai/stt, POST /api/ai/stt/test, static/admin.js); Schluessel nie sichtbar. #}
+{% if stt %}{% set ss = stt.settings %}
+<form class="adm-form" id="diktat" data-stt
+      data-busy="{{ _('Prüfe …') }}" data-saved="{{ _('✓ Gespeichert') }}" data-fail="{{ _('Nicht gespeichert: {err}') }}"
+      data-key-set="{{ _('gespeichert ✓ – leer lassen = behalten') }}" data-key-none="{{ _('optional – ein Dienst im eigenen Netz braucht meist keinen') }}"
+      data-shows="{{ _('So sehen die Personen, wohin ihre Aufnahme geht: „{label}“') }}" data-formats="{{ _('Angenommene Formate: {f}') }}">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Diktat") }}</h3>
+    <p class="hk-hint">{{ _("Sprechen statt tippen im Ort „Saga“. Apps erkennen Sprache zuerst auf dem Gerät; wo das nicht geht (Browser, ältere Geräte), kann Saga die Aufnahme an einen Whisper-kompatiblen Dienst weiterreichen, den du hier einträgst – z. B. faster-whisper oder whisper.cpp im eigenen Netz. Saga speichert die Aufnahme nicht; höchstens 60 Sekunden je Diktat.") }}</p>
+    <p class="adm-flash warn" role="note">{{ _("Hinter nginx: für /api/ai/transcribe „proxy_request_buffering off“ setzen, sonst legt nginx größere Aufnahmen kurz auf der Platte ab (Anleitung, Abschnitt Reverse-Proxy). Was der Diktat-Dienst selbst speichert, liegt bei ihm.") }}</p>
+    <p class="adm-flash err" id="stt-blocked" role="note"{% if not stt.blocked %} hidden{% endif %}>{{ _("Gesperrt: Der Name des Dienstes zeigt jetzt ins Internet, „Cloud erlauben“ ist aus. Es geht nichts raus, bis du die Adresse prüfst und neu speicherst.") }}</p>
+    {{ check(_('Diktat über den Server anbieten'), 'enabled', ss.enabled, _('Standard: aus. Ohne Haken gibt es Diktat nur auf Geräten, die es selbst können.')) }}
+    {{ field(_('Adresse'), 'url', ss.url, max=300, ph='http://whisper.lan:8000', hint=_('Basis des Dienstes – Saga hängt /v1/audio/transcriptions an. Ohne „Cloud erlauben“ nur Adressen im eigenen Netz (genau diese).')) }}
+    {{ field(_('Modell'), 'model', ss.model, max=200, ph='whisper-1', hint=_('Wie der Dienst es erwartet, z. B. whisper-1, Systran/faster-whisper-small oder large-v3.')) }}
+    <label class="adm-field"><span>{{ _("API-Schlüssel") }}</span>
+      <input class="hk-in adm-secret" type="password" name="api_key" value="" maxlength="500" autocomplete="new-password" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+      <small id="stt-key-hint">{% if ss.has_key %}{{ _('gespeichert ✓ – leer lassen = behalten') }}{% else %}{{ _('optional – ein Dienst im eigenen Netz braucht meist keinen') }}{% endif %}</small></label>
+    <label class="adm-check" id="stt-clear"{% if not ss.has_key %} hidden{% endif %}><input type="checkbox" name="clear_key" value="1"><span>{{ _("Gespeicherten Schlüssel löschen") }}</span></label>
+    <label class="adm-field"><span>{{ _("Sprache, wenn die App keine nennt") }}</span>
+      <select class="hk-in" name="language">
+        <option value=""{% if not ss.language %} selected{% endif %}>{{ _("Sprache der Person") }}</option>
+        {% for code, name in [("de", "Deutsch"), ("en", "English"), ("es", "Español"), ("ru", "Русский"), ("th", "ไทย")] %}<option value="{{ code }}"{% if ss.language == code %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></label>
+    {{ check(_('Cloud erlauben'), 'cloud', ss.cloud, _('Standard: aus. An: auch Dienste im Internet (nur https). Die Personen sehen dann „Deine Aufnahme geht übers Internet an …“ mit Anbieter und Land.')) }}
+    <details class="adm-more">
+      <summary>{{ _("Mehr") }}</summary>
+      {{ field(_('Zeitlimit (Sekunden)'), 'timeout', ss.timeout, type='number', max=2, hint=_('So lange darf der Dienst für eine Aufnahme brauchen (5–60).')) }}
+      {{ field(_('Zusatzsatz zum Hinweis'), 'note', ss.note or '', max=200, hint=_('Optional, ein Satz, z. B. „Läuft auf dem Rechner im Keller.“ Bei einem Dienst im Internet fällt ein Satz, der „lokal“ behauptet, weg.')) }}
+    </details>
+    <p class="hk-hint" id="stt-where">{% if stt.where %}{{ _('So sehen die Personen, wohin ihre Aufnahme geht: „{label}“', label=stt.where.label) }}{% endif %}</p>
+    <p class="hk-hint" id="stt-formats">{% if ss.url %}{{ _('Angenommene Formate: {f}', f=(ss.formats|join(', ')|upper) or '–') }}{% endif %}</p>
+    <div class="adm-actions">
+      <button class="btn btn-primary" type="button" id="stt-save">{{ _("Speichern") }}</button>
+      <button class="btn" type="button" id="stt-test">{{ _("Verbindung testen") }}</button>
+    </div>
+    <pre class="adm-test" id="stt-out" role="status" aria-live="polite" hidden></pre>
   </section>
 </form>
 {% endif %}

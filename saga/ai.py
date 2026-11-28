@@ -2066,6 +2066,12 @@ def api_ai_status(request: Request):
         srcs = ai_ctx.prefs(uid, conn)                                   # 2.6 K-A4: Schalter der Person je Quelle
         from saga import ai_saga                                         # 2.6 K-I (2269): Einwilligung, Anbieter-Hinweis (M4)
         saga_f = ai_saga.status_fields(uid, conn, c)
+        from saga import ai_stt                                          # 2.6 K-F (2274): Diktat - ganz hinten
+        try:
+            stt = ai_stt.status_field(uid, conn)
+        except Exception as ex:  # noqa: BLE001 - Status nie wegen des Diktats scheitern lassen
+            print(f"ai: status stt {type(ex).__name__}", flush=True)
+            stt = None
     units = ai_units.left(uid, c)                                        # 2.6 K-A5: Messwert (Einheiten), nur angehaengt
     web_cap = "ai_act" in caps_now
     if ai_web.enabled(c) and web_cap and saga_f.get("ask_details"):     # 2505: ⓘ "Frag deine Seiten" mit Websuche-Zeile
@@ -2081,7 +2087,8 @@ def api_ai_status(request: Request):
                          "caps": caps_now, "sources": srcs, "units": units,
                          "style": ai_say.style(uid),                         # 2.6 K-H (2268): Persona-Form, Lebhaftigkeit, Anrede
                          **_jobs_status(uid),                           # 2.6 K-B: Auftraege (jobs, level)
-                         **saga_f},                                      # 2.6 K-I (2269): endpoint, consent, intro (hinten)
+                         **saga_f,                                       # 2.6 K-I (2269): endpoint, consent, intro (hinten)
+                         "stt": stt},                                    # 2.6 K-F (2274): Diktat (APP-API-KI 15.2)
                         headers={"Cache-Control": "no-store"})
 
 

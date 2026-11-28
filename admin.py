@@ -1861,7 +1861,17 @@ def ai_page(request: Request):
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL, units=ai.units_today(), cache=ai.cache_view(),
                  models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx(), **_plan_ctx(),
                  hint=_ai_hint(a),       # 2.6 (K-I 2269, M4): Anbieter-Hinweis, wie ihn die Personen sehen
-                 emb=_emb_view())        # 2.6 (Bugs-DB 2581): Embeddings fuer das Gedaechtnis (docs/MEMORY.md 1.1)
+                 emb=_emb_view(),        # 2.6 (Bugs-DB 2581): Embeddings fuer das Gedaechtnis (docs/MEMORY.md 1.1)
+                 stt=_stt_view())        # 2.6 (Bugs-DB 2274 K-F): Diktat (docs/APP-API-KI.md 15.8)
+
+
+def _stt_view():
+    from saga import ai_stt
+    try:
+        return ai_stt.admin_view()
+    except Exception as ex:  # noqa: BLE001 - Anzeige
+        print(f"admin: Diktat-Ansicht {type(ex).__name__}", flush=True)
+        return None
 
 
 def _emb_view():
@@ -2067,6 +2077,52 @@ async def api_ai_embed_test(request: Request):
         b = {}
     try:
         out = await run_in_threadpool(memory.admin_test, b if isinstance(b, dict) else {})
+    except Exception as ex:  # noqa: BLE001
+        out = {"ok": False, "lines": [f"✗ {type(ex).__name__}"]}
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+# --- Diktat (2.6, Bugs-DB 2274 K-F, saga/ai_stt.py, docs/APP-API-KI.md 15.8) -----------------------------------------
+@admin.get("/api/ai/stt")
+def api_ai_stt(request: Request):
+    from saga import ai_stt
+    me, err = _api_admin(request)
+    if err:
+        return err
+    return JSONResponse(ai_stt.admin_view(), headers={"Cache-Control": "no-store"})
+
+
+@admin.put("/api/ai/stt")
+async def api_ai_stt_put(request: Request):
+    """{enabled, url, model, api_key?, clear_key?, language, cloud, timeout, note} -> wie GET (400 {error})."""
+    from saga import ai_stt
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = json.loads(await request.body() or b"{}")
+    except ValueError:
+        b = None
+    st, out = await run_in_threadpool(ai_stt.admin_save, b)
+    if st == 200:
+        s = out["settings"]
+        print(f"admin: {me['username']} speichert Diktat (aktiv={s['enabled']}, Cloud={s['cloud']})", flush=True)
+    return JSONResponse(out, status_code=st, headers={"Cache-Control": "no-store"})
+
+
+@admin.post("/api/ai/stt/test")
+async def api_ai_stt_test(request: Request):
+    """Verbindungstest (je 1 s Stille als WAV und Ogg) mit den Werten aus dem Formular -> {ok, lines, formats}."""
+    from saga import ai_stt
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = json.loads(await request.body() or b"{}")
+    except ValueError:
+        b = {}
+    try:
+        out = await run_in_threadpool(ai_stt.admin_test, b if isinstance(b, dict) else {})
     except Exception as ex:  # noqa: BLE001
         out = {"ok": False, "lines": [f"✗ {type(ex).__name__}"]}
     return JSONResponse(out, headers={"Cache-Control": "no-store"})

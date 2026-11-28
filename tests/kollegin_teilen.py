@@ -173,7 +173,8 @@ def part_texts(cA):
             ok(f"status.share_notice {lang}/{sal} ({d.get('share_notice')!r})", s == 200 and d.get("share_notice") == want, want)
     s, d = K.req("GET", "/api/ai/status", cA)
     keys = list(d)
-    ok("share_notice steht am Ende (aeltere Felder unveraendert davor)", keys and keys[-1] == "share_notice" and "ask_details" in keys, keys[-4:])
+    tail = keys[:-1] if keys and keys[-1] == "stt" else keys            # K-F (2274): stt haengt danach an (APP-API-KI 15.2)
+    ok("share_notice steht am Ende (aeltere Felder unveraendert davor)", tail and tail[-1] == "share_notice" and "ask_details" in keys, keys[-4:])
     K.req("PUT", "/api/ai/prefs", cA, {"salutation": "du"})
 
 
