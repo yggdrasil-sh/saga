@@ -16,6 +16,7 @@ Live: ai.job.changed {id, state, sub, plan_v} (saga.jobs). Zustandswoerter/Kennz
 import asyncio
 import contextvars
 import json
+import re
 import threading
 
 from fastapi import APIRouter, Request
@@ -245,11 +246,64 @@ def api_jobs_list(request: Request):
     return JSONResponse(list_jobs(uid, g), headers=NO_STORE)
 
 
+# --- Teilen -> Auftrag (2.6, Bugs-DB 2275 K-G, APP-API-KI 14.1) ---------------------------------------------------
+SHARE_TEXT_MAX = 20000               # so viel geteilter Text wird angenommen (ans Modell: ai_plan.SHARE_TO_MODEL)
+SHARE_URL_MAX = 2000
+SHARE_TITLE_MAX = 200
+SHARE_FROM = ("app", "web")
+_URL_OK = re.compile(r"https?://[^\s<>\"\\^`{|}\x00-\x1f\x7f]+", re.I)
+_SHARE_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _share_bad(code, msg=None):
+    return JSONResponse({"error": msg or t("ungültige Angabe"), "code": code}, status_code=400)
+
+
+def parse_shared(b, source):
+    """Feld shared aus POST /api/ai/jobs -> (shared {text, url, title, from} | None, fehlerantwort | None).
+    Regeln (Vertrag APP-API-KI 14.1): shared nur mit source share (sonst 400 code shared), share ohne Inhalt -> 400
+    code share_empty; Text bis SHARE_TEXT_MAX, url nur http(s) bis SHARE_URL_MAX ohne Leerraum, Titel bis SHARE_TITLE_MAX,
+    from app|web. Die Adresse ruft der Server nie ab."""
+    has = "shared" in b and b.get("shared") is not None
+    if has and source != "share":
+        return None, _share_bad("shared")
+    if source != "share":
+        return None, None
+    sh = b.get("shared")
+    if has and not isinstance(sh, dict):
+        return None, _share_bad("shared")
+    if has and b.get("recipe") is not None:
+        return None, _share_bad("shared")
+    sh = sh or {}
+    out = {}
+    for k, mx in (("text", SHARE_TEXT_MAX), ("title", SHARE_TITLE_MAX), ("url", SHARE_URL_MAX)):
+        v = sh.get(k)
+        if v is None:
+            continue
+        if not isinstance(v, str) or len(v) > mx:
+            return None, _share_bad("shared")
+        out[k] = v
+    url = out.get("url")
+    if url is not None:
+        url = url.strip()
+        if url and (not _URL_OK.fullmatch(url) or not ai_plan.share_host(url)):
+            return None, _share_bad("shared")
+        out["url"] = url or None
+    fr = sh.get("from", "app")
+    if fr not in SHARE_FROM:
+        return None, _share_bad("shared")
+    text = _SHARE_CTRL.sub(" ", out.get("text") or "").strip()
+    title = _SHARE_CTRL.sub(" ", out.get("title") or "").replace("\n", " ").strip()
+    if not text and not out.get("url"):
+        return None, _share_bad("share_empty", t("Es wurde nichts geteilt."))
+    return {"text": text, "url": out.get("url"), "title": title or None, "from": fr}, None
+
+
 def _fmt(typ, data):
     return f"event: {typ}\ndata: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
-def to_thread(uid, text, choice, recipe, res):
+def to_thread(uid, text, choice, recipe, res, shared=None):
     """Auftrag aus dem Gespraech im Ort "Saga" (Feld thread: true): die Bitte als eigener Zug, dazu ein KI-Zug je Ergebnis -
     plan (job_id: die Plan-Karte bzw. spaeter die Rueckmeldung zeichnet das Web aus GET /api/ai/jobs/{id}), ask (Frage +
     Auswahl) oder refuse (Absage + Alternative). Fehler (nichts passiert) bleiben draussen. -> res["turn"] = Nummer."""
@@ -261,8 +315,12 @@ def to_thread(uid, text, choice, recipe, res):
         me = t("Als Aufgabe anlegen") if recipe == "aufgabe" else ai_plan._builtin_title(recipe)
     else:
         me = (choice or "").strip() if choice else (text or "").strip()
+    me_fields = None
+    if shared is not None:                       # K-G (2275): geteilter Inhalt nie im Gespraech - nur Host und Weg
+        me = me or ai_plan.share_request()
+        me_fields = {"shared": {"host": ai_plan.share_host(shared.get("url")), "from": shared.get("from") or "app"}}
     try:
-        ai_saga.add_turn(uid, "me", me[:ai_plan.REQ_MAX], zug="job")
+        ai_saga.add_turn(uid, "me", me[:ai_plan.REQ_MAX], zug="job", fields=me_fields)
         if typ == "plan":
             n = ai_saga.add_turn(uid, "ai", t("Plan: {title}", title=res.get("title") or ""), zug="plan", job_id=res.get("job"))
         elif typ == "ask":
@@ -278,21 +336,23 @@ def to_thread(uid, text, choice, recipe, res):
 
 
 def plan_job(uid, text, *, note=None, choice=None, recipe=None, fields=None, source="saga", emit_status=None, stop=None,
-             into_thread=False):
+             into_thread=False, shared=None):
     """Planen (ai_plan.plan) und - aus dem Gespraech - die Zuege anlegen -> Ergebnis (dict). Die Zuege entstehen immer,
     sobald es einen Auftrag gibt, auch wenn die Verbindung inzwischen gerissen ist (pweb 4: sonst ein verwaister Auftrag
     ohne Zug im Verlauf); genau einmal je Bitte - nur hier, nie beim Laden des Gespraechs."""
     res = dict(ai_plan.plan(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
-                            emit_status=emit_status, stop=stop))
+                            emit_status=emit_status, stop=stop, shared=shared))
     if into_thread:
-        to_thread(uid, text, choice, recipe, res)
+        to_thread(uid, text, choice, recipe, res, shared=shared)
     return res
 
 
 @router.post("/api/ai/jobs")
 async def api_jobs_create(request: Request):
-    """{text, source?, context?: {note}, choice?, thread?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt, ohne
-    Modell - z. B. "Als Aufgabe anlegen"). thread: true = aus dem Gespraech im Ort "Saga" (Zuege im Verlauf, to_thread).
+    """{text, source?, context?: {note}, choice?, thread?, shared?} oder {recipe: <kennung>, fields: {...}} (Rezept direkt,
+    ohne Modell - z. B. "Als Aufgabe anlegen"). thread: true = aus dem Gespraech im Ort "Saga" (Zuege im Verlauf,
+    to_thread). source "share" + shared {text, url, title, from} = Teilen -> Auftrag (K-G 2275, parse_shared): geteilter
+    Inhalt nur als Daten (ai_plan), nur mit Faehigkeit ai_act (RT-17), eigene Worte in text duerfen leer sein.
     Antwort text/event-stream: status {phase}, dann plan | ask | refuse | error (mit thread zusaetzlich turn)."""
     uid, err = _who(request)
     if err is not None:
@@ -307,17 +367,22 @@ async def api_jobs_create(request: Request):
     if recipe is not None and not isinstance(recipe, str):           # nie ein Rezept-Objekt aus dem Client (RT-21)
         return _bad(t("ungültige Angabe"))
     fields = b.get("fields") if isinstance(b.get("fields"), dict) else None
-    if recipe is None and not text.strip():
+    source = b.get("source") if b.get("source") in jobs.SOURCES else "saga"
+    shared, serr = parse_shared(b, source)                           # K-G (2275): Teilen -> Auftrag (APP-API-KI 14.1)
+    if serr is not None:
+        return serr
+    if recipe is None and not text.strip() and shared is None:
         return _bad(t("Bitte sag mir, was ich tun soll."))
     ctxb = b.get("context") if isinstance(b.get("context"), dict) else {}
     note = ctxb.get("note")
     choice = b.get("choice") if isinstance(b.get("choice"), str) and len(b["choice"]) <= 200 else None
-    source = b.get("source") if b.get("source") in jobs.SOURCES else "saga"
     into_thread = b.get("thread") is True                            # Ort "Saga" (web-saga, K1/K10): Zuege im Gespraech
     if not await asyncio.to_thread(ai_plan.jobs_on, uid):
         allowed = await asyncio.to_thread(_allowed, uid)
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet.") if not allowed
                     else t("Aufträge gehen mit diesem Modell nicht – frag mich gern etwas."), 403)
+    if shared is not None and not await asyncio.to_thread(caps.can, uid, "ai_act"):   # RT-17: eingeschraenkte Gruppe
+        return JSONResponse({"error": t("Dafür fehlt dir die Berechtigung."), "code": "ai_act"}, status_code=403)
     from saga import ai_saga                                          # K-I (2269, K19/RT-36): Planen erst nach der Einwilligung
     if not await asyncio.to_thread(ai_saga.consent_ok, uid):
         return ai_saga.consent_needed()
@@ -344,7 +409,7 @@ async def api_jobs_create(request: Request):
     def work():
         try:
             res = plan_job(uid, text, note=note, choice=choice, recipe=recipe, fields=fields, source=source,
-                           emit_status=lambda d: put(("status", d)), stop=halt.is_set, into_thread=into_thread)
+                           emit_status=lambda d: put(("status", d)), stop=halt.is_set, into_thread=into_thread, shared=shared)
             put(("res", res))
         except Exception as ex:  # noqa: BLE001 - nie Inhalte loggen
             print(f"ai_jobs: {type(ex).__name__}: {ex}", flush=True)

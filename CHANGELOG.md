@@ -20,6 +20,15 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
+  `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
+  höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im
+  Datenrahmen, nie die Bitte; Kontext nur aus den eigenen Worten und dem Titel. Plan mit `origin` („Angeregt durch:
+  geteilten Inhalt (host)“) und Warnung `warn`, wenn der Inhalt Anweisungen an die KI enthält (Erkennung ohne Modell,
+  `saga/ai_origin.py`, 5 Sprachen, EV-25-Vektoren `tests/vectors/share_hint.json`). Nur mit Fähigkeit `ai_act`
+  (RT-17), jeder Bearer-Schlüssel 403. Kein „braucht dich“ beim Anlegen, nie `approve` aus Mitteilung/Widget/Siri
+  (`act approve` → 409). `/api/ai/status` `share_notice` (du/Sie). Vertrag und Vektoren für die Apps:
+  `tests/vectors/share_contract.json`; Siri nutzt `/api/ai/thread` und `sentence` aus `/api/ai/today` (§13.1 freigegeben).
 - **Gedächtnis Stufe 2: recall/remember (2581, `memory1`, [docs/MEMORY.md](docs/MEMORY.md)):** jede Person bindet unter
   Einstellungen › Gedächtnis *eine eigene* Datenbank als Gedächtnis und eine Seite als Ich-Kern (`GET/PUT
   /api/account/memory`, Spalten nach Namen, Gewichte/Schwellen je Konto). `POST /api/v1/memory/recall` holt die bis zu

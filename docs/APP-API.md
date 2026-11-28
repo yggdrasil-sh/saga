@@ -3956,7 +3956,7 @@ Weg, Felder, Kategorie, Android-Kanal, Knöpfe nach K15, Klartext-Wege ohne Kenn
 | Übergang (`job.state`) | Art | `state` | Glocke | Push |
 |---|---|---|---|---|
 | → `wartet_dich` | `job.needs_you` | `needs` | ja | ja |
-| → `wartet_ok`, nur wenn der Auftrag **nicht** aus dem Ort „Saga“ kam (`source ≠ saga`) | `job.needs_you` | `needs` | ja | ja |
+| → `wartet_ok`, nur wenn der Auftrag **nicht** aus dem Ort „Saga“ bzw. aus dem Teilen-Menü kam (`source` weder `saga` noch `share`, K-G 2275) | `job.needs_you` | `needs` | ja | ja |
 | → `erledigt` | `job.done` | `done` | ja | ja, außer ≤ 60 s nach „Passt, los“ (dann sieht die Person es gerade) |
 | → `fehlgeschlagen` | `job.failed` | `failed` | ja | ja |
 | → `abgebrochen`, `zurueckgenommen` bzw. aus `wartet_dich` heraus | `job.changed` | – | alte Einträge des Auftrags weg | still `update` + `removed` (nur E2E-Abos mit `update`) |
@@ -4007,7 +4007,7 @@ Die Kategorie ergibt sich aus `state` und den mitgeschickten Token (`actions[].a
 | Kategorie | wann | Knöpfe (Reihenfolge) |
 |---|---|---|
 | `saga.job.needs` | `needs` ohne `approve` | `open` · `later` |
-| `saga.job.needs.ok` | `needs` mit `approve` (Plan nur mit eigenen, rückgängigen Schritten) | `approve` · `open` · `later` |
+| `saga.job.needs.ok` | `needs` mit `approve` (Plan nur mit eigenen, rückgängigen Schritten; nie bei geteilten Aufträgen, `source: share`) | `approve` · `open` · `later` |
 | `saga.job.done` | `done` mit `undo` (alle Änderungen rückgängig machbar) | `undo` · `quiet` |
 | `saga.job.done.plain` | `done` ohne `undo` | `quiet` |
 | `saga.job.failed` | `failed` | `open` |

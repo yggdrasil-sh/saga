@@ -107,6 +107,11 @@ for _k in KIND_OF.values():
 
 
 # --- Uebergaenge -------------------------------------------------------------------------------------------------
+# Herkunft, bei der die Person den Plan gerade selbst vor sich hat: kein "braucht dich" fuer wartet_ok (Ort "Saga" und
+# K-G 2275 Teilen - die App zeigt die Plan-Karte sofort, F8); geteilte Auftraege bekommen nie einen Knopf approve (K17).
+LOCAL_SOURCES = ("saga", "share")
+
+
 def _approved_at(c, job_id):
     r = c.execute("SELECT MAX(at) FROM job_event WHERE job_id=? AND kind='approve'", (job_id,)).fetchone()
     if r and r[0] is not None:
@@ -123,7 +128,7 @@ def handle(job_id, uid, old, new):
         if not j or j[0] != new:
             return                        # schon weiter (der naechste Wechsel meldet sich selbst) bzw. geloescht
         group = GROUP_OF.get(new)
-        if group is None or (new == "wartet_ok" and j[1] == "saga"):
+        if group is None or (new == "wartet_ok" and j[1] in LOCAL_SOURCES):
             if _drop_bell(c, uid, job_id):
                 push.enqueue_job_update(c, uid, job_id)
             else:
@@ -157,7 +162,7 @@ def _on_state(c, job_id=None, uid=None, kind=None, old=None, new=None, **_):
 
 
 def _on_created(c, job_id=None, uid=None, kind=None, source=None, **_):
-    if kind == KIND and job_id is not None and uid and source != "saga":
+    if kind == KIND and job_id is not None and uid and source not in LOCAL_SOURCES:
         c.after_commit(lambda: _safe(handle, job_id, uid, None, "wartet_ok"))
 
 
@@ -185,7 +190,7 @@ def actions_for(c, job, steps, detail, again=0):
     state = job["state"]
     acts = []
     if state == "wartet_ok":
-        if detail and _approvable(steps):
+        if detail and _approvable(steps) and job.get("source") != "share":    # K-G (2275): Geteiltes nie aus der Mitteilung freigeben
             acts.append("approve")
         if again < LATER_MAX:
             acts.append("later")
@@ -234,7 +239,7 @@ def build(c, uid, kind, data, sub, lang, created, silent):
         return {"title": "", "body": "", "url": url_of(jid), "tag": f"job-{jid}", "kind": kind, "ts": ts, "v": push.PAYLOAD_JOB,
                 "lang": lang, "group_key": f"job:{jid}", "job": jid, "update": True, "removed": True}
     group = GROUP_OF.get(job["state"])
-    if group is None or KIND_OF[group] != kind or (job["state"] == "wartet_ok" and job["source"] == "saga"):
+    if group is None or KIND_OF[group] != kind or (job["state"] == "wartet_ok" and job["source"] in LOCAL_SOURCES):
         return None                       # Zustand inzwischen anders - nichts Veraltetes zeigen
     title, body = head(group)
     msg = {"title": title, "body": body, "url": url_of(jid) if e2e else "/saga?tab=jobs", "tag": f"job-{jid}" if e2e else "saga-job",

@@ -427,11 +427,28 @@ def ask_details(cfg=None, web=False):
     return out
 
 
+def share_notice(uid, conn=None, cfg=None, hint=None):
+    """K-G (2275, RT-17): Hinweis im Teilen-Dialog vor dem ersten Senden - "Was du teilst, liest die KI auf {label}." in
+    der Anrede der Person (Sie: Baustein intro.share, nur de/es/ru)."""
+    from saga import ai
+    c = cfg if cfg is not None else ai.cfg()
+    h = hint if hint is not None else endpoint_hint(c)
+    where = (h or {}).get("label") or ai.host_of(c) or ""
+    du = t("Was du teilst, liest die KI auf {where}.", where=where)
+    try:
+        from saga import ai_say, i18n
+        return ai_say.formal("intro.share", i18n.get_lang(), ai_say.persona_for(uid, conn), where=where) or du
+    except Exception:  # noqa: BLE001 - Baustein kaputt: Systemtext (du)
+        return du
+
+
 def status_fields(uid, conn, cfg):
     """Zusatzfelder fuer GET /api/ai/status (nur angehaengt, aeltere Felder unveraendert). ask_details: ⓘ fuer "Frag
-    deine Seiten" (2505) - die Websuche-Zeile haengt saga/ai.py an (dort ist bekannt, ob sie fuer die Person an ist)."""
-    return {"endpoint": endpoint_hint(cfg), "consent": consent(uid, conn, cfg), "intro": intro(uid, conn, cfg),
-            "ask_details": ask_details(cfg)}
+    deine Seiten" (2505) - die Websuche-Zeile haengt saga/ai.py an (dort ist bekannt, ob sie fuer die Person an ist).
+    share_notice: Hinweis im Teilen-Dialog (K-G 2275)."""
+    h = endpoint_hint(cfg)
+    return {"endpoint": h, "consent": consent(uid, conn, cfg), "intro": intro(uid, conn, cfg),
+            "ask_details": ask_details(cfg), "share_notice": share_notice(uid, conn, cfg, h)}
 
 
 # --- Einstellungen der Person (/api/ai/prefs) ---------------------------------------------------------------------

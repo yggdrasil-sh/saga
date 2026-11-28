@@ -5863,5 +5863,13 @@
  "Gedächtnis hervorheben": "Highlight memory",
  "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Frequently recalled memories appear larger, recently recalled ones glow",
  "Kürzlich abgerufen": "Recently recalled",
- "{n} {n:Abruf|Abrufe}": "{n} {n:recall|recalls}"
+ "{n} {n:Abruf|Abrufe}": "{n} {n:recall|recalls}",
+ "Kümmere dich darum.": "Take care of it.",
+ "den geteilten Inhalt ({host})": "the shared content ({host})",
+ "den geteilten Inhalt": "the shared content",
+ "Angeregt durch: geteilten Inhalt ({host})": "Prompted by: shared content ({host})",
+ "Angeregt durch: geteilten Inhalt": "Prompted by: shared content",
+ "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "The shared content contains instructions for the AI. They don't count as your request.",
+ "Was du teilst, liest die KI auf {where}.": "What you share is read by the AI at {where}.",
+ "Es wurde nichts geteilt.": "Nothing was shared."
 }

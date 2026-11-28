@@ -69,7 +69,7 @@ def act(uid, key, device, job_id, action, atok, pv):
     if key == "hk" and action not in REST:
         return _err(403, "key", t("Das geht nur in der App."))
     with _db() as c:
-        j = c.execute("SELECT state, plan_v, plan_hash, undo_at FROM job WHERE id=? AND uid=? AND kind=?",
+        j = c.execute("SELECT state, plan_v, plan_hash, undo_at, source FROM job WHERE id=? AND uid=? AND kind=?",
                       (job_id, uid, ai_plan.KIND)).fetchone()
     if not j:
         return 404, {"error": "not found"}
@@ -79,6 +79,8 @@ def act(uid, key, device, job_id, action, atok, pv):
         return _err(409, "open", t("Das geht nur in Saga selbst."), job_id)
     if action == "open":
         return 200, {"ok": True, "action": "open", "url": f"/saga?tab=jobs&job={job_id}"}
+    if action == "approve" and j[4] == "share":       # K-G (2275, K17/F8): Geteiltes nur ueber die Plan-Karte freigeben
+        return _err(409, "open", t("Das geht nur in Saga selbst."), job_id)
     if not isinstance(atok, str) or not 16 <= len(atok) <= 64:
         return _err(410, "gone", _hint())
     with _db() as c, c:

@@ -11,6 +11,7 @@
  "intro": "I'm {name}, your server's AI. I only see what you can see; your question and matching excerpts from your pages, tasks and events go to {where}. I won't change anything or message anyone without your OK.",
  "_intro.form": "Intro card and bar (2515): English has no formal address - empty entries, the system text applies.",
  "intro.bar": {},
+ "intro.share": {},
  "intro.question": {},
  "intro.e2e": {},
  "intro.what": {},

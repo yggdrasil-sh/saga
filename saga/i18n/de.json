@@ -5863,5 +5863,13 @@
  "Gedächtnis hervorheben": "Gedächtnis hervorheben",
  "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten",
  "Kürzlich abgerufen": "Kürzlich abgerufen",
- "{n} {n:Abruf|Abrufe}": "{n} {n:Abruf|Abrufe}"
+ "{n} {n:Abruf|Abrufe}": "{n} {n:Abruf|Abrufe}",
+ "Kümmere dich darum.": "Kümmere dich darum.",
+ "den geteilten Inhalt ({host})": "den geteilten Inhalt ({host})",
+ "den geteilten Inhalt": "den geteilten Inhalt",
+ "Angeregt durch: geteilten Inhalt ({host})": "Angeregt durch: geteilten Inhalt ({host})",
+ "Angeregt durch: geteilten Inhalt": "Angeregt durch: geteilten Inhalt",
+ "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.",
+ "Was du teilst, liest die KI auf {where}.": "Was du teilst, liest die KI auf {where}.",
+ "Es wurde nichts geteilt.": "Es wurde nichts geteilt."
 }

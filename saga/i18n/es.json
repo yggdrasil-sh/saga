@@ -5863,5 +5863,13 @@
  "Gedächtnis hervorheben": "Resaltar memoria",
  "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Los recuerdos consultados a menudo se ven más grandes; los consultados hace poco brillan",
  "Kürzlich abgerufen": "Consultado hace poco",
- "{n} {n:Abruf|Abrufe}": "{n} {n:consulta|consultas}"
+ "{n} {n:Abruf|Abrufe}": "{n} {n:consulta|consultas}",
+ "Kümmere dich darum.": "Encárgate de ello.",
+ "den geteilten Inhalt ({host})": "el contenido compartido ({host})",
+ "den geteilten Inhalt": "el contenido compartido",
+ "Angeregt durch: geteilten Inhalt ({host})": "Sugerido por: contenido compartido ({host})",
+ "Angeregt durch: geteilten Inhalt": "Sugerido por: contenido compartido",
+ "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "El contenido compartido contiene instrucciones para la IA. No cuentan como tu petición.",
+ "Was du teilst, liest die KI auf {where}.": "Lo que compartes lo lee la IA en {where}.",
+ "Es wurde nichts geteilt.": "No se ha compartido nada."
 }

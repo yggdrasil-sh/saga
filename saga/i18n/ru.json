@@ -5863,5 +5863,13 @@
  "Gedächtnis hervorheben": "Выделять память",
  "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "Часто вызываемые воспоминания крупнее, недавно вызванные светятся",
  "Kürzlich abgerufen": "Недавно вызвано",
- "{n} {n:Abruf|Abrufe}": "{n} {n:вызов|вызова|вызовов}"
+ "{n} {n:Abruf|Abrufe}": "{n} {n:вызов|вызова|вызовов}",
+ "Kümmere dich darum.": "Займись этим.",
+ "den geteilten Inhalt ({host})": "присланный материал ({host})",
+ "den geteilten Inhalt": "присланный материал",
+ "Angeregt durch: geteilten Inhalt ({host})": "Источник: присланный материал ({host})",
+ "Angeregt durch: geteilten Inhalt": "Источник: присланный материал",
+ "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "Присланный материал содержит указания для ИИ. Они не считаются твоей просьбой.",
+ "Was du teilst, liest die KI auf {where}.": "То, чем ты делишься, читает ИИ на {where}.",
+ "Es wurde nichts geteilt.": "Ничего не было отправлено."
 }

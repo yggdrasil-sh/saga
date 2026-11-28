@@ -10,8 +10,8 @@ bei abgebrochen (aus wartet_ok, Herkunft saga) · Wortlaut exakt (title/body/t1/
 E2E-Wegen mit caps; Klartext-Wege (ntfy, UnifiedPush ohne Schluessel, APNs direkt ohne E2E) ohne Kennung/Inhalt/Knoepfe ·
 Topic undurchsichtig, Urgency, Auffuellen · notify_content never · Bereich jobs aus · "Gerade nicht" (quiet) · Nicht
 stoeren + Sammelmeldung digest.jobs · Beschaeftigt ohne Ton -> silent · nie VoIP · 60-s-Fenster nach der Freigabe ·
-update removed bei Ruecknahme · Glocke Text/Ziel/Ersetzen/Entfernen · Auftrag von aussen (Herkunft share) -> needs.ok
-mit approve · Groesse (Thai) · Kanarien (Titel, Seitentitel, Name): positiv im entschluesselten detail und in der Glocke,
+update removed bei Ruecknahme · Glocke Text/Ziel/Ersetzen/Entfernen · Auftrag von aussen (Herkunft thunderbird) -> needs.ok
+mit approve · geteilter Auftrag (Herkunft share, K-G 2275) ohne Mitteilung in wartet_ok, nie approve · Groesse (Thai) · Kanarien (Titel, Seitentitel, Name): positiv im entschluesselten detail und in der Glocke,
 nie auf Klartext-Wegen, in push_queue.data, ai_act_token, im Server-Log (HK_TEST_LOG, falls gesetzt).
 Aufruf (saga-test): PYTHONPATH=tests/pgshim:. python tests/kollegin_push.py   (Server mit SAGA_TEST_HOOKS/SAGA_TEST_TOKEN)."""
 import base64
@@ -344,11 +344,11 @@ def part_done(cA):
 
 def part_outside(cA):
     n0 = len(got)
-    jid = mk(source="share", steps=[{"tool": "create_task", "args": {"text": "x"}, "klass": "own", "undo_class": "undo"}],
+    jid = mk(source="thunderbird", steps=[{"tool": "create_task", "args": {"text": "x"}, "klass": "own", "undo_class": "undo"}],
              due_at=jobs.now() + 7200)
     g = wait_for("w1", lambda m: m.get("job") == jid, n0)
     m = g[1] if g else {}
-    ok("Auftrag von aussen (share) -> needs_you mit approve + later", m.get("kind") == "job.needs_you" and
+    ok("Auftrag von aussen (thunderbird) -> needs_you mit approve + later", m.get("kind") == "job.needs_you" and
        [a["a"] for a in m.get("actions") or []] == ["approve", "later"] and (m.get("detail") or {}).get("b") == "plan" and
        m["detail"].get("t2") == VEC["texts"]["de"]["t2"]["needs.plan"], m)
     with connect() as c:
@@ -361,6 +361,20 @@ def part_outside(cA):
     g = wait_for("w1", lambda m: m.get("job") == j2, n1)
     ok("Plan mit Schritt nach aussen: kein approve", g and [a["a"] for a in g[1].get("actions") or []] == ["later"], g and g[1])
     jobs.cancel(j2, A, "person")
+    # K-G (2275, F8): geteilter Auftrag (Herkunft share) wie aus dem Ort "Saga" - kein "braucht dich" beim Anlegen, nie approve
+    n2 = len(got)
+    j3 = mk(source="share", steps=[{"tool": "create_task", "args": {"text": "x"}, "klass": "own", "undo_class": "undo"}])
+    g = wait_for("w1", lambda m: m.get("job") == j3, n2, timeout=6.0)
+    with connect() as c:
+        bell = len(ai_notify._bell_rows(c, A, j3))
+        toks = c.execute("SELECT COUNT(*) FROM ai_act_token WHERE job_id=?", (j3,)).fetchone()[0]
+    ok(f"Teilen (share) in wartet_ok: keine Mitteilung, keine Glocke, kein Token ({bell}, {toks})", g is None and bell == 0 and toks == 0,
+       g and g[1])
+    move(j3, "laeuft", "wartet_dich", reason="ai")
+    g = wait_for("w1", lambda m: m.get("job") == j3, n2)
+    ok("Teilen (share) -> wartet_dich meldet sich (needs_you, nur later)", g and g[1].get("kind") == "job.needs_you" and
+       [a["a"] for a in g[1].get("actions") or []] == ["later"], g and g[1])
+    jobs.cancel(j3, A, "person")
 
 
 def part_prefs(cA):

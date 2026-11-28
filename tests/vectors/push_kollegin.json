@@ -800,7 +800,7 @@
    "input": {
     "job": 44,
     "state": "wartet_ok",
-    "source": "share",
+    "source": "thunderbird",
     "steps": [
      {
       "klass": "read",
@@ -1985,6 +1985,28 @@
     "actions"
    ],
    "notify_content": "unlocked",
+   "push": null
+  },
+  {
+   "state": "wartet_ok",
+   "source": "thunderbird",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
    "push": {
     "group": "needs",
     "kind": "job.needs_you",
@@ -1995,6 +2017,69 @@
     ],
     "category": "saga.job.needs.ok",
     "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "wartet_dich",
+   "source": "share",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "needs",
+    "kind": "job.needs_you",
+    "detail": true,
+    "actions": [
+     "later"
+    ],
+    "category": "saga.job.needs",
+    "channel": "saga.jobs.needs.v1"
+   }
+  },
+  {
+   "state": "erledigt",
+   "source": "share",
+   "steps": [
+    {
+     "klass": "read",
+     "undo_class": null
+    },
+    {
+     "klass": "own",
+     "undo_class": "undo"
+    }
+   ],
+   "e2e": true,
+   "caps": [
+    "update",
+    "detail",
+    "actions"
+   ],
+   "notify_content": "unlocked",
+   "push": {
+    "group": "done",
+    "kind": "job.done",
+    "detail": true,
+    "actions": [
+     "undo",
+     "quiet"
+    ],
+    "category": "saga.job.done",
+    "channel": "saga.jobs.feedback.v1"
    }
   },
   {

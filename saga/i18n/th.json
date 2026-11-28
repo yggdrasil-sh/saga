@@ -5863,5 +5863,13 @@
  "Gedächtnis hervorheben": "เน้นความจำ",
  "Oft abgerufene Erinnerungen größer, kürzlich abgerufene leuchten": "ความจำที่ถูกเรียกบ่อยจะใหญ่ขึ้น ความจำที่เพิ่งถูกเรียกจะเรืองแสง",
  "Kürzlich abgerufen": "เพิ่งถูกเรียก",
- "{n} {n:Abruf|Abrufe}": "เรียก {n} ครั้ง"
+ "{n} {n:Abruf|Abrufe}": "เรียก {n} ครั้ง",
+ "Kümmere dich darum.": "ช่วยจัดการเรื่องนี้ให้หน่อย",
+ "den geteilten Inhalt ({host})": "เนื้อหาที่แชร์ ({host})",
+ "den geteilten Inhalt": "เนื้อหาที่แชร์",
+ "Angeregt durch: geteilten Inhalt ({host})": "มาจาก: เนื้อหาที่แชร์ ({host})",
+ "Angeregt durch: geteilten Inhalt": "มาจาก: เนื้อหาที่แชร์",
+ "Der geteilte Inhalt enthält Anweisungen an die KI. Sie zählen nicht als deine Bitte.": "เนื้อหาที่แชร์มีคำสั่งถึง AI ซึ่งไม่นับเป็นคำขอของคุณ",
+ "Was du teilst, liest die KI auf {where}.": "สิ่งที่คุณแชร์ จะถูกอ่านโดย AI ที่ {where}",
+ "Es wurde nichts geteilt.": "ไม่มีอะไรถูกแชร์"
 }

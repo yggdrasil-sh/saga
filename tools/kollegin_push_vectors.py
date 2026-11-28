@@ -215,10 +215,14 @@ def tok_hash(t):
     return hashlib.sha256(t.encode()).hexdigest()
 
 
+# wie saga.ai_notify.LOCAL_SOURCES: kein "braucht dich" fuer wartet_ok; geteilte Auftraege (K-G 2275) nie mit approve
+LOCAL_SOURCES = ("saga", "share")
+
+
 def issue(state, source, steps, e2e, caps, content="unlocked", changes=1):
     """Was der Server beim Zustellen an EIN Abo mitgibt -> None (keine Mitteilung) oder
     {group, kind, detail: bool, actions: [..], category, channel}. steps: [(klass, undo_class)], read-Schritte undo_class None."""
-    if state in SILENT_STATES or state not in GROUP_OF or (state == "wartet_ok" and source == "saga"):
+    if state in SILENT_STATES or state not in GROUP_OF or (state == "wartet_ok" and source in LOCAL_SOURCES):
         return None
     group = GROUP_OF[state]
     detail = bool(e2e and "detail" in caps and content != "never")
@@ -226,7 +230,7 @@ def issue(state, source, steps, e2e, caps, content="unlocked", changes=1):
     if e2e and "actions" in caps:
         own = [u for k, u in steps if k == "own"]
         if state == "wartet_ok":
-            if detail and steps and all(k in ("read", "own") for k, _ in steps) and all(u == "undo" for u in own):
+            if detail and source != "share" and steps and all(k in ("read", "own") for k, _ in steps) and all(u == "undo" for u in own):
                 acts.append("approve")
             acts.append("later")
         elif state == "wartet_dich":
@@ -320,7 +324,7 @@ def _case_specs():
         ("done_deleteonly_unifiedpush", "unifiedpush", SUB_FULL,
          {"job": 43, "state": "erledigt", "steps": [("own", "delete_only")], "b": "report", "f": F_ROW, "t2": T2_ROW}),
         ("needs_ok_apns", "apns", SUB_FULL,
-         {"job": 44, "state": "wartet_ok", "source": "share", "steps": own_undo, "b": "plan", "f": F_PLAN, "t2": "plan"}),
+         {"job": 44, "state": "wartet_ok", "source": "thunderbird", "steps": own_undo, "b": "plan", "f": F_PLAN, "t2": "plan"}),
         ("needs_ok_out_webpush", "webpush", SUB_FULL,
          {"job": 45, "state": "wartet_ok", "source": "api", "steps": [("own", "undo"), ("out", "final")], "b": "plan", "f": F_PLAN, "t2": "plan"}),
         ("needs_you_webpush", "webpush", SUB_FULL,
@@ -466,6 +470,9 @@ def build_issue():
     own_undo = [("read", None), ("own", "undo")]
     specs = [
         ("wartet_ok", "share", own_undo, True, SUB_FULL, "unlocked"),
+        ("wartet_ok", "thunderbird", own_undo, True, SUB_FULL, "unlocked"),
+        ("wartet_dich", "share", own_undo, True, SUB_FULL, "unlocked"),
+        ("erledigt", "share", own_undo, True, SUB_FULL, "unlocked"),
         ("wartet_ok", "saga", own_undo, True, SUB_FULL, "unlocked"),
         ("wartet_ok", "api", [("own", "undo"), ("own", "delete_only")], True, SUB_FULL, "unlocked"),
         ("wartet_ok", "api", [("own", "undo"), ("out", "final")], True, SUB_FULL, "unlocked"),

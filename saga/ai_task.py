@@ -97,7 +97,8 @@ def run(ctx, job, step):
     plan = job.get("plan") if isinstance(job.get("plan"), dict) else {}
     if not r or jobs.plan_hash(plan, _norm(rows)) != r[0]:
         return jobs.Outcome.fail("plan_geaendert")
-    tok = tools.plan_tok(ctx.uid, ctx.job_id, [{"tool": x[1], "args": x[4]} for x in rows], plan.get("reads") or (), issued=issued)
+    reads = [x for x in (plan.get("reads") or ()) if x != "share"]   # K-G (2275): geteilter Inhalt ist kein Lese-Ziel (ai_plan.SHARE_REF)
+    tok = tools.plan_tok(ctx.uid, ctx.job_id, [{"tool": x[1], "args": x[4]} for x in rows], reads, issued=issued)
     if tok is None:
         return jobs.Outcome.ask("abgemeldet")
     args = step.get("args") or {}
