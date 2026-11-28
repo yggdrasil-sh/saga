@@ -289,7 +289,9 @@ def parse_shared(b, source):
         if url and (not _URL_OK.fullmatch(url) or not ai_plan.share_host(url)):
             return None, _share_bad("shared")
         out["url"] = url or None
-    fr = sh.get("from", "app")
+    fr = sh.get("from")
+    if fr is None:                       # fehlt oder null = app (wie text/url/title: null = nicht angegeben)
+        fr = "app"
     if fr not in SHARE_FROM:
         return None, _share_bad("shared")
     text = _SHARE_CTRL.sub(" ", out.get("text") or "").strip()

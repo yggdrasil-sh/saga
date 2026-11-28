@@ -117,7 +117,9 @@ _PRIVATE = _rx(
     r"(?:календар|парол|контакт|финанс|банк|заметк|учётн|учетн|переписк)",
     r"(?:ปฏิทิน|รหัสผ่าน|รายชื่อ|ผู้ติดต่อ|การเงิน|บัญชี|บันทึก|โน้ต)",
 )
-_MAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# begrenzt (Pruefer pr-kg-srv): mit "+" lief finditer auf 20 000 Zeichen ohne "@" quadratisch (~1,3 s); 64/63 wie die
+# Grenzen einer Mail-Adresse - laengere Teile treffen weiter (die letzten 64 Zeichen vor dem "@")
+_MAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}")
 # Adresse mit Ziel-Wort davor ("to https://...", "an http://", "a https://", "на http", "ไปที่ https") - "mehr unter https://" nicht
 _DEST_URL = re.compile(r"(?:\b(?:to|into|an|nach|mit|zu|a|con|para|на|в)|ไปที่|ไปยัง|ไป|ที่) ?(?:<)?(?:https?://|www\.)\S+")
 WINDOW = 160

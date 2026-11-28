@@ -4,7 +4,7 @@
 Hoert auf "job.state" (saga.jobs._to) und "job.created" (saga.jobs.create), nur Auftraege der Kollegin (ai_plan.KIND), und
 arbeitet NACH dem Commit in einer eigenen Transaktion (keine neue Sperrreihenfolge in jobs):
   -> wartet_dich                 Glocke + Push job.needs_you
-  -> wartet_ok (Herkunft != saga) Glocke + Push job.needs_you (auch beim Anlegen)
+  -> wartet_ok (Herkunft weder saga noch share) Glocke + Push job.needs_you (auch beim Anlegen)
   -> erledigt                    Glocke + Push job.done - nicht <= 60 s nach der Freigabe (die Person sieht es gerade)
   -> fehlgeschlagen              Glocke + Push job.failed
   sonst (abgebrochen, zurueckgenommen, aus wartet_dich/wartet_ok heraus): Glocken-Eintraege des Auftrags weg und - wenn

@@ -739,7 +739,7 @@ POST /api/ai/jobs   (Sitzung + X-Saga: 1; Antwort text/event-stream wie Abschnit
 | `shared.text` | Geteilter Text, höchstens **20 000** Zeichen (angenommen). Ans Modell gehen höchstens **4 000** Zeichen, gekürzt mit „…“. Steuerzeichen außer Zeilenumbruch/Tab fallen weg. |
 | `shared.url` | Optional, nur `http://`/`https://`, höchstens 2 000 Zeichen, ohne Leerraum. **Der Server ruft die Adresse nie ab** – sie ist nur Text und liefert `host` für die Herkunft. |
 | `shared.title` | Optional, höchstens 200 Zeichen (Titel der geteilten Seite). |
-| `shared.from` | `"app"` (iOS, iPadOS, macOS, Android) oder `"web"` (PWA-Teilen-Ziel); fehlt = `"app"`. |
+| `shared.from` | `"app"` (iOS, iPadOS, macOS, Android) oder `"web"` (PWA-Teilen-Ziel); fehlt oder `null` = `"app"`. |
 | `text` | Die **eigenen Worte** der Person („Was soll {Name} damit tun?“), optional, höchstens 1 000 Zeichen wie sonst. Leer = Systembitte „Kümmere dich darum.“ (Sprache der Anfrage). |
 | `thread`, `choice`, `context` | wie Abschnitt 10/11.7. Nach einer Rückfrage (`ask`) schickt die App `shared` mit `choice` erneut mit. |
 
