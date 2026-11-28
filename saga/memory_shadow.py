@@ -97,32 +97,67 @@ def hub(n, deg):
 
 
 class Graph:
-    """Links eines Kontos als Arrays: ids (sortiert), je Link a/b-Index, g, u, zuletzt, gepinnt, herkunft, treffer;
-    gerichtete Kanten src/dst/lk (jeder Link in beide Richtungen)."""
-    __slots__ = ("ids", "ai", "bi", "g", "u", "zul", "pin", "her", "tr", "src", "dst", "lk", "stamp")
+    """Links eines Kontos als Arrays: ids (sortiert), je Link a/b (IDs und Index), g, u, zuletzt, gepinnt, herkunft, treffer;
+    gerichtete Kanten src/dst/lk (jeder Link in beide Richtungen). Unveraenderlich - with_links() liefert eine Kopie mit
+    geaenderten/neuen Links (eigene Schreibzugriffe ohne Neuladen aller Links)."""
+    __slots__ = ("ids", "a", "b", "ai", "bi", "g", "u", "zul", "pin", "her", "tr", "src", "dst", "lk", "stamp", "pos")
 
     def __init__(self, rows, stamp=None):
         rows = list(rows)
-        a = np.array([r[0] for r in rows], dtype=np.int64)
-        b = np.array([r[1] for r in rows], dtype=np.int64)
-        self.ids = np.unique(np.concatenate([a, b])) if rows else np.zeros(0, dtype=np.int64)
-        self.ai = np.searchsorted(self.ids, a)
-        self.bi = np.searchsorted(self.ids, b)
-        self.g = np.array([float(r[2]) for r in rows], dtype=np.float64)
-        self.u = np.array([float(r[3]) for r in rows], dtype=np.float64)
-        self.zul = np.array([float(r[4]) for r in rows], dtype=np.float64)
-        self.pin = np.array([bool(r[5]) for r in rows], dtype=bool)
-        self.her = [r[6] if len(r) > 6 else "aehnlich" for r in rows]
-        self.tr = np.array([int(r[7]) if len(r) > 7 else 0 for r in rows], dtype=np.int64)
+        cols = list(zip(*rows)) if rows else [()] * 8
         n = len(rows)
+        self.a = np.fromiter(cols[0], dtype=np.int64, count=n)
+        self.b = np.fromiter(cols[1], dtype=np.int64, count=n)
+        self.g = np.fromiter(cols[2], dtype=np.float64, count=n)
+        self.u = np.fromiter(cols[3], dtype=np.float64, count=n)
+        self.zul = np.fromiter(cols[4], dtype=np.float64, count=n)
+        self.pin = np.fromiter((bool(x) for x in cols[5]), dtype=bool, count=n)
+        self.her = list(cols[6]) if len(cols) > 6 and n else ["aehnlich"] * n
+        self.tr = np.fromiter(cols[7], dtype=np.int64, count=n) if len(cols) > 7 and n else np.zeros(n, dtype=np.int64)
+        self.stamp = stamp
+        self._derive()
+
+    def _derive(self):
+        n = len(self.a)
+        self.ids = np.unique(np.concatenate([self.a, self.b])) if n else np.zeros(0, dtype=np.int64)
+        self.ai = np.searchsorted(self.ids, self.a)
+        self.bi = np.searchsorted(self.ids, self.b)
         self.src = np.concatenate([self.ai, self.bi])
         self.dst = np.concatenate([self.bi, self.ai])
         self.lk = np.concatenate([np.arange(n), np.arange(n)])
-        self.stamp = stamp
+        self.pos = None
+
+    def with_links(self, rows, stamp):
+        """Kopie mit rows [(a, b, g, u, zuletzt, gepinnt, herkunft, treffer)] (vorhandene Paare ersetzt, neue angehaengt)."""
+        G = Graph.__new__(Graph)
+        G.a, G.b, G.g, G.u, G.zul, G.pin, G.tr = (x.copy() for x in (self.a, self.b, self.g, self.u, self.zul, self.pin, self.tr))
+        G.her = list(self.her)
+        G.stamp = stamp
+        if self.pos is None:
+            self.pos = {(int(x), int(y)): k for k, (x, y) in enumerate(zip(self.a, self.b))}
+        pos = dict(self.pos)
+        new = []
+        for r in rows:
+            k = pos.get((int(r[0]), int(r[1])))
+            if k is None:
+                pos[(int(r[0]), int(r[1]))] = len(G.her) + len(new)
+                new.append(r)
+                continue
+            G.g[k], G.u[k], G.zul[k], G.pin[k], G.her[k], G.tr[k] = r[2], r[3], r[4], bool(r[5]), r[6], r[7]
+        if new:
+            add = Graph(new)
+            for k in ("a", "b", "g", "u", "zul", "pin", "tr"):
+                setattr(G, k, np.concatenate([getattr(G, k), getattr(add, k)]))
+            G.her += add.her
+            G._derive()
+        else:
+            G.ids, G.ai, G.bi, G.src, G.dst, G.lk = self.ids, self.ai, self.bi, self.src, self.dst, self.lk
+        G.pos = pos
+        return G
 
     def nbytes(self):
-        return int(sum(getattr(self, k).nbytes for k in ("ids", "ai", "bi", "g", "u", "zul", "pin", "tr", "src", "dst", "lk"))
-                   + 64 * len(self.her))
+        return int(sum(getattr(self, k).nbytes for k in ("ids", "a", "b", "ai", "bi", "g", "u", "zul", "pin", "tr", "src", "dst", "lk"))
+                   + 64 * len(self.her) + (200 * len(self.pos) if self.pos else 0))
 
     def idx(self, node_ids):
         """Knoten-IDs -> Index (-1 = nicht im Graph)."""
@@ -305,6 +340,19 @@ def forget(uid=None):
             _lchecked.pop(uid, None)
 
 
+def _apply(uid, rows, n_new, now):
+    """Eigene Schreibzugriffe in den Zwischenspeicher uebernehmen (Stempel mitfuehren) statt alle Links neu zu laden."""
+    with _llock:
+        G = _lcache.get(uid)
+        if G is None or G.stamp is None:
+            return
+        st = (G.stamp[0] + n_new, max(G.stamp[1], now), max(G.stamp[2], now) if n_new else G.stamp[2])
+        try:
+            _lcache[uid] = G.with_links(rows, st)
+        except Exception:  # noqa: BLE001 - im Zweifel neu laden
+            _lcache.pop(uid, None)
+
+
 def cache_bytes():
     with _llock:
         return sum(x.nbytes() for x in _lcache.values())
@@ -431,29 +479,31 @@ def _evaluate(c, uid, x):
                   "VALUES (?,?,?,?,?,?,CAST(? AS JSONB),CAST(? AS JSONB),'[]'::jsonb,?,?,CAST(? AS JSONB))",
                   (uid, now, quelle, frage_hash(uid, text), stichworte(text), int(x["lim"]), json.dumps(basis), json.dumps(neu),
                    min(cut, 32767), int(total), json.dumps(daten)))
-        if _gemeinsam(c, uid, [i for i in basis if i not in bad], now):
-            forget(uid)
+        made = _gemeinsam(c, uid, [i for i in basis if i not in bad], now)
+    if made:
+        _apply(uid, [(a, b, G_GEM, U_GEM, now, False, "gemeinsam", 0) for a, b in made], len(made), now)
     return {"neu": neu}
 
 
 def _gemeinsam(c, uid, basis, now):
     if len(basis) < 2:
-        return 0
+        return []
     ids = sorted(set(basis))
     have = c.execute("SELECT a, b FROM mem_link WHERE uid=? AND a = ANY(?) AND b = ANY(?)", (uid, ids, ids)).fetchall()
     have = {(int(a), int(b)) for a, b in have}
     miss = [(a, b) for i, a in enumerate(ids) for b in ids[i + 1:] if (a, b) not in have]
     if not miss:
-        return 0
+        return []
     cond = " OR ".join(["treffer @> CAST(? AS JSONB)"] * len(miss))
     spuren = [r[0] for r in c.execute(f"SELECT treffer FROM mem_trace WHERE uid=? AND at >= ? AND ({cond})",
                                       (uid, now - GEM_DAYS * 86400, *[json.dumps([a, b]) for a, b in miss])).fetchall()]
     spuren = [s if isinstance(s, list) else json.loads(s) for s in spuren]
-    n = 0
+    made = []
     for a, b in gemeinsam_pairs(ids, spuren, have):
-        n += c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
-                       "VALUES (?,?,?,?,?,0,?,?,'gemeinsam') ON CONFLICT DO NOTHING", (a, b, uid, G_GEM, U_GEM, now, now)).rowcount
-    return n
+        if c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
+                     "VALUES (?,?,?,?,?,0,?,?,'gemeinsam') ON CONFLICT DO NOTHING", (a, b, uid, G_GEM, U_GEM, now, now)).rowcount:
+            made.append((a, b))
+    return made
 
 
 # --- Verknuepfungen "aehnlich" (neuer Vektor, Nachziehen) ---------------------------------------------------------
@@ -540,16 +590,19 @@ def _pairs_trgm(c, uid, b, cols, src_ids, bad):
 
 def _insert_pairs(uid, pairs, now=None):
     now = now or time.time()
-    n = 0
+    made = []
     items = sorted(pairs.items())
     for s in range(0, len(items), 500):
         with _db() as c, c:
             for (a, b), g in items[s:s + 500]:
-                n += c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
-                               "VALUES (?,?,?,?,?,0,?,?,'aehnlich') ON CONFLICT DO NOTHING", (a, b, uid, g, U0, now, now)).rowcount
-    if n:
-        forget(uid)
-    return n
+                if c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
+                             "VALUES (?,?,?,?,?,0,?,?,'aehnlich') ON CONFLICT DO NOTHING", (a, b, uid, g, U0, now, now)).rowcount:
+                    made.append((a, b, g, U0, now, False, "aehnlich", 0))
+    if len(made) > 500:
+        forget(uid)                              # Nachziehen: beim naechsten recall neu laden
+    elif made:
+        _apply(uid, made, len(made), now)
+    return len(made)
 
 
 def link_new(uid, ids):
@@ -642,6 +695,7 @@ def used(uid, ids, now=None):
                 c.execute("UPDATE mem_trace SET genutzt=CAST(? AS JSONB) WHERE id=?", (json.dumps(list(dict.fromkeys(gn[t_] + lst))), t_))
             pv = sorted(i for i in valid if i not in sens and i not in snaps)
             nv = nn = 0
+            done = []
             for k, a in enumerate(pv):
                 for b_ in pv[k + 1:]:
                     r = c.execute("SELECT gewicht, untergrenze, treffer, zuletzt, gepinnt FROM mem_link WHERE a=? AND b=? AND uid=? FOR UPDATE",
@@ -650,14 +704,19 @@ def used(uid, ids, now=None):
                         x = reinforce({"g": r[0], "u": r[1], "treffer": r[2], "zuletzt": r[3], "gepinnt": bool(r[4])}, now)
                         c.execute("UPDATE mem_link SET gewicht=?, untergrenze=?, treffer=?, zuletzt=? WHERE a=? AND b=? AND uid=?",
                                   (x["g"], x["u"], x["treffer"], x["zuletzt"], a, b_, uid))
+                        her = c.execute("SELECT herkunft FROM mem_link WHERE a=? AND b=? AND uid=?", (a, b_, uid)).fetchone()[0]
+                        done.append((a, b_, x["g"], x["u"], now, bool(r[4]), her, x["treffer"]))
                         nv += 1
                     else:
                         x = reinforce(None, now)
-                        nn += c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
-                                        "VALUES (?,?,?,?,?,?,?,?,'gemeinsam') ON CONFLICT DO NOTHING",
-                                        (a, b_, uid, x["g"], x["u"], x["treffer"], now, now)).rowcount
-    if nv or nn:
-        forget(uid)
+                        k = c.execute("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) "
+                                      "VALUES (?,?,?,?,?,?,?,?,'gemeinsam') ON CONFLICT DO NOTHING",
+                                      (a, b_, uid, x["g"], x["u"], x["treffer"], now, now)).rowcount
+                        if k:
+                            done.append((a, b_, x["g"], x["u"], now, False, "gemeinsam", x["treffer"]))
+                        nn += k
+    if done:
+        _apply(uid, done, nn, now)
     return {"ok": True, "schatten": True, "verstaerkt": nv, "neu": nn, "ignoriert": ign}
 
 

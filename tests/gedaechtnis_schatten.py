@@ -403,9 +403,21 @@ def part_used():
        "ON CONFLICT (a, b) DO UPDATE SET gewicht=0.4, untergrenze=0.05, treffer=0, zuletzt=EXCLUDED.zuletzt", (*sorted((a, b)), U, time.time() - 10 * D, time.time() - 10 * D))
     pg("DELETE FROM mem_link WHERE uid=? AND a=? AND b=?", (U, *sorted((a, c3))))
     old = links(U)[tuple(sorted((a, b)))]
+    msh.forget(U)
+    with db.connect() as c:
+        msh.graph_of(c, U)                             # Zwischenspeicher geladen (Stand vor recall_used)
     t0 = time.time()
     d = msh.used(U, [a, b, c3, 999999999, ids["Geheim"]], now=t0)
     L = links(U)
+    with db.connect() as c:
+        G1 = msh.graph_of(c, U)
+        st_db = msh._lstamp(c, U)
+        G2 = msh.Graph(c.execute("SELECT a, b, gewicht, untergrenze, zuletzt, gepinnt, herkunft, treffer FROM mem_link WHERE uid=? "
+                                 "ORDER BY a, b", (U,)).fetchall())
+    asdict = lambda G: {(int(G.a[k]), int(G.b[k])): (round(float(G.g[k]), 9), round(float(G.u[k]), 9), int(G.tr[k]), G.her[k])  # noqa: E731
+                        for k in range(len(G.g))}
+    ok("Link-Zwischenspeicher nach recall_used ohne Neuladen gleich dem Datenbank-Stand (Stempel stimmt)",
+       asdict(G1) == asdict(G2) and G1.stamp == st_db, (G1.stamp, st_db))
     exp = msh.reinforce({"g": 0.4, "u": 0.05, "treffer": 0, "zuletzt": old[3]}, t0)
     nab, nac, nbc = L.get(tuple(sorted((a, b)))), L.get(tuple(sorted((a, c3)))), L.get(tuple(sorted((b, c3))))
     ok("recall_used: vorhandener Link nach Formel verstaerkt (g' = w + 0,2(1-w), u' = min(0,5, u+0,05, g'), treffer+1, zuletzt)",
