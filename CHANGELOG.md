@@ -42,6 +42,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Schnappschüsse sind aus recall, `aehnlich` und dem Schattenmodus ausgeschlossen – schon vor der Kandidaten-Grenze.
   Neue Spalte „Sensibel“ (Kontrollkästchen, `remember` nimmt `sensibel`). Vektoren `tests/vectors/memory_nap.json`,
   Reihe `tests/gedaechtnis_schlaf.py`.
+- **Gedächtnis: `remember` nennt fehlende Angaben (2601/2603, [docs/MEMORY.md](docs/MEMORY.md) §5/§6):** die Antwort
+  (REST und MCP) enthält `fehlt` (Projekt, Art, Schlagworte, Wichtigkeit, Valenz, Erregung – nur mit passender Spalte),
+  die gültigen `optionen` der fehlenden Auswahlfelder (ohne „Schnappschuss“) und einen Hinweis zum Ergänzen per
+  `update_row`; nichts wird abgelehnt. Die Werkzeug-Beschreibung bittet, diese Felder möglichst immer mitzugeben.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im

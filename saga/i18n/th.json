@@ -5904,5 +5904,6 @@
  "Letztes Nickerchen: {wann}.": "งีบครั้งล่าสุด: {wann}",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "ตั้งแต่นั้นแก้ไขไป {n} {n:หน้า}",
  "Aufwachen": "ตื่นขึ้นมา",
- "(gelöscht)": "(ลบแล้ว)"
+ "(gelöscht)": "(ลบแล้ว)",
+ "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.": "โปรดเพิ่ม (update_row): {felder} – ค่าที่ใช้ได้อยู่ใน “optionen”"
 }

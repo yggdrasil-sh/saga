@@ -259,7 +259,9 @@ _RAW = [
       "limit": _s("integer", "Höchstzahl Treffer (1-5)", minimum=1, maximum=5)}, ["text"], True),
     ("remember", "memory", "Neue Erinnerung im eigenen Gedächtnis anlegen (Datum Standard heute). projekt, art und "
      "schlagworte nur mit vorhandenen Auswahl-Werten – Unbekanntes wird gemeldet, nichts angelegt. aehnlich nennt "
-     "vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row).",
+     "vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row). Gib projekt, art, "
+     "schlagworte, wichtigkeit, valenz und erregung möglichst immer mit; die Antwort nennt fehlende Felder und gültige "
+     "Optionen.",
      {"titel": _s("string", "Kurzer Titel"), "inhalt": _s("string", "Die Erinnerung selbst (höchstens 2000 Zeichen)"),
       "projekt": _s("string", "Projekt (vorhandene Option)"), "art": _s("string", "Art (vorhandene Option)"),
       "schlagworte": _s("array", "Schlagworte (vorhandene Optionen)", items={"type": "string"}),

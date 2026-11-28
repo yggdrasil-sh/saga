@@ -219,6 +219,12 @@ Connector einmal trennen und neu verbinden. Alternativ ein `sga_`-Token mit `mcp
   keine Zusammenführung). `ignoriert` = angegebene Felder ohne passende Spalte. Auswahl-Werte (Projekt, Art,
   Schlagworte) müssen als Option existieren – sonst **nichts angelegt**, 400 `unknown_option` mit
   `{"unbekannt": {"projekt": ["X"]}, "optionen": {"projekt": ["Saga", …]}}`.
+  Zusätzlich (2601/2603, abwärtskompatibel, nichts wird abgelehnt): `"fehlt"?: ["projekt", "art", …]` = Felder aus
+  projekt, art, schlagworte, wichtigkeit, valenz, erregung (in dieser Reihenfolge), für die eine passende Spalte existiert,
+  die aber nicht angegeben wurden (nicht sensibel/datum); `"optionen"?: {"projekt": […], "art": […], "schlagworte": […]}`
+  = gültige Optionen der fehlenden Auswahlfelder (Art ohne die Schnappschuss-Option; Schlagworte als Text-Spalte ohne
+  Liste); `hinweis` bekommt dann „Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.“ (angehängt an
+  einen vorhandenen Hinweis). Nur wenn `fehlt` nicht leer ist.
   Zusätzlich (2603) `"sensibel"?: true|false` (Kontrollkästchen, §2; ohne Spalte → `ignoriert`). Im Schattenmodus legt
   remember die Verknüpfungen „ähnlich“ an (§12.2).
 
@@ -241,7 +247,7 @@ Stufe 3 (2601/2603):
 | Werkzeug | Klasse | Rückgängig | Argumente |
 |---|---|---|---|
 | `recall` | own (schreibt Zähler) | final | `text`, `projekt`?, `limit`? |
-| `remember` | own | delete_only | wie REST (+ `sensibel`?, boolean) |
+| `remember` | own | delete_only | wie REST (+ `sensibel`?, boolean); Antwort wie REST samt `fehlt`/`optionen`, Beschreibung bittet, die sechs Felder möglichst immer mitzugeben |
 | `nap` (2601) | own | delete_only | `stimmung`, `gedanke`, `valenz`?, `erregung`?, `faeden`? (array string, ≤ 5), `ort`?, `projekt`? |
 | `wake` (2601) | read | – | – |
 | `recall_used` (2603) | own | final | `ids` (array integer, 1–10) |

@@ -1317,6 +1317,17 @@ def _create_row(uid, dbid, titel, props, tok=None):
     return dd["id"]
 
 
+REMEMBER_HINT = ("projekt", "art", "schlagworte", "wichtigkeit", "valenz", "erregung")    # 2601/2603: "fehlt" bei remember
+
+
+def _remember_hint(out):
+    """Hinweis zu fehlenden Feldern an einen vorhandenen Hinweis (aehnlich) anhaengen -> out."""
+    if out.get("fehlt"):
+        h = t("Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.", felder=", ".join(out["fehlt"]))
+        out["hinweis"] = (out["hinweis"] + " " + h) if out.get("hinweis") else h
+    return out
+
+
 def remember(uid, a, tok=None):
     """Neue Erinnerung -> (201, dict wie docs/MEMORY.md 5)."""
     from saga.notes import clean_date
@@ -1417,10 +1428,21 @@ def remember(uid, a, tok=None):
     ec = ecfg()
     model = model_key(ec)
     out = {"id": nid, "eingebettet": False, "aehnlich": []}
+    # 2601/2603: Felder mit passender Spalte, die nicht angegeben wurden -> fehlt + gueltige Optionen (nichts abgelehnt)
+    fehlt = [f for f in REMEMBER_HINT if cols.get(f) and cols[f]["id"] not in props]
+    if fehlt:
+        out["fehlt"] = fehlt
+        opts = {}
+        snap_name = _opt_name(cols["art"], snap_option(cols, b["map"])) if cols.get("art") and snap_option(cols, b["map"]) else None
+        for f in ("projekt", "art", "schlagworte"):
+            if f in fehlt and cols[f]["type"] in ("select", "multi_select"):
+                opts[f] = [n for n in _opt_names(cols[f]) if not (f == "art" and snap_name is not None and n == snap_name)]
+        if opts:
+            out["optionen"] = opts
     with _db() as c:
         row = _live_rows(c, uid, b["db"], cols, [nid])
     if not row:
-        return 201, out
+        return 201, _remember_hint(out)
     nid_, txt, h, f = row[0]
     sims = []
     with _db() as c:
@@ -1454,6 +1476,7 @@ def remember(uid, a, tok=None):
             out["hinweis"] = t("Vielleicht lieber eine dieser Erinnerungen ergänzen.")
     if ignored:
         out["ignoriert"] = ignored
+    _remember_hint(out)
     if b.get("shadow") and (out["eingebettet"] or not model):     # 2603: Verknuepfungen "aehnlich" zur neuen Zeile
         try:
             from saga import memory_shadow

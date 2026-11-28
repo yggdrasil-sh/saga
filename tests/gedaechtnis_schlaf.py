@@ -407,6 +407,11 @@ def part_wake():
     ok("Kontosprache en: Schnappschuss-Text und Aufwach-Satz englisch",
        txt == "Mood: curious (valence +0.4)\nLast thought: Vectors first." and wl["text"].startswith("Last nap: just now.")
        and "changed since" in wl["text"], (txt, wl["text"]))
+    st, d = req("POST", "/api/v1/memory/remember", {"titel": "Plain", "inhalt": "nothing else given"}, bearer=token(U, ["memory"]))
+    ok("remember (2601/2603): optionen art ohne die Schnappschuss-Option, ohne Spalte Schlagworte kein schlagworte; Hinweis in Kontosprache (REST)",
+       st == 201 and d.get("fehlt") == ["projekt", "art", "wichtigkeit", "valenz", "erregung"]
+       and d.get("optionen") == {"projekt": ["Saga", "Garten"], "art": ["Fakt", "Episode"]}
+       and d.get("hinweis", "").startswith("Please add (update_row): projekt, art"), d)
 
 
 # --- 5. REST / MCP / 8 Schnappschuesse --------------------------------------------------------------------------------

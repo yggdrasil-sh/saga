@@ -5904,5 +5904,6 @@
  "Letztes Nickerchen: {wann}.": "Última siesta: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "Desde entonces, {n} {n:página modificada|páginas modificadas}.",
  "Aufwachen": "Despertar",
- "(gelöscht)": "(eliminado)"
+ "(gelöscht)": "(eliminado)",
+ "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.": "Completa por favor (update_row): {felder} – los valores válidos están en «optionen»."
 }

@@ -5904,5 +5904,6 @@
  "Letztes Nickerchen: {wann}.": "Last nap: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "{n} {n:page|pages} changed since.",
  "Aufwachen": "Waking up",
- "(gelöscht)": "(deleted)"
+ "(gelöscht)": "(deleted)",
+ "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.": "Please add (update_row): {felder} – valid values are listed under “optionen”."
 }

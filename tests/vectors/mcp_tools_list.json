@@ -1121,7 +1121,7 @@
    },
    {
     "name": "remember",
-    "description": "Neue Erinnerung im eigenen Gedächtnis anlegen (Datum Standard heute). projekt, art und schlagworte nur mit vorhandenen Auswahl-Werten – Unbekanntes wird gemeldet, nichts angelegt. aehnlich nennt vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row).",
+    "description": "Neue Erinnerung im eigenen Gedächtnis anlegen (Datum Standard heute). projekt, art und schlagworte nur mit vorhandenen Auswahl-Werten – Unbekanntes wird gemeldet, nichts angelegt. aehnlich nennt vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row). Gib projekt, art, schlagworte, wichtigkeit, valenz und erregung möglichst immer mit; die Antwort nennt fehlende Felder und gültige Optionen.",
     "inputSchema": {
      "type": "object",
      "properties": {
@@ -1309,7 +1309,7 @@
    }
   ],
   "only": {
-   "sha256": "069c314abc33833cea4fb24fd08a03f70626c0f7c5aab6770db5daace93f60d0",
+   "sha256": "8aaecaede965b6b9376fa62ddca02eaec8abef24eb85695952e0bc6e75b72cd3",
    "names": [
     "recall",
     "remember",
@@ -1320,7 +1320,7 @@
    ]
   },
   "full": {
-   "sha256": "9f36757dacd5c52e81e007701b13f3804a7dea5b18484a0db767827ac905898e",
+   "sha256": "7bac4353fd47143c3688863d237217c6b98670a132aac6c4d6c8e62960bc73ed",
    "names": [
     "search_pages",
     "get_page",

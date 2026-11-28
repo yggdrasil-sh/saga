@@ -5904,5 +5904,6 @@
  "Letztes Nickerchen: {wann}.": "Letztes Nickerchen: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "Seitdem {n} {n:Seite|Seiten} geändert.",
  "Aufwachen": "Aufwachen",
- "(gelöscht)": "(gelöscht)"
+ "(gelöscht)": "(gelöscht)",
+ "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.": "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“."
 }

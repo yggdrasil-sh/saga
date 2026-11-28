@@ -5904,5 +5904,6 @@
  "Letztes Nickerchen: {wann}.": "Последняя передышка: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "С тех пор изменено: {n} {n:страница|страницы|страниц}.",
  "Aufwachen": "Пробуждение",
- "(gelöscht)": "(удалено)"
+ "(gelöscht)": "(удалено)",
+ "Bitte ergänzen (update_row): {felder} – gültige Werte unter „optionen“.": "Пожалуйста, дополните (update_row): {felder} – допустимые значения указаны в «optionen»."
 }

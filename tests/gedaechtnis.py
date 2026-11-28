@@ -260,8 +260,26 @@ def part_remember():
                                 "projekt": "homelab", "schlagworte": "proxmox"}, TA)
     ok("remember fast gleich: aehnlich nennt die vorhandene (rel >= 0,90) + Hinweis; Auswahl ohne Gross/Klein, Schlagworte als Text",
        st == 201 and [x["id"] for x in d["aehnlich"]] == [ids[0]] and d["aehnlich"][0]["rel"] >= 0.9 and d.get("hinweis"), d)
+    ok("remember (2601/2603): fehlt nennt nicht angegebene Felder mit Spalte, optionen nur fuer fehlende Auswahlfelder, Hinweis angehaengt",
+       d.get("fehlt") == ["art", "wichtigkeit", "valenz", "erregung"] and d.get("optionen") == {"art": ["Erkenntnis", "Ereignis"]}
+       and d["hinweis"].startswith(memory.t("Vielleicht lieber eine dieser Erinnerungen ergänzen.")) and "update_row" in d["hinweis"] and "art, wichtigkeit, valenz, erregung" in d["hinweis"], d)
     api_v1.page_delete(TA, d["id"])
     memory.sync(A, [d["id"]])
+    st, d = memory.remember(A, {"titel": "Vollstaendig", "inhalt": "Ganz anderes Thema Segelboot Knoten", "projekt": "Saga", "art": "Ereignis",
+                                "schlagworte": ["test"], "wichtigkeit": 3, "valenz": 0.2, "erregung": 0.1}, TA)
+    ok("remember mit allen sechs Feldern: kein fehlt/optionen, kein Ergaenzungs-Hinweis", st == 201 and "fehlt" not in d and "optionen" not in d
+       and "update_row" not in (d.get("hinweis") or ""), d)
+    api_v1.page_delete(TA, d["id"])
+    memory.sync(A, [d["id"]])
+    st, d = req("POST", "/api/v1/memory/remember", {"titel": "Nur Text", "inhalt": "Leuchtturmwaerter Notiz ohne Angaben"},
+                bearer=token(A, ["memory"]))
+    ok("REST remember nur titel/inhalt: 201 (nichts abgelehnt), fehlt alle sechs, optionen projekt/art/schlagworte, hinweis",
+       st == 201 and d.get("fehlt") == ["projekt", "art", "schlagworte", "wichtigkeit", "valenz", "erregung"]
+       and d.get("optionen") == {"projekt": ["Saga", "Homelab", "Anime"], "art": ["Erkenntnis", "Ereignis"],
+                                 "schlagworte": ["proxmox", "python", "anime", "test"]} and "update_row" in (d.get("hinweis") or ""), (st, d))
+    if st == 201:
+        api_v1.page_delete(TA, d["id"])
+        memory.sync(A, [d["id"]])
     # Konto B: Datenbank ohne Inhalt / ohne Valenz
     dbn = mkdb(TB, "Ohne Inhalt", [{"name": "Notiz", "type": "text"}])
     st, _ = req("PUT", "/api/account/memory", {"db": dbn}, uid=B)
