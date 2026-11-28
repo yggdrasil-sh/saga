@@ -185,13 +185,22 @@ def _approvable(steps):
         all(u == "undo" for k, u, _cl in steps if k == "own")
 
 
+def _dictated(c, job_id):
+    """K-F (2274, RT-18): Auftrag aus einem Diktat (plan.origin kind dictation)?"""
+    if job_id is None:
+        return False
+    r = c.execute("SELECT plan FROM job WHERE id=?", (job_id,)).fetchone()
+    pj = r[0] if r and isinstance(r[0], dict) else {}
+    return isinstance(pj.get("origin"), dict) and pj["origin"].get("kind") == "dictation"
+
+
 def actions_for(c, job, steps, detail, again=0):
     """Knoepfe (ohne open) je Zustand: approve/undo nur mit detail, later hoechstens LATER_MAX-mal."""
     state = job["state"]
     acts = []
     if state == "wartet_ok":
-        if detail and _approvable(steps) and job.get("source") != "share":    # K-G (2275): Geteiltes nie aus der Mitteilung freigeben
-            acts.append("approve")
+        if detail and _approvable(steps) and job.get("source") != "share" and not _dictated(c, job.get("id")):
+            acts.append("approve")                     # K-G (2275)/K-F (2274): Geteiltes/Diktiertes nie aus der Mitteilung freigeben
         if again < LATER_MAX:
             acts.append("later")
     elif state == "wartet_dich":

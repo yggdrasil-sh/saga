@@ -608,8 +608,10 @@ async def api_transcribe(request: Request):
         await asyncio.to_thread(_measure, uid, text, secs)
         return JSONResponse({"text": text, "dur": round(secs, 1), "lang": lang, "cut": cut}, headers=NO_STORE)
     except Exception as ex:  # noqa: BLE001 - nie Inhalte loggen
-        if type(ex).__name__ in ("BodyTooLarge", "ClientDisconnect"):
-            raise
+        if type(ex).__name__ == "BodyTooLarge":                         # BodyLimit ersetzt die Antwort ohnehin durch 413
+            return _err(413, "too_big")
+        if type(ex).__name__ == "ClientDisconnect":                     # Verbindung weg: niemand liest die Antwort
+            return JSONResponse({"error": "disconnected"}, status_code=400, headers=NO_STORE)
         print(f"stt: 500 {type(ex).__name__}", flush=True)
         return JSONResponse({"error": message("upstream"), "code": "upstream"}, status_code=500, headers=NO_STORE)
     finally:
