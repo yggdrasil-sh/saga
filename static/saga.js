@@ -807,7 +807,7 @@
   function dictWay() {
     var stt = dictStt();
     return dictDecide({ device_ok: devOk(), aistt1: !!DI.feat, stt_on: !!(stt && stt.on === true),
-                        dictation: (DI.prefs && DI.prefs.dictation) || 'server', fmt_ok: !!dictFmt(stt) });
+                        dictation: (DI.prefs && DI.prefs.dictation) || '', fmt_ok: !!dictFmt(stt) });   // Einstellung nicht geladen: kein Server-Weg
   }
   function dictLang() {
     var l = String(HK.lang || document.documentElement.lang || '').slice(0, 2).toLowerCase(), stt = dictStt();

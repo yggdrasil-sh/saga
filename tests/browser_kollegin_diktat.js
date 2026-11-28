@@ -109,6 +109,7 @@ function mocks(p, M) {
     route.fulfill({ response: resp, json: j });
   });
   p.route('**/api/ai/prefs', async (route) => {
+    if (route.request().method() === 'GET' && M.prefsFail) return route.fulfill({ status: 500, headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const resp = await route.fetch(); let j = {}; try { j = await resp.json(); } catch (e) { j = {}; }
     if (route.request().method() === 'GET' && M.dictation && j && j.enabled !== false) j.dictation = M.dictation;
     route.fulfill({ response: resp, json: j });
@@ -185,13 +186,14 @@ async function partA(br, name, BRK) {
   ok('Format: ogg, wenn in stt.formats', (await st(p)).fmt === 'ogg', await st(p));
   for (const [label, patch] of [['stt null (nicht eingerichtet)', { stt: null }], ['stt fehlt (aelterer Server)', { stt: undefined }],
     ['stt {on:false} (gesperrt)', { stt: V.status.gesperrt }], ['dictation device (ohne Geraete-Weg)', { dictation: 'device' }],
-    ['ohne aistt1', { noFeat: true }], ['formats [] (kein Format)', { stt: Object.assign(clone(V.status.home), { formats: [] }) }]]) {
-    Object.assign(M, { stt: clone(V.status.home), dictation: null, noFeat: false }, clone(patch === undefined ? {} : patch));
+    ['ohne aistt1', { noFeat: true }], ['formats [] (kein Format)', { stt: Object.assign(clone(V.status.home), { formats: [] }) }],
+    ['Einstellung nicht ladbar (Ladefehler, Schalter unbekannt)', { prefsFail: true }]]) {
+    Object.assign(M, { stt: clone(V.status.home), dictation: null, noFeat: false, prefsFail: false }, clone(patch === undefined ? {} : patch));
     if ('stt' in patch && patch.stt === undefined) M.stt = undefined;
     await gotoSaga(p);
     ok('kein Knopf: ' + label, !(await micShown(p)) && (await st(p)).way === 'none', await st(p));
   }
-  Object.assign(M, { stt: clone(V.status.home_mit_satz), dictation: null, noFeat: false });
+  Object.assign(M, { stt: clone(V.status.home_mit_satz), dictation: null, noFeat: false, prefsFail: false });
   await gotoSaga(p, true);
   ok('nur wav im Dienst -> Format wav', (await st(p)).fmt === 'wav' && await micShown(p), await st(p));
   await shot(p, 'ort-dunkel');
