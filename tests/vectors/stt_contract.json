@@ -1086,6 +1086,12 @@
    "warn": true,
    "warn_text": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist."
   },
+  "mit_warnung_sie": {
+   "kind": "dictation",
+   "text": "Diktiert",
+   "warn": true,
+   "warn_text": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüfen Sie, ob das Ihre Bitte ist."
+  },
   "act_approve": {
    "status": 409,
    "body": {
@@ -1183,6 +1189,7 @@
    "label_internet_plain": "stt.example.net (im Internet)",
    "origin": "Diktiert",
    "warn_text": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist.",
+   "warn_text_sie": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüfen Sie, ob das Ihre Bitte ist.",
    "errors": {
     "key": "Diktat gibt es nur in Saga selbst – nicht über API-Schlüssel.",
     "ai": "Der KI-Assistent ist für dich nicht eingeschaltet.",
@@ -1215,6 +1222,7 @@
    "label_internet_plain": "stt.example.net (on the internet)",
    "origin": "Dictated",
    "warn_text": "The dictated text contains instructions for the AI – maybe from a radio or TV. Check that this is really your request.",
+   "warn_text_sie": null,
    "errors": {
     "key": "Dictation only works in Saga itself – not with API keys.",
     "ai": "The AI assistant isn't turned on for you.",
@@ -1247,6 +1255,7 @@
    "label_internet_plain": "stt.example.net (en internet)",
    "origin": "Dictado",
    "warn_text": "El texto dictado contiene instrucciones para la IA, quizá de la radio o la tele. Comprueba que sea tu petición.",
+   "warn_text_sie": "El texto dictado contiene instrucciones para la IA, quizá de la radio o la tele. Compruebe que sea su petición.",
    "errors": {
     "key": "El dictado solo funciona en Saga – no con claves de API.",
     "ai": "El asistente de IA no está activado para ti.",
@@ -1279,6 +1288,7 @@
    "label_internet_plain": "stt.example.net (в интернете)",
    "origin": "Надиктовано",
    "warn_text": "В надиктованном тексте есть указания для ИИ – возможно, из радио или телевизора. Проверь, твоя ли это просьба.",
+   "warn_text_sie": "В надиктованном тексте есть указания для ИИ – возможно, из радио или телевизора. Проверьте, ваша ли это просьба.",
    "errors": {
     "key": "Диктовка работает только в самой Saga – не через API-ключи.",
     "ai": "ИИ-ассистент для тебя не включён.",
@@ -1311,6 +1321,7 @@
    "label_internet_plain": "stt.example.net (บนอินเทอร์เน็ต)",
    "origin": "พิมพ์ด้วยเสียง",
    "warn_text": "ข้อความที่พูดมีคำสั่งถึง AI – อาจมาจากวิทยุหรือโทรทัศน์ ตรวจดูว่านี่เป็นคำขอของคุณจริงๆ",
+   "warn_text_sie": null,
    "errors": {
     "key": "การพิมพ์ด้วยเสียงใช้ได้เฉพาะใน Saga เท่านั้น – ใช้ผ่านคีย์ API ไม่ได้",
     "ai": "ยังไม่ได้เปิดผู้ช่วย AI ให้บัญชีนี้",

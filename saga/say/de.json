@@ -15,6 +15,7 @@
  "intro.share": {"sie": "Was Sie teilen, liest die KI auf {where}."},
  "stt.home": {"sie": "Ihre Aufnahme geht an {where} und wird dort zu Text. Saga speichert sie nicht."},
  "stt.internet": {"sie": "Ihre Aufnahme geht übers Internet an {where} und wird dort zu Text. Saga speichert sie nicht."},
+ "stt.warn": {"sie": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüfen Sie, ob das Ihre Bitte ist."},
  "intro.question": {"sie": "Soll ich Ihnen ab und zu Ideen zeigen – nur auf „Heute“, nie als Mitteilung?"},
  "intro.e2e": {"sie": "Nicht Ende-zu-Ende verschlüsselt: Was Sie {name} schreiben, liest die KI auf {host} im Klartext."},
  "intro.what": {"sie": "Was genau rausgeht: Ihre Frage, die letzten Sätze dieses Gesprächs und Ausschnitte aus Seiten, Aufgaben und Terminen, die zur Frage passen – nur, was Sie selbst sehen dürfen, und nur aus Quellen, die Sie eingeschaltet haben. Chats und Seiten von anderen Servern liest sie nicht."},

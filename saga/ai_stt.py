@@ -55,8 +55,14 @@ def origin_text():
     return t("Diktiert")
 
 
-def warn_text():
-    return t("Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist.")
+def warn_text(persona=None, lang=None):
+    """Warnung auf der Plan-Karte (Herkunft dictation, warn) - Sie-Fassung ueber den Baustein stt.warn (de/es/ru)."""
+    du = t("Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist.")
+    try:
+        from saga import ai_say, i18n
+        return ai_say.formal("stt.warn", lang or i18n.get_lang(), persona) or du
+    except Exception:  # noqa: BLE001 - Baustein kaputt: Systemtext (du)
+        return du
 
 
 def message(code, **kw):

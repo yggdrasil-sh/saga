@@ -1025,7 +1025,8 @@ POST /api/ai/jobs   {"text": "Schreib allen, dass das Treffen ausfällt", "input
            "warn_text": "Im diktierten Text stehen Anweisungen an die KI – vielleicht aus Radio oder Fernseher. Prüf, ob das deine Bitte ist."}
 ```
 
-  `warn_text` nur bei `warn: true`, sonst `null`; kein `host`/`from`. Plan-Karte: Symbol (Mikrofon) + `text` unter „Ich
+  `warn_text` nur bei `warn: true`, sonst `null`, in der Anrede der Person (Sie: „… Prüfen Sie, ob das Ihre Bitte
+  ist.“, Baustein `stt.warn`, nur de/es/ru – Vektoren `texts.*.warn_text_sie`); kein `host`/`from`. Plan-Karte: Symbol (Mikrofon) + `text` unter „Ich
   lese dafür: …“, bei `warn` zusätzlich ⚠ + `warn_text` (nie nur Farbe) – derselbe Platz wie bei `kind: "share"`.
   Clients unterscheiden nach `origin.kind`; unbekannte Arten zeigen nur `text`.
 - `source` bleibt `saga`: keine Mitteilung in `wartet_ok`, nie ein Knopf `approve`; `POST /api/ai/jobs/{id}/act`
