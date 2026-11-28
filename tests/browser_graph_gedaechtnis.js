@@ -105,6 +105,7 @@ let R = null;
     const h0 = (await probe(p, 'Zugfahrt')).hits;
     const rc = await recall('Nachtzug Wien Flug bequem');
     ok('REST recall trifft die Zugfahrt', rc.s === 200 && rc.d.treffer.some((x) => x.id === R.rows.Zugfahrt), rc);
+    console.log('INFO recall-Treffer (zaehlen ab jetzt als gerade abgerufen): ' + ((rc.d && rc.d.treffer) || []).map((x) => x.titel).join(', '));
     const pl = await until(async () => { const z = await probe(p, 'Zugfahrt'); return z.pz ? z : null; }, 5000);
     const st1 = await vs(p);
     ok('Puls: Knoten pulst in der offenen Ansicht (Animation laeuft)', pl && pl.pz > 0 && st1.npulse > 0 && st1.raf, [pl, st1]);

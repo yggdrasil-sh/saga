@@ -232,6 +232,16 @@ def main():
            m.get("db") == bmem and set(mrows(d)) == {bids["Fahrrad"]} and not (set(mrows(d)) & set(ids.values())), m)
         ma = mrows(graph(CA))
         ok("Anna: Berts Zeile nie in ihrem mem", bids["Fahrrad"] not in ma and set(ma) <= set(ids.values()), ma)
+        # Pruefer (pr-graph-mem): Bindung zeigt auf eine Datenbank, die einem nicht (mehr) gehoert -> nie Zaehler
+        pg("UPDATE user_kv SET v=? WHERE uid=? AND k='memory.db'", (str(mem), B))
+        d = graph(CB)
+        ok("Bert: Bindung auf Annas Datenbank (nicht eigene) -> kein Feld mem", "mem" not in d, d.get("mem"))
+        pg("UPDATE user_kv SET v=? WHERE uid=? AND k='memory.db'", (str(bmem), B))
+        # Pruefer: abgerufene Zeile im Papierkorb -> nicht mehr in rows (andere bleiben)
+        st, r = req("DELETE", f"/api/notes/{ids['Zugfahrt']}", CA)
+        ma = mrows(graph(CA))
+        ok("Anna: Zeile im Papierkorb nicht in rows, andere bleiben", st in (200, 204) and ids["Zugfahrt"] not in ma
+           and ids["Tomaten"] in ma, (st, ma))
         # Gedaechtnis-Datenbank im Papierkorb bzw. Bindung entfernt: kein Feld
         req("DELETE", f"/api/notes/{bmem}", CB)
         ok("Bert: Datenbank im Papierkorb -> kein Feld mem", "mem" not in graph(CB), graph(CB).get("mem"))
