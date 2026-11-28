@@ -520,7 +520,7 @@ async function partHost(br, name) {
   await p.click('#sg-mic'); await sleep(300); m = await msgs(); const id2 = m[m.length - 1].id;
   ok('neuer Start mit neuer id', m[m.length - 1].action === 'dictate.start' && id2 !== id);
   await p.click('.sg-dict-cancel'); m = await msgs();
-  ok('Abbrechen: dictate.cancel', m[m.length - 1].action === 'dictate.cancel' && m[m.length - 1].id === id2, m[m.length - 1]);
+  ok('Abbrechen: dictate.cancel {v:1, id}', m[m.length - 1].action === 'dictate.cancel' && m[m.length - 1].id === id2 && m[m.length - 1].v === 1, m[m.length - 1]);
   await recv({ type: 'dictate.done', id: id2, text: 'ZU SPAET', dur: 1, limit: false, cut: false });
   ok('nach cancel: done derselben id verworfen', (await field(p)) === 'Bitte Erinner mich Freitag an den Pavillon');
   // 60 s: das Web stoppt selbst (Uhr vorgestellt)
@@ -547,6 +547,18 @@ async function partHost(br, name) {
     ok('error unavailable: Server-Weg mit stt.notice, keine Aufnahme von selbst', s.way === 'server' && s.st === 'hint' && w === V.status.home.notice && seen.tr.length === 0 && await micShown(p), { s, w }); }
   await dictate(p, 1200, seen.tr);
   ok('danach zweiter Tipp: Server-Aufnahme, Text eingefuegt', seen.tr.length === 1 && (await field(p)) === 'Mein Text ' + V.examples.ok.body.text, await field(p));
+  // Hinweis kommt nach unavailable erneut, auch wenn der Server-Weg schon gesehen war (15.3)
+  await p.reload(); await gotoSaga(p);
+  ok('neu geladen: wieder Geraete-Weg (dictate in caps)', (await st(p)).way === 'device');
+  await p.click('#sg-mic'); await sleep(300); m = await msgs(); const id6 = m[m.length - 1].id;
+  await recv({ type: 'dictate.error', id: id6, code: 'unavailable' }); await sleep(600);
+  ok('unavailable mit schon gesehenem Server-Weg: trotzdem zuerst der Hinweis', (await st(p)).st === 'hint' && seen.tr.length === 1, await st(p));
+  // unavailable ohne Server-Weg: kein Knopf
+  M.stt = null; await p.reload(); await gotoSaga(p);
+  await p.click('#sg-mic'); await sleep(300); m = await msgs(); const id7 = m[m.length - 1].id;
+  await recv({ type: 'dictate.error', id: id7, code: 'unavailable' }); await sleep(600);
+  ok('unavailable ohne Server-Weg: kein Knopf, keine Anfrage', !(await micShown(p)) && (await st(p)).way === 'none' && seen.tr.length === 1, await st(p));
+  ok('alle dictate.* mit v:1 und ganzzahliger id 1…1e9', (await msgs()).every((x) => x.v === 1 && Number.isInteger(x.id) && x.id >= 1 && x.id <= 1e9));
   ok('Huelle: kein Ton ueber die Bruecke (nur Steuerung)', (await p.evaluate(() => window.__hostMsgs.filter((m) => /^dictate\./.test(m.action)).every((m) => Object.keys(m).every((k) => ['action', 'v', 'id', 'lang'].indexOf(k) >= 0)))));
   await ctx.close();
 }
