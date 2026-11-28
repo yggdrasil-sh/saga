@@ -259,7 +259,9 @@ def wav_seconds(b):
         cid, size = bytes(b[i:i + 4]), _u32(b, i + 4)
         body = i + 8
         if cid == b"fmt ":
-            if size < 16 or body + 16 > len(b):
+            # genau ein Block fmt: ffmpeg nimmt den ersten, hier zaehlte sonst der letzte (8 kHz, dann 48 kHz -> 6-fache
+            # Dauer am Pruefer vorbei)
+            if fmt is not None or size < 16 or body + 16 > len(b):
                 raise Bad("format")
             tag, ch, rate, bits = _u16(b, body), _u16(b, body + 2), _u32(b, body + 4), _u16(b, body + 14)
             if tag != 1 or ch != 1 or bits != 16 or not 8000 <= rate <= 48000:

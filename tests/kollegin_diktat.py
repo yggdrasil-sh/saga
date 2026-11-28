@@ -686,6 +686,67 @@ def part_inproc():
     ok("Admin-Ansicht: kein Schluessel, nur has_key", "sk-stt-123" not in json.dumps(v) and v["settings"]["has_key"] is True, v)
 
 
+def part_attack():
+    """Pruefer (unabhaengig): Format-Tricks an der Dauerpruefung vorbei, IPv6-Schreibweisen in ip_ok, event_hook."""
+    import httpx
+    setstt()
+    # WAV mit zwei Bloecken fmt: 8 kHz (gilt fuer ffmpeg: der erste) und 48 kHz (zaehlte frueher: der letzte)
+    def fmt_chunk(rate):
+        return b"fmt " + (16).to_bytes(4, "little") + (1).to_bytes(2, "little") + (1).to_bytes(2, "little") + rate.to_bytes(4, "little") \
+            + (rate * 2).to_bytes(4, "little") + (2).to_bytes(2, "little") + (16).to_bytes(2, "little")
+    n = 8000 * 2 * 70                                                   # 70 s bei 8 kHz
+    body = b"WAVE" + fmt_chunk(8000) + fmt_chunk(48000) + b"data" + n.to_bytes(4, "little") + bytes(n)
+    two = b"RIFF" + len(body).to_bytes(4, "little") + body
+    n0 = wcount()[0]
+    s, d, _ = local(A, two, "audio/wav")
+    ok(f"WAV mit zwei fmt-Bloecken (8 kHz + 48 kHz, 70 s) -> 400, nichts gesendet ({s}, {d.get('code')})",
+       s == 400 and d.get("code") in ("format", "too_long") and wcount()[0] == n0, d)
+    # Ogg: 70 s Pakete (TOC 20 ms), Granule der letzten Seite winzig
+    head = b"OpusHead" + bytes([1, 1]) + (312).to_bytes(2, "little") + (48000).to_bytes(4, "little") + bytes(3)
+    tags = b"OpusTags" + (4).to_bytes(4, "little") + b"Saga" + (0).to_bytes(4, "little")
+    pages = [ai_stt._page(7, 0, 0, 2, [head]), ai_stt._page(7, 1, 0, 0, [tags])]
+    for i in range(70):
+        pages.append(ai_stt._page(7, 2 + i, 312 + 960, 4 if i == 69 else 0, [b"\xf8\xff\xfe"] * 50))
+    n0 = wcount()[0]
+    s, d, _ = local(A, b"".join(pages))
+    ok(f"Ogg 70 s mit kleiner Granule -> 400 too_long, nichts gesendet ({s}, {d.get('code')})",
+       s == 400 and d.get("code") == "too_long" and wcount()[0] == n0, d)
+    # ip_ok ohne Cloud: nur festgehaltene private IPs, auch in IPv6-Schreibweisen nichts anderes
+    h = "whisper.example.test"
+    off = ai_stt.ip_ok(dict(STT0, url=f"http://{h}:9", pinned=["127.0.0.1", "fd12::5"], cloud=False))
+    want_off = {("127.0.0.1", h): True, ("::ffff:127.0.0.1", h): True, ("fd12::5", h): True, ("10.9.9.9", h): False,
+                ("::ffff:169.254.169.254", h): False, ("169.254.169.254", h): False, ("64:ff9b::7f00:1", h): False,
+                ("::7f00:1", h): False, ("fe80::1", h): False, ("::ffff:8.8.8.8", h): False, ("127.0.0.1", "other.example.test"): False,
+                ("127.0.0.1", h.upper()): True}
+    got = {k: bool(off(k[0], k[1], 9)) for k in want_off}
+    ok("ip_ok ohne Cloud: v4-mapped/NAT64/IPv4-kompatibel/Link-local/fremder Host nur wie festgehalten", got == want_off,
+       {k: v for k, v in got.items() if want_off[k] != v})
+    on = ai_stt.ip_ok(dict(STT0, url="https://stt.example.test", pinned=["8.8.8.8"], cloud=True))
+    want_on = {"8.8.4.4": True, "2001:4860:4860::8888": True, "::ffff:169.254.169.254": False, "64:ff9b::a9fe:a9fe": False,
+               "10.0.0.1": False, "::ffff:10.0.0.1": False, "100.100.100.200": False, "fd00:ec2::254": False, "127.0.0.1": False}
+    got = {ip: bool(on(ip, "stt.example.test", 443)) for ip in want_on}
+    ok("ip_ok mit Cloud (https): oeffentlich ja, intern/Metadaten in jeder Schreibweise nein", got == want_on,
+       {k: v for k, v in got.items() if want_on[k] != v})
+    hook = ai_stt._hook({"url": f"http://{h}:9"})
+    def refused(u):
+        try:
+            hook(httpx.Request("POST", u))
+            return False
+        except httpx.UnsupportedProtocol:
+            return True
+    ok("event_hook: Zugangsdaten, fremder Host, anderes Schema abgelehnt; anderer Port erlaubt",
+       refused(f"http://u:p@{h}:9/v1/audio/transcriptions") and refused("http://other.example.test:9/x")
+       and refused(f"ftp://{h}/x") is True and not refused(f"http://{h}:1234/v1/audio/transcriptions"))
+    i18n.set_lang("de")
+    n0 = wcount()[0]
+    r1 = ai_stt.admin_save(dict(STT0, url="http://[::ffff:169.254.169.254]", cloud=True))
+    r2 = ai_stt.admin_save(dict(STT0, url="http://[64:ff9b::a9fe:a9fe]", cloud=False))
+    r3 = ai_stt.admin_save(dict(STT0, url="http://[::ffff:8.8.8.8]:9000", cloud=False))
+    ok(f"Speichern: Metadaten v4-mapped (auch mit Cloud), NAT64 und v4-mapped oeffentlich ohne Cloud -> 400 ({r1[0]}, {r2[0]}, {r3[0]})",
+       r1[0] == 400 and r2[0] == 400 and r3[0] == 400 and wcount()[0] == n0, (r1, r2, r3))
+    setstt()
+
+
 def part_settings(cA):
     """Status-Varianten ueber den Server (je 5 s Zwischenspeicher)."""
     setstt(wait=True)
@@ -813,6 +874,7 @@ def main():
         part_units(cA)
         part_rt18(cA)
         part_inproc()
+        part_attack()
         part_settings(cA)
         adm = part_admin_http()
         part_shots(adm)

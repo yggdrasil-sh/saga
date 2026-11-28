@@ -893,7 +893,7 @@ Content-Type: audio/ogg                 (Ogg/Opus)  |  audio/wav (PCM 16 bit, mo
 | `Content-Type` | `audio/ogg` (Parameter wie `; codecs=opus` egal) oder `audio/wav` (auch `audio/x-wav`, `audio/wave`). Kein Multipart, kein Base64, kein JSON. |
 | Körper | genau eine Aufnahme, roh. `Content-Length` oder `Transfer-Encoding: chunked` – beides wird gezählt. |
 | Ogg/Opus | erste Seite `OggS` mit Paket `OpusHead` (1 oder 2 Kanäle), ein Strom, Seiten lückenlos; Dauer = (Granule der letzten Seite − Pre-Skip) / 48 000 – geprüft wird zusätzlich die Summe der Paketdauern laut TOC-Byte (der größere Wert zählt). Web/Android/iOS haben den Ogg-Muxer der Sprachnachrichten (`SagaVoice`, `OggOpus.kt`, `VoiceOgg.swift`) – Chrome-WebM vorher umpacken wie dort. |
-| WAV | `RIFF…WAVE`, Block `fmt ` mit Format 1 (PCM), 16 Bit, **mono**, 8 000–48 000 Hz; Dauer = Größe des Blocks `data` / Byterate. **Senden mit 16 kHz** (60 s = 1 920 044 Bytes; 48 kHz passt nur bis ~21 s). Andere Blöcke (`LIST` …) sind erlaubt. |
+| WAV | `RIFF…WAVE`, Block `fmt ` mit Format 1 (PCM), 16 Bit, **mono**, 8 000–48 000 Hz; Dauer = Größe des Blocks `data` / Byterate. **Senden mit 16 kHz** (60 s = 1 920 044 Bytes; 48 kHz passt nur bis ~21 s). Andere Blöcke (`LIST` …) sind erlaubt, `fmt ` genau einmal (vor `data`). |
 | Format wählen | `ogg`, wenn es in `stt.formats` (15.2) steht, sonst `wav`. Steht keins von beiden, das der Client erzeugen kann, drin → kein Server-Weg (`decide`, `fmt_ok`). |
 | Grenzen | höchstens **60 s** (geprüft mit 0,5 s Spiel) und **2 MiB**; der Client stoppt selbst bei 60 s. Antwort abwarten bis **75 s** (Dienst-Frist höchstens 60 s). |
 
