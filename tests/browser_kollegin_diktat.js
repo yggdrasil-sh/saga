@@ -19,7 +19,7 @@
 // Teil A laeuft gegen die Vektoren (Status/Transkription/Auftrag per page.route); Teil B (Gegenlauf) gegen den echten
 // Endpunkt mit tests/fakewhisper.py, sobald der Server ai_stt kennt (sonst SKIP, im Bericht nennen).
 // Bilder (SHOTS=<ordner>, PREFIX nachher|vorher): <PREFIX>-ort-dunkel/hell/schmal, -hinweis-dunkel, -aufnahme-dunkel/hell/schmal,
-// -plan-diktiert-dunkel/hell, -einstellungen-dunkel/hell, -huelle-dunkel. VORHER=1: nur Bilder des alten Stands.
+// -plan-diktiert-dunkel/hell, -einstellungen-dunkel/hell, -huelle-vor-start-dunkel, -huelle-dunkel. VORHER=1: nur Bilder des alten Stands.
 // Richtet sich selbst ein: tests/kollegin_diktat_web_rig.py (Konto kfw-web, Fake-Modell fake-plan auf HK_FAKEAI_PORT).
 //   SAGA_BASE=http://127.0.0.1:9041 [HK_FAKEAI_PORT=19058] [HK_FAKEWHISPER_PORT=19059] [BR=chromium|firefox|beide]
 //   [LANG_CHECK=0] [LIMIT=0] [PARTS=a,huelle,server] [SHOTS=/tmp/x] node tests/browser_kollegin_diktat.js
@@ -136,6 +136,11 @@ async function gotoSaga(p, clearSeen) {
 }
 const micShown = (p) => p.evaluate(() => { const b = document.getElementById('sg-mic'); return !!b && !b.hidden && b.offsetParent !== null; });
 const field = (p) => p.evaluate(() => document.getElementById('sg-ta').value);
+// Seite verbergen (wie App-Wechsel/Tab im Hintergrund) bzw. wieder zeigen
+const hide = (p) => p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+  Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+const unhide = (p) => p.evaluate(() => { delete document.visibilityState; delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
+const FULL = 'Das Feld ist voll – nicht alles vom Diktat passt hinein.';                 // neuer Schluessel (kein ui-Text in den Vektoren)
 const dictErrText = (p) => p.evaluate(() => { const e = document.querySelector('.sg-dict-err'); return e && !e.hidden ? e.textContent : ''; });
 // Aufnahme bis "Fertig" (Hinweis schon gesehen): Tipp, warten bis aufgenommen wird, ms aufnehmen, Fertig
 async function dictate(p, ms, tr) {
@@ -257,6 +262,17 @@ async function partA(br, name, BRK) {
     ok('Einfuegen: Ende, Mitte, Auswahl, Satzzeichen, leer, Feldgrenze 1000', c[0] === 'Erinner mich an den Pavillon' && c[1] === 'Erinner mich an Freitag'
       && c[2] === 'Erinner mich Freitag.' && c[3] === 'Hallo' && c[4] === 'a'.repeat(995) + ' Pavi' && c[4].length === 1000, c); }
 
+  // --- Feld voll (1000 Zeichen): bis zur Grenze einfuegen + Hinweis, nicht „Nichts verstanden“ ---
+  { const n0 = seen.tr.length;
+    await p.evaluate(() => { const ta = document.getElementById('sg-ta'); ta.value = 'a'.repeat(1000); ta.setSelectionRange(1000, 1000); });
+    await dictate(p, 900, seen.tr);
+    ok('Feld voll: nichts eingefuegt, Hinweis „Feld voll“', seen.tr.length === n0 + 1 && (await field(p)) === 'a'.repeat(1000) && (await dictErrText(p)) === FULL, await dictErrText(p));
+    await p.evaluate(() => { const ta = document.getElementById('sg-ta'); ta.value = 'a'.repeat(990); ta.setSelectionRange(990, 990); });
+    await dictate(p, 900, seen.tr);
+    const f = await field(p);
+    ok('Feld fast voll: bis zur Grenze eingefuegt, Hinweis „Feld voll“, diktiert markiert', f === 'a'.repeat(990) + ' ' + V.examples.ok.body.text.slice(0, 9) && f.length === 1000
+      && (await dictErrText(p)) === FULL && (await st(p)).dictated, { f: f.slice(985), e: await dictErrText(p) }); }
+
   // --- input "dictation" nur mit diktierten Teilen (15.5) ---
   M.jobPlan = planOf(V.origin.mit_warnung);
   await p.fill('#sg-ta', '');
@@ -308,6 +324,22 @@ async function partA(br, name, BRK) {
     const x = seen.posts[n1] || {}, b = JSON.parse(x.body || '{}');
     ok('Frage (/api/ai/thread) nie mit input', /\/api\/ai\/thread/.test(x.url || '') && !('input' in b), x); }
   await until(() => p.evaluate(() => !document.getElementById('sg-send').disabled), 15000);
+
+  // --- Seite verborgen bzw. verlassen: Aufnahme verworfen, nichts hochgeladen ---
+  await p.fill('#sg-ta', 'Mein Text');
+  { const n0 = seen.tr.length;
+    await p.click('#sg-mic'); await until(async () => (await st(p)).st === 'rec', 15000); await sleep(700);
+    await hide(p); await sleep(1500);
+    ok('visibilitychange hidden: Aufnahme verworfen, keine Anfrage, Feld unveraendert', (await st(p)).st === 'idle' && seen.tr.length === n0 && (await field(p)) === 'Mein Text', await st(p));
+    await unhide(p);
+    await p.click('#sg-mic'); await until(async () => (await st(p)).st === 'rec', 15000); await sleep(700);
+    await p.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await sleep(1500);
+    ok('pagehide: Aufnahme verworfen, keine Anfrage', (await st(p)).st === 'idle' && seen.tr.length === n0, await st(p));
+    M.trDelay = 2500;                                     // waehrend der Erkennung verborgen: Ergebnis verworfen
+    await p.click('#sg-mic'); await until(async () => (await st(p)).st === 'rec', 15000); await sleep(900);
+    await p.click('.sg-dict-done'); await until(() => seen.tr.length > n0, 8000);
+    await hide(p); await sleep(3200); await unhide(p); M.trDelay = 0;
+    ok('verborgen waehrend der Erkennung: Ergebnis verworfen, Feld unveraendert', (await st(p)).st === 'idle' && (await field(p)) === 'Mein Text', { f: await field(p), s: await st(p) }); }
 
   // --- Abbrechen, Escape, Stille, Mikrofon verweigert ---
   await p.fill('#sg-ta', 'Mein Text');
@@ -455,6 +487,9 @@ async function partA(br, name, BRK) {
   ok('Einstellungen: Schalter „Diktat nur auf dem Gerät“ mit Hinweis', !!sw && await p.evaluate((u) => { const i = document.getElementById('hk-saga-dict'), l = i.closest('label');
     const h = document.getElementById(i.getAttribute('aria-describedby'));
     return i.getAttribute('role') === 'switch' && !i.checked && l.textContent.indexOf(u.setting) >= 0 && h && h.textContent === u.setting_hint; }, UI));
+  ok('Einstellungen: Schalter direkt unter „Tageszeile auf Heute“', await p.evaluate(() => {
+    const b = document.getElementById('hk-saga-dict').closest('.hk-saga-dict'), prev = b && b.previousElementSibling;
+    return !!prev && prev.classList.contains('hk-saga-today') && !!prev.querySelector('#hk-saga-today'); }));
   await p.evaluate(() => document.getElementById('hk-saga-dict').scrollIntoView({ block: 'center' }));
   await shot(p, 'einstellungen-dunkel');
   await p.emulateMedia({ colorScheme: 'light' }); await shot(p, 'einstellungen-hell'); await p.emulateMedia({ colorScheme: 'dark' });
@@ -522,6 +557,9 @@ async function partHost(br, name) {
   const recv = (e) => p.evaluate((e) => sagaHost.receive(e), e);
   await gotoSaga(p, true);
   ok('Knopf mit dictate auch ohne Server-Diktat (stt null)', await micShown(p) && (await st(p)).way === 'device', await st(p));
+  ok('vor dem ersten Start: Zeile ui.device am Knopf (Beschreibung)', await p.evaluate((t) => { const w = document.getElementById('sg-dict-where');
+    return !w.hidden && w.textContent === t && document.getElementById('sg-mic').getAttribute('aria-describedby') === 'sg-dict-where'; }, UI.device));
+  await shot(p, 'huelle-vor-start-dunkel');
   await p.fill('#sg-ta', 'Bitte');
   await p.click('#sg-mic');
   await sleep(400);
@@ -546,6 +584,14 @@ async function partHost(br, name) {
   await recv({ type: 'dictate.done', id: id, text: 'Erinner mich Freitag an den Pavillon', dur: 4.2, limit: false, cut: false });
   ok('done: Text an der Schreibmarke, keine Anfrage an den Server', (await field(p)) === 'Bitte Erinner mich Freitag an den Pavillon' && seen.tr.length === 0 && seen.posts.length === 0, await field(p));
   ok('done: diktiert markiert (input dictation beim Auftrag)', (await st(p)).dictated);
+  ok('nach dem ersten Start: Zeile im Ruhezustand weg', await p.evaluate(() => document.getElementById('sg-dict-where').hidden));
+  // Fenster verborgen: Huelle bekommt dictate.cancel
+  await p.click('#sg-mic'); await sleep(300); m = await msgs(); const idH = m[m.length - 1].id;
+  await hide(p); await sleep(400); m = await msgs();
+  ok('verborgen: dictate.cancel {v:1, id}, kein Text danach', m[m.length - 1].action === 'dictate.cancel' && m[m.length - 1].id === idH && (await st(p)).st === 'idle', m[m.length - 1]);
+  await recv({ type: 'dictate.done', id: idH, text: 'NACH DEM VERBERGEN', dur: 1, limit: false, cut: false });
+  ok('verborgen: spaetes done verworfen', (await field(p)) === 'Bitte Erinner mich Freitag an den Pavillon');
+  await unhide(p);
   // Abbrechen: cancel, danach nichts mehr fuer diese id
   await p.click('#sg-mic'); await sleep(300); m = await msgs(); const id2 = m[m.length - 1].id;
   ok('neuer Start mit neuer id', m[m.length - 1].action === 'dictate.start' && id2 !== id);

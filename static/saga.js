@@ -879,9 +879,10 @@
     if (!show && DI.st === 'hint') DI.st = 'idle';
     U.mic.hidden = !show || active;
     U.mic.disabled = !!G.run;
-    var hint = show && (DI.st === 'hint' || active);
+    var pre = show && !active && (DI.st === 'hint' || (way === 'device' && !seen('device')));   // Geraet: Zeile schon vor dem ersten Start
+    var hint = pre || (show && active);
     U.where.textContent = hint ? dictWhere(active ? DI.way : way) : ''; U.where.hidden = !hint || !U.where.textContent;
-    if (hint && DI.st === 'hint') U.mic.setAttribute('aria-describedby', 'sg-dict-where'); else U.mic.removeAttribute('aria-describedby');
+    if (pre) U.mic.setAttribute('aria-describedby', 'sg-dict-where'); else U.mic.removeAttribute('aria-describedby');
     U.row.hidden = !active;
     U.lab.textContent = DI.st === 'loading' ? T('Sprachpaket wird geladen …') : DI.st === 'work' ? T('Wird zu Text …') : T('Aufnahme läuft');
     U.row.classList.toggle('on', DI.st === 'rec');
@@ -901,25 +902,34 @@
   }
   function dictFocusTa() { var ta = $('sg-ta'); try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
   // Text an der Schreibmarke einfuegen (bzw. Auswahl ersetzen), Leerzeichen an der Naht, Feldgrenze 1000 (15.4)
+  // -> 'ok' | 'cut' (nur ein Teil passte) | 'full' (Feld voll, nichts eingefuegt) | '' (kein Text)
   function dictInsert(text) {
     var ta = $('sg-ta'); text = String(text || '').trim();
-    if (!text) return false;
+    if (!text) return '';
     var v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
     if (typeof s !== 'number') { s = e = v.length; }
     var before = v.slice(0, s), after = v.slice(e);
     if (before && !/\s$/.test(before)) text = ' ' + text;
     if (after && !/^[\s.,;:!?)\]»“”"']/.test(after)) text += ' ';
     var max = ta.maxLength > 0 ? ta.maxLength : 1000, room = max - before.length - after.length;
-    if (room <= 0) return false;
+    if (room <= 0) return 'full';
+    var cut = text.replace(/\s+$/, '').length > room;
     text = text.slice(0, room);
     dictFocusTa();
     if (ta.setRangeText) ta.setRangeText(text, s, e, 'end');
     else { ta.value = before + text + after; ta.selectionStart = ta.selectionEnd = before.length + text.length; }
     DI.dictated = true;
     ta.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
+    return cut ? 'cut' : 'ok';
   }
   S.dictInsert = dictInsert;                           // fuer den Test (Naht, Auswahl)
+  // Erkannten Text einsetzen und sagen, was passiert ist (Feld voll: bis zur Grenze einfuegen + Hinweis)
+  function dictPlace(text, lim) {
+    var r = dictInsert(text);
+    if (!r) dictErr(T('Nichts verstanden – versuch es noch mal.'));
+    else if (r === 'full' || r === 'cut') { dictErr(T('Das Feld ist voll – nicht alles vom Diktat passt hinein.')); dictFocusTa(); }
+    else dictSay(lim ? T('Höchstens 60 Sekunden') : '');
+  }
   function dictClick() {
     if (DI.st !== 'idle' && DI.st !== 'hint') return;
     dictErr('');
@@ -988,8 +998,7 @@
     var d = x.d, code = d.code, failed = T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.');
     dictReset();
     if (x.s === 200) {
-      if (!dictInsert(d.text)) dictErr(T('Nichts verstanden – versuch es noch mal.'));
-      else dictSay(x.limit ? T('Höchstens 60 Sekunden') : '');   // warum die Aufnahme endete
+      dictPlace(d.text, x.limit);                      // mit Grenze: sagt, warum die Aufnahme endete
       return;
     }
     if (x.s === 400 && code === 'empty') { dictErr(T('Nichts verstanden – versuch es noch mal.')); return; }
@@ -1036,8 +1045,7 @@
       if (!mine(e)) return;
       var lim = !!e.limit || DI.limit;
       dictReset();
-      if (!dictInsert(String(e.text == null ? '' : e.text).slice(0, 1000))) dictErr(T('Nichts verstanden – versuch es noch mal.'));
-      else dictSay(lim ? T('Höchstens 60 Sekunden') : '');
+      dictPlace(String(e.text == null ? '' : e.text).slice(0, 1000), lim);
     });
     HK.host.on('dictate.error', function (e) {
       if (!mine(e)) return;
@@ -1050,8 +1058,9 @@
       }
       dictErr(e.code === 'denied' ? T('Ohne Mikrofon geht kein Diktat.') : T('Das Diktat hat nicht geklappt. Dein Text bleibt stehen.'));
     });
-    window.addEventListener('pagehide', function () { if (DI.way === 'device' && DI.id && DI.st !== 'idle') dictCancel(); });
   }
+  // Seite verborgen bzw. verlassen: Aufnahme verwerfen - nichts erkennen, nichts hochladen (wie iOS/Android im Hintergrund)
+  function dictAway() { if (dictBusy()) dictCancel(); }
   function dictFinish() {
     if (DI.st !== 'rec') return;
     if (DI.way === 'device') {
@@ -1083,6 +1092,8 @@
         var p = e.detail && e.detail.prefs; if (p && 'dictation' in p) { DI.prefs = p; dictPaint(); }
       });
       document.addEventListener('saga:status', function () { dictPaint(); });
+      document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') dictAway(); });
+      window.addEventListener('pagehide', dictAway);
       if (HK.host && HK.host.on) HK.host.on('hello', function () { DI.devFail = false; dictPaint(); });
     }
     var feat = fetch('/api/version', { credentials: 'same-origin' }).then(function (r) { return r.json(); })

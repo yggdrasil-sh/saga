@@ -6002,5 +6002,6 @@
  "Ohne Mikrofon geht kein Diktat.": "การพิมพ์ด้วยเสียงต้องใช้ไมโครโฟน",
  "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "พิมพ์ด้วยเสียงไม่สำเร็จ ข้อความของคุณยังอยู่",
  "Diktat nur auf dem Gerät": "พิมพ์ด้วยเสียงบนอุปกรณ์เท่านั้น",
- "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "เสียงที่บันทึกจะไม่ถูกส่งไปที่เซิร์ฟเวอร์ ถ้าอุปกรณ์ของคุณแปลงเสียงเองไม่ได้ จะไม่มีปุ่ม “พิมพ์ด้วยเสียง”"
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "เสียงที่บันทึกจะไม่ถูกส่งไปที่เซิร์ฟเวอร์ ถ้าอุปกรณ์ของคุณแปลงเสียงเองไม่ได้ จะไม่มีปุ่ม “พิมพ์ด้วยเสียง”",
+ "Das Feld ist voll – nicht alles vom Diktat passt hinein.": "ช่องข้อความเต็มแล้ว – ข้อความที่พิมพ์ด้วยเสียงใส่ได้ไม่ครบ"
 }

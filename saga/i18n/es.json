@@ -6002,5 +6002,6 @@
  "Ohne Mikrofon geht kein Diktat.": "El dictado necesita el micrófono.",
  "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "El dictado no ha funcionado. Tu texto se queda como está.",
  "Diktat nur auf dem Gerät": "Dictado solo en el dispositivo",
- "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Así ninguna grabación va al servidor. Si tu dispositivo no puede dictar por sí mismo, no tendrá el botón «Dictar»."
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Así ninguna grabación va al servidor. Si tu dispositivo no puede dictar por sí mismo, no tendrá el botón «Dictar».",
+ "Das Feld ist voll – nicht alles vom Diktat passt hinein.": "El campo está lleno – no cabe todo el dictado."
 }

@@ -322,6 +322,9 @@
     Promise.all([feat, api('GET', '/api/ai/prefs')]).then(function (r) {
       var d = r[1];
       if (!r[0] || !d || d.enabled === false || !('dictation' in d)) { kd.remove(); return; }
+      // fester Platz: direkt unter "Tageszeile auf Heute" (bzw. deren Platzhalter), egal welcher Block zuerst fertig wird
+      var td = sec.querySelector('.hk-saga-today');
+      if (td && td.parentNode === sec && td.nextSibling !== kd) sec.insertBefore(kd, td.nextSibling);
       var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch');
       i.id = 'hk-saga-dict'; i.checked = d.dictation === 'device'; l.htmlFor = i.id;
       l.appendChild(el('span', null, T('Diktat nur auf dem Gerät'))); l.appendChild(i); kd.appendChild(l);

@@ -6002,5 +6002,6 @@
  "Ohne Mikrofon geht kein Diktat.": "Dictation needs the microphone.",
  "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "Dictation didn't work. Your text stays as it is.",
  "Diktat nur auf dem Gerät": "Dictation on device only",
- "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Then no recording goes to the server. If your device can't dictate on its own, there's no Dictate button there."
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Then no recording goes to the server. If your device can't dictate on its own, there's no Dictate button there.",
+ "Das Feld ist voll – nicht alles vom Diktat passt hinein.": "The field is full – not all of the dictation fits."
 }

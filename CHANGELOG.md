@@ -74,7 +74,9 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   der Aufnahme (Zeit, Pegel, „Fertig“/„Abbrechen“, harte Grenze 60 s). Ogg/Opus bzw. WAV 16 kHz (whisper.cpp ohne
   ffmpeg), nur im Speicher. Der Text landet an der Schreibmarke und wird nie gesendet; als Auftrag gesendet trägt er
   `input: "dictation"` – Plan-Karte „Diktiert“ mit Mikrofon, bei Anweisungen an die KI ⚠ + Warnung. Fehler lassen den
-  Text stehen. Einstellungen › Saga: „Diktat nur auf dem Gerät“. Reihe `tests/browser_kollegin_diktat.js`.
+  Text stehen; ist das Feld voll, kommt der Text bis zur Grenze hinein und ein Hinweis. Geht die Seite in den
+  Hintergrund, wird die Aufnahme verworfen (nichts erkannt, nichts hochgeladen). Einstellungen › Saga: „Diktat nur auf
+  dem Gerät“ (unter „Tageszeile auf Heute“). Reihe `tests/browser_kollegin_diktat.js`.
 - **Kollegin: Einstiege – Teilen → Auftrag (2275 K-G, `aishare1`, [docs/APP-API-KI.md](docs/APP-API-KI.md) §14):**
   `POST /api/ai/jobs` mit `source: "share"` und `shared {text, url, title, from}` (Text bis 20 000 Zeichen, ans Modell
   höchstens 4 000; die Adresse ruft der Server nie ab). Geteiltes ist fremder Inhalt (K17, RT-16): eigener Block im

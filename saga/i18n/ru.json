@@ -6002,5 +6002,6 @@
  "Ohne Mikrofon geht kein Diktat.": "Для диктовки нужен микрофон.",
  "Das Diktat hat nicht geklappt. Dein Text bleibt stehen.": "Диктовка не получилась. Твой текст остаётся.",
  "Diktat nur auf dem Gerät": "Диктовка только на устройстве",
- "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Тогда записи не уходят на сервер. Если устройство не умеет распознавать речь само, кнопки «Диктовать» на нём не будет."
+ "Dann geht keine Aufnahme an den Server. Kann dein Gerät nicht selbst diktieren, gibt es dort keinen Knopf „Diktieren“.": "Тогда записи не уходят на сервер. Если устройство не умеет распознавать речь само, кнопки «Диктовать» на нём не будет.",
+ "Das Feld ist voll – nicht alles vom Diktat passt hinein.": "Поле заполнено – продиктованный текст поместился не целиком."
 }
