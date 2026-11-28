@@ -20,7 +20,8 @@ HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 S = TimestampSigner(os.environ["SESSION_SECRET"])
 A, B = "gm-anna", "gm-bert"
 res = []
-PROPS = [{"name": "Inhalt", "type": "text"}, {"name": "Abrufe", "type": "number"}, {"name": "Letzter Abruf", "type": "date"}]
+PROPS = [{"name": "Inhalt", "type": "text"}, {"name": "Abrufe", "type": "number"}, {"name": "Letzter Abruf", "type": "date"},
+         {"name": "Art", "type": "select", "options": ["Fakt", "Schnappschuss"]}]
 
 
 def ok(n, c, info=""):
@@ -136,6 +137,51 @@ def mrows(d):
     return {r[0]: r for r in ((d.get("mem") or {}).get("rows") or [])}
 
 
+def part_shadow(CA, s1, mem, ids, other, ta):
+    """2.6 (Bugs-DB 2601/2603, docs/MEMORY.md 10.4): core, snap, shadow, links, links_total, hits24, Ereignis mit schatten."""
+    tk = tok_obj(A)
+    core = api_v1.page_create(tk, {"title": "Ich-Kern (Graph-Test)", "markdown": "Kern"})[1]["id"]
+    req("PUT", "/api/account/memory", CA, {"core": core})
+    snap = memory.nap(A, {"stimmung": "ruhig", "gedanke": "Graph-Test Schnappschuss."}, tk)[1]["id"]
+    m = graph(CA).get("mem") or {}
+    ok("Graph: core = Ich-Kern (Knoten), snap = Schnappschuss-Zeile", m.get("core") == core and m.get("snap") == [snap], m)
+    st, r = req("PUT", "/api/account/memory", CA, {"shadow": True})
+    ok("Schattenmodus an", st == 200 and r["shadow"]["on"], (st, r))
+    for _ in range(40):
+        if not req("GET", "/api/account/memory", CA)[1]["shadow"]["running"]:
+            break
+        time.sleep(0.25)
+    now = time.time()
+    pg("DELETE FROM mem_link WHERE uid=?", (A,))
+    pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft, gepinnt) VALUES "
+       "(?,?,?,1.0,0.05,0,?,?,'hand',TRUE)", (*sorted((ids["Tomaten"], ids["Sauerteig"])), A, now, now))
+    pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) VALUES (?,?,?,0.6,0.05,0,?,?,'gemeinsam')",
+       (*sorted((ids["Tomaten"], other)), A, now - 60 * 86400, now))
+    pg("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) VALUES (?,?,?,0.4,0.05,0,?,?,'aehnlich')",
+       (*sorted((ids["Tomaten"], 9 * 10 ** 15)), A, now, now))
+    pg("INSERT INTO mem_trace (uid, at, quelle, frage_hash, lim, neu) VALUES (?, ?, 'trigramm', 'h', 5, CAST(? AS JSONB))",
+       (A, now - 3600, json.dumps([ids["Zugfahrt"]])))
+    pg("INSERT INTO mem_trace (uid, at, quelle, frage_hash, lim, neu) VALUES (?, ?, 'trigramm', 'h', 5, CAST(? AS JSONB))",
+       (A, now - 30 * 3600, json.dumps([ids["Zugfahrt"]])))
+    m = graph(CA).get("mem") or {}
+    L = m.get("links") or []
+    t1, t2 = sorted((ids["Tomaten"], ids["Sauerteig"])), sorted((ids["Tomaten"], other))
+    ok("Graph an: links nur zwischen Knoten, nach (a, b), [a, b, w_eff 3 Stellen, Herkunft, gepinnt], links_total",
+       m.get("shadow") is True and [x[:2] for x in L] == sorted([t1, t2]) and m.get("links_total") == 2
+       and [t1 + [1.0, "h", 1]] == [x for x in L if x[:2] == t1] and [t2 + [0.325, "g", 0]] == [x for x in L if x[:2] == t2], m)
+    ok("Graph an: hits24 nur letzte 24 h ([id, n, last])", m.get("hits24") == [[ids["Zugfahrt"], 1, int(now - 3600)]], m.get("hits24"))
+    n1 = len(s1.ev)
+    st, r = req("POST", "/api/v1/memory/recall", body={"text": "Tomaten Sonne Wasser"}, bearer=ta)
+    e = s1.wait("memory.recalled", since=n1)
+    ok("Ereignis memory.recalled mit schatten (nur neu: Sauerteig ueber den gepinnten Link)", st == 200 and e and ids["Tomaten"] in e["ids"]
+       and e.get("schatten") == [ids["Sauerteig"]] and "schatten" in r["ms"] and ids["Sauerteig"] not in [x["id"] for x in r["treffer"]], (e, r))
+    h = {x[0]: x for x in (graph(CA).get("mem") or {}).get("hits24") or []}
+    ok("Graph: Schatten-Treffer der Spur in hits24", ids["Sauerteig"] in h and h[ids["Sauerteig"]][1] == 1, h)
+    st, r = req("PUT", "/api/account/memory", CA, {"shadow": False})
+    m = graph(CA).get("mem") or {}
+    ok("Graph aus: shadow false, ohne links/hits24", m.get("shadow") is False and "links" not in m and "hits24" not in m, m)
+
+
 def main():
     cleanup()
     prev_share = auth.settings(fresh=True).get("share_enabled", True)
@@ -163,6 +209,8 @@ def main():
         m = d.get("mem") or {}
         ok("gebunden, nichts abgerufen: mem {db, now, rows: []}", m.get("db") == mem and m.get("rows") == []
            and isinstance(m.get("now"), int) and abs(m["now"] - time.time()) < 5, m)
+        ok("2601/2603: core null, snap [], shadow false, ohne links/links_total/hits24", m.get("core") is None and m.get("snap") == []
+           and m.get("shadow") is False and not {"links", "links_total", "hits24"} & set(m), m)
         # Live-Kanal: zwei Sitzungen von Anna, eine von Bert
         s1, s2, sb = Stream(CA), Stream(ck(A)), Stream(CB)
         streams += [s1, s2, sb]
@@ -206,6 +254,7 @@ def main():
         e = s1.wait("memory.recalled", since=n1)
         ok("MCP recall: memory.recalled mit der Zugfahrt", st == 200 and not r["result"]["isError"] and e and ids["Zugfahrt"] in e["ids"], (st, r, e))
         ok("MCP recall: Graph zaehlt die Zugfahrt", (mrows(graph(CA)).get(ids["Zugfahrt"]) or [0, 0])[1] == 1)
+        part_shadow(CA, s1, mem, ids, other, ta)
         # Bert: Annas Gedaechtnis-Datenbank freigegeben - Zeilen als Knoten, aber nie Zaehler
         st, r = req("PUT", f"/api/notes/{mem}/shares", CA, {"type": "user", "target": B, "role": "view"})
         ok("Freigabe an Bert", st == 200, (st, r))
@@ -267,6 +316,28 @@ def main():
         print(f"INFO /api/graph mit 5 000 Knoten: {dt:.0f} ms, davon Gedaechtnis-Zaehler {dm:.1f} ms", flush=True)
         ok("Leistung: Gedaechtnis-Zaehler fuer 5 000 Zeilen <= 150 ms", dm <= 150, dm)
         ok("Leistung: /api/graph mit 5 000 Knoten <= 3 s", dt <= 3000, dt)
+        # 2603: 25 000 Verknuepfungen (Obergrenze 20 000 im Graph, die staerksten)
+        import random
+        rnd = random.Random(2603)
+        pairs = set()
+        while len(pairs) < 25000:
+            a, b = sorted(rnd.sample(nids, 2))
+            pairs.add((a, b))
+        with db.connect() as c, c:
+            c.executemany("INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, treffer, zuletzt, angelegt, herkunft) VALUES (?,?,?,?,?,0,?,?,'aehnlich')",
+                          [(a, b, A, round(0.2 + 0.4 * rnd.random(), 4), 0.05, now, now) for a, b in sorted(pairs)])
+        req("PUT", "/api/account/memory", CA, {"shadow": True})
+        t1 = time.perf_counter(); st, d = req("GET", "/api/graph", CA); dt = (time.perf_counter() - t1) * 1000
+        m = d.get("mem") or {}
+        nodes = {n[0]: n for n in d["nodes"]}
+        Lk = m.get("links") or []
+        ok("25 000 Links: hoechstens 20 000, beide Enden Knoten, nach (a, b), die staerksten", st == 200 and len(Lk) <= 20000
+           and all(x[0] in nodes and x[1] in nodes for x in Lk) and Lk == sorted(Lk, key=lambda x: (x[0], x[1]))
+           and m.get("links_total", 0) >= len(Lk) and (m["links_total"] <= 20000 or min(x[2] for x in Lk) >= 0.2), (len(Lk), m.get("links_total")))
+        with db.connect() as c:
+            t2 = time.perf_counter(); memory.graph_rows(c, A, nodes); dm = (time.perf_counter() - t2) * 1000
+        print(f"INFO /api/graph mit 25 000 Links: {dt:.0f} ms, davon Gedaechtnis-Teil {dm:.1f} ms", flush=True)
+        ok("Leistung: Gedaechtnis-Teil mit 25 000 Links <= 300 ms, /api/graph <= 3 s", dm <= 300 and dt <= 3000, (dm, dt))
     except Exception as ex:  # noqa: BLE001
         import traceback
         traceback.print_exc()

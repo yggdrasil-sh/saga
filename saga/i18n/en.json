@@ -5903,5 +5903,6 @@
  "Noch kein Nickerchen.": "No nap yet.",
  "Letztes Nickerchen: {wann}.": "Last nap: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "{n} {n:page|pages} changed since.",
- "Aufwachen": "Waking up"
+ "Aufwachen": "Waking up",
+ "(gelöscht)": "(deleted)"
 }

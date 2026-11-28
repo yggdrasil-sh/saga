@@ -5903,5 +5903,6 @@
  "Noch kein Nickerchen.": "ยังไม่มีการงีบ",
  "Letztes Nickerchen: {wann}.": "งีบครั้งล่าสุด: {wann}",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "ตั้งแต่นั้นแก้ไขไป {n} {n:หน้า}",
- "Aufwachen": "ตื่นขึ้นมา"
+ "Aufwachen": "ตื่นขึ้นมา",
+ "(gelöscht)": "(ลบแล้ว)"
 }

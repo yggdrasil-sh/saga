@@ -708,23 +708,31 @@ def part_admin():
 
 def part_kollegin_cli_schema():
     kol = {x.name for x in tools.for_kollegin()}
-    ok("Kollegin: recall/remember nie (kollegin=False)", not kol & {"recall", "remember"})
-    try:
-        tools.job_tok(A, 990001, ["recall"])
-        ok("job_tok mit recall -> ValueError", False)
-    except ValueError:
-        ok("job_tok mit recall -> ValueError", True)
-    ok("Registry: recall own/final, remember own/delete_only, Bereich memory, nicht destruktiv",
-       (tools.get("recall").klass, tools.get("recall").undo, tools.get("remember").klass, tools.get("remember").undo) == ("own", "final", "own", "delete_only")
-       and tools.get("recall").scope == "memory" and not tools.get("recall").destructive and "memory" not in apitok.JOB_SCOPES)
-    ok("Schema 42, Tabelle mem_vec", db.SCHEMA_VERSION == 42 and pg("SELECT to_regclass('public.mem_vec') IS NOT NULL")[0][0])
+    MEM_TOOLS = ("recall", "remember", "nap", "wake", "recall_used", "shadow_report")
+    ok("Kollegin: Gedaechtnis-Werkzeuge nie (kollegin=False, 2581/2601/2603)", not kol & set(MEM_TOOLS))
+    for nm in MEM_TOOLS:
+        try:
+            tools.job_tok(A, 990001, [nm])
+            ok(f"job_tok mit {nm} -> ValueError", False)
+        except ValueError:
+            ok(f"job_tok mit {nm} -> ValueError", True)
+    want = {"recall": ("own", "final"), "remember": ("own", "delete_only"), "nap": ("own", "delete_only"), "wake": ("read", None),
+            "recall_used": ("own", "final"), "shadow_report": ("read", None)}
+    ok("Registry: Klassen/Rueckgaengig (recall own/final, remember/nap own/delete_only, wake/shadow_report read, recall_used own/final), "
+       "Bereich memory, nicht destruktiv, Ziel memory, am Ende der Liste",
+       all((tools.get(n).klass, tools.get(n).undo) == want[n] and tools.get(n).scope == "memory" and not tools.get(n).destructive
+           and tools.get(n).refs({}) == ["memory"] for n in MEM_TOOLS)
+       and [x.name for x in tools.for_mcp()][-6:] == list(MEM_TOOLS) and "memory" not in apitok.JOB_SCOPES)
+    ok("Schema 43, Tabellen mem_vec, mem_link, mem_trace, mem_link_log", db.SCHEMA_VERSION == 43
+       and all(pg(f"SELECT to_regclass('public.{t}') IS NOT NULL")[0][0] for t in ("mem_vec", "mem_link", "mem_trace", "mem_link_log")))
     p = subprocess.run([sys.executable, "run.py", "gedaechtnis", "einbetten", "--konto", A], capture_output=True, text=True, timeout=120,
                        cwd=os.path.dirname(HERE), env=dict(os.environ, PYTHONPATH=os.path.dirname(HERE)))
     ok("CLI run.py gedaechtnis einbetten --konto: rc 0, Zusammenfassung", p.returncode == 0 and f"{A}:" in p.stdout and "Zeilen" in p.stdout,
        (p.returncode, p.stdout[-300:], p.stderr[-300:]))
     p = subprocess.run([sys.executable, "run.py", "gedaechtnis"], capture_output=True, text=True, timeout=60, cwd=os.path.dirname(HERE),
                        env=dict(os.environ, PYTHONPATH=os.path.dirname(HERE)))
-    ok("CLI ohne Unterbefehl: Aufruf-Hinweis, rc != 0", p.returncode != 0 and "einbetten" in (p.stderr + p.stdout))
+    ok("CLI ohne Unterbefehl: Aufruf-Hinweis, rc != 0", p.returncode != 0 and "einbetten" in (p.stderr + p.stdout)
+       and "verknuepfen" in (p.stderr + p.stdout))
     # Konto loeschen
     from saga.userdata import delete_user_data
     U = "mem-wegwerf-" + secrets.token_hex(3)

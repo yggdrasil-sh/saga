@@ -5903,5 +5903,6 @@
  "Noch kein Nickerchen.": "Todavía no hay ninguna siesta.",
  "Letztes Nickerchen: {wann}.": "Última siesta: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "Desde entonces, {n} {n:página modificada|páginas modificadas}.",
- "Aufwachen": "Despertar"
+ "Aufwachen": "Despertar",
+ "(gelöscht)": "(eliminado)"
 }

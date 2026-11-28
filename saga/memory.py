@@ -179,8 +179,12 @@ def binding(uid, c=None):
     wraw = _json_load(kv.get("memory.weights"), {})
     mp = dict(DEFAULT_MAP)
     mp.update({k: str(v)[:100] for k, v in mraw.items() if k in MAP_KEYS and isinstance(v, str) and v.strip()})
+    try:
+        sh = float(kv.get("memory.shadow")) if kv.get("memory.shadow") else None
+    except ValueError:
+        sh = None
     return {"db": _int_or_none(kv.get("memory.db")), "core": _int_or_none(kv.get("memory.core")), "map": mp, "map_raw": mraw,
-            "weights": weights(wraw), "weights_raw": wraw}
+            "weights": weights(wraw), "weights_raw": wraw, "shadow": sh if sh and math.isfinite(sh) else None}
 
 
 def _load_bound():
@@ -586,7 +590,7 @@ def keywords(q):
 
 
 class _Words:
-    __slots__ = ("ids", "word_rows", "tri_words", "wtri", "stamp")
+    __slots__ = ("ids", "word_rows", "tri_words", "wtri", "stamp", "pos")
 
 
 _wcache = OrderedDict()
@@ -622,6 +626,7 @@ def word_index(c, uid, dbid, cols, snap=None):
                 x.wtri[w] = trigrams(w)
                 for g in x.wtri[w]:
                     x.tri_words.setdefault(g, set()).add(w)
+    x.pos = {nid: i for i, nid in enumerate(x.ids)}
     with _wlock:
         _wcache[uid] = x
         _wcache.move_to_end(uid)
@@ -792,6 +797,16 @@ def sync(uid, ids=None, log=None, c_embed=None):
                     log(msg) if log is not None else print(msg, flush=True)
         finally:
             _running.pop(uid, None)
+    if done and b.get("shadow"):                 # 2603: neue/geaenderte Vektoren -> Verknuepfungen "aehnlich"
+        try:
+            from saga import memory_shadow
+            got = [r[0] for r in need[:done]]
+            if len(got) > 256:
+                memory_shadow.backfill(uid)
+            else:
+                memory_shadow.link_new(uid, got)
+        except Exception as ex:  # noqa: BLE001
+            print(f"gedaechtnis: Schatten {type(ex).__name__}", flush=True)
     return {"rows": len(live), "embedded": done, "dropped": dropped, "failed": failed}
 
 
@@ -824,10 +839,13 @@ _thread = [None]
 _stop = threading.Event()
 
 
-def schedule(uid, ids=(), whole=False, adopt=(), delay=DEBOUNCE):
-    """adopt: Zeilen-IDs oder {id: geaenderte Eigenschaften} (row.changed) - nur geaenderte Zaehler-Spalten zaehlen."""
+def schedule(uid, ids=(), whole=False, adopt=(), delay=DEBOUNCE, backfill=False, links=()):
+    """adopt: Zeilen-IDs oder {id: geaenderte Eigenschaften} (row.changed) - nur geaenderte Zaehler-Spalten zaehlen.
+    2603: backfill = Verknuepfungen nachziehen, links = Zeilen, deren Verknuepfungen "aehnlich" neu zu rechnen sind."""
     with _cv:
         p = _pending.setdefault(uid, {"ids": set(), "all": False, "adopt": {}, "due": 0})
+        p.setdefault("links", set()).update(int(i) for i in links)
+        p["backfill"] = p.get("backfill", False) or backfill
         p["ids"].update(int(i) for i in ids)
         for i in adopt:
             keys = adopt[i] if isinstance(adopt, dict) else None
@@ -964,10 +982,16 @@ def _work_one(uid, p):
         sync(uid)
     elif p["ids"]:
         sync(uid, p["ids"])
+    from saga import memory_shadow
+    if p.get("backfill"):
+        memory_shadow.backfill(uid)
+    elif p.get("links"):
+        memory_shadow.link_new(uid, p["links"])
 
 
 def _loop():
     last_flush = time.time()
+    last_clean, last_links = 0.0, time.time()
     while not _stop.is_set():
         job = None
         with _cv:
@@ -992,6 +1016,16 @@ def _loop():
                 flush_mirror()
             except Exception as ex:  # noqa: BLE001
                 print(f"gedaechtnis: Spiegeln {type(ex).__name__}: {str(ex)[:200]}", flush=True)
+        if time.time() - last_clean > 3600:      # 2603: Spuren > 30 Tage stuendlich, Links zu geloeschten Zeilen taeglich
+            last_clean = time.time()
+            daily = time.time() - last_links > 86400
+            if daily:
+                last_links = time.time()
+            try:
+                from saga import memory_shadow
+                memory_shadow.cleanup(links=daily)
+            except Exception as ex:  # noqa: BLE001
+                print(f"gedaechtnis: Schatten aufraeumen {type(ex).__name__}", flush=True)
 
 
 def start():
@@ -1128,6 +1162,8 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
                 with _db() as c, c:
                     _upsert(c, uid, [(r[0], r[2], r[3]["abrufe"], r[3]["letzter_abruf"]) for r in fill_rows], model, mat)
                 hint = "nachgeholt"
+                if b.get("shadow") and count:
+                    schedule(uid, links=[r[0] for r in fill_rows], delay=1)
             except EmbedError:
                 more = True
         elif fill_rows:
@@ -1185,9 +1221,23 @@ def recall(uid, text, projekt=None, limit=None, tok=None, now=None, count=True):
                                 "(mirrored IS NULL OR mirrored <= ?)", (uid, [x[2] for x in top], now - MIRROR_GAP)).fetchall()
                 if due:
                     mirror(c, uid, due, cols, b["db"], now)
-            # 2.6 (Bugs-DB 2595): offene Graph-Ansichten der Besitzerin lassen die Treffer kurz pulsieren - nach dem Commit,
-            # nur an ihre eigenen Verbindungen, nur IDs (nie Titel/Inhalte; docs/MEMORY.md 10)
-            bus.emit("direct", {"uids": [uid], "typ": "memory.recalled", "data": {"ids": [x[2] for x in top]}})
+        # 2.6 (Bugs-DB 2603): Schattenmodus - nach dem Commit der Zaehler, eigenes try/except, Antwort unveraendert
+        sh = None
+        if count and b.get("shadow"):
+            from saga import memory_shadow
+            tsh = time.perf_counter()
+            sh = memory_shadow.evaluate(c, uid, {
+                "w": w, "quelle": quelle, "now": now, "projekt": projekt, "lim": limit, "text": text, "db": b["db"], "cols": cols,
+                "snaps": snaps, "sens": sens, "cand": cand, "scored": scored, "top": top, "v": v, "rel": rel, "x": x, "rr": rr,
+                "n_rows": _rows_stamp(c, uid, b["db"])[1], "t_shadow": tsh})
+            ms["schatten"] = (time.perf_counter() - tsh) * 1000
+        # 2.6 (Bugs-DB 2595): offene Graph-Ansichten der Besitzerin lassen die Treffer kurz pulsieren - nach dem Commit,
+        # nur an ihre eigenen Verbindungen, nur IDs (nie Titel/Inhalte; docs/MEMORY.md 10); 2603: + "schatten" (nur neu)
+        if count and (top or (sh and sh["neu"])):
+            data = {"ids": [x_[2] for x_ in top]}
+            if sh and sh["neu"]:
+                data["schatten"] = sh["neu"]
+            bus.emit("direct", {"uids": [uid], "typ": "memory.recalled", "data": data})
     out = []
     for s, _r, nid, fa, f, _h in top:
         wi = f["wichtigkeit"]
@@ -1208,15 +1258,27 @@ def graph_rows(c, uid, ids):
     der ansehenden Person -> {"db", "now", "rows": [[id, hits, last_hit|None]]} oder None (nichts gebunden, Datenbank weg).
     ids: Knoten des Graphen (nur deren Zeilen). Live aus mem_vec (nicht aus der 10-min-Spiegelung), eine Abfrage fuer alle
     Zeilen. mem_vec gehoert immer dem Konto der Zeile (uid) - fuer freigegebene Seiten anderer gibt es hier nie Zaehler."""
-    r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='memory.db'", (uid,)).fetchone()
-    dbid = _int_or_none(r[0]) if r else None
-    if not dbid or _db_state(c, uid, dbid) is None:
+    b = binding(uid, c)
+    dbid = b["db"]
+    st = _db_state(c, uid, dbid) if dbid else None
+    if st is None:
         return None
     rows = c.execute("SELECT v.note_id, v.hits, v.last_hit FROM mem_vec v JOIN note n ON n.id = v.note_id AND n.uid = v.uid "
                      "WHERE v.uid=? AND n.parent_id=? AND (v.hits > 0 OR v.last_hit IS NOT NULL) ORDER BY v.note_id",
                      (uid, dbid)).fetchall()
-    return {"db": dbid, "now": int(time.time()),
-            "rows": [[nid, max(0, int(h or 0)), int(lh) if lh is not None else None] for nid, h, lh in rows if nid in ids]}
+    now = time.time()
+    out = {"db": dbid, "now": int(now),
+           "rows": [[nid, max(0, int(h or 0)), int(lh) if lh is not None else None] for nid, h, lh in rows if nid in ids]}
+    # 2.6 (Bugs-DB 2601/2603, docs/MEMORY.md 10.4): Ich-Kern, Schnappschuesse, Schattenmodus (Links, Schatten-Treffer 24 h)
+    cols, _ = columns(st[0], b["map"])
+    snaps, _sens = excluded(c, uid, dbid, cols, b["map"])
+    out["core"] = b["core"] if b["core"] in ids else None
+    out["snap"] = sorted(i for i in snaps if i in ids)
+    out["shadow"] = b["shadow"] is not None
+    if out["shadow"]:
+        from saga import memory_shadow
+        out.update(memory_shadow.graph_part(c, uid, ids, now))
+    return out
 
 
 def _opt_match(p, v):
@@ -1385,6 +1447,12 @@ def remember(uid, a, tok=None):
             out["hinweis"] = t("Vielleicht lieber eine dieser Erinnerungen ergänzen.")
     if ignored:
         out["ignoriert"] = ignored
+    if b.get("shadow") and (out["eingebettet"] or not model):     # 2603: Verknuepfungen "aehnlich" zur neuen Zeile
+        try:
+            from saga import memory_shadow
+            memory_shadow.link_new(uid, [nid])
+        except Exception as ex:  # noqa: BLE001 - der Schattenteil darf remember nie stoeren
+            print(f"gedaechtnis: Schatten {type(ex).__name__}", flush=True)
     return 201, out
 
 
@@ -2257,18 +2325,34 @@ def _embed_msg(ex):
 
 
 # --- Kommandozeile: python run.py gedaechtnis einbetten [--konto <name>] --------------------------------------------
+CLI_USAGE = "Aufruf: python run.py gedaechtnis einbetten|verknuepfen [--konto <name>]"
+
+
 def cli(args):
     import sys
-    if not args or args[0] != "einbetten":
-        sys.exit("Aufruf: python run.py gedaechtnis einbetten [--konto <name>]")
+    if not args or args[0] not in ("einbetten", "verknuepfen"):
+        sys.exit(CLI_USAGE)
     konto = None
     if "--konto" in args:
         i = args.index("--konto")
         if i + 1 >= len(args):
-            sys.exit("Aufruf: python run.py gedaechtnis einbetten [--konto <name>]")
+            sys.exit(CLI_USAGE)
         konto = args[i + 1]
     _load_bound()
     uids = [konto] if konto else sorted(bound_uids())
+    if args[0] == "verknuepfen":                 # 2603: Verknuepfungen "aehnlich" nachziehen (nur Konten mit Schattenmodus)
+        from saga import memory_shadow
+        for uid in uids:
+            b = binding(uid)
+            if not b["db"]:
+                print(f"{uid}: kein Gedaechtnis gebunden")
+                continue
+            if not b["shadow"]:
+                print(f"{uid}: Schattenmodus aus")
+                continue
+            r = memory_shadow.backfill(uid, log=print)
+            print(f"{uid}: {r['rows']} Zeilen, {r['links']} Verknuepfungen neu")
+        return
     if not configured():
         print("Hinweis: kein Embedding-Endpunkt eingetragen (Admin › KI › Embeddings) - recall nutzt Trigramme.")
     for uid in uids:

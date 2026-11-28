@@ -20,6 +20,18 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Gedächtnis Stufe 3: Schattenmodus Phase 1 – nur messen (2603, `memory2`, [docs/MEMORY.md](docs/MEMORY.md) §12/§13):**
+  ab Werk aus; unter Einstellungen › Gedächtnis (`PUT /api/account/memory {"shadow": true}`) eingeschaltet rechnet jeder
+  gezählte recall mit, was Verknüpfungen zwischen Erinnerungen am Ergebnis ändern würden – **die Antworten bleiben
+  byteweise gleich**. Migration 43 (`mem_link`, `mem_trace`, `mem_link_log` für Phase 2). Verknüpfungen entstehen
+  „ähnlich“ (beste 5 Nachbarn, Kosinus ≥ 0,55; Nachziehen beim Einschalten und `python run.py gedaechtnis verknuepfen`),
+  „gemeinsam“ (Paar in ≥ 3 recalls binnen 30 Tagen) und über das neue MCP-Werkzeug `recall_used` – nur das verstärkt
+  Gewichte; ohne Auslösung sinken sie lazy bis zur Untergrenze (nichts wird vergessen). Ausbreitung ≤ 2 Schritte mit
+  Hub-Dämpfung, nie über sensible Zeilen oder Schnappschüsse, Obergrenze 2 000 Zeichen nur gezählt. Spuren 30 Tage, nie
+  der Fragetext (HMAC + ≤ 8 Stichworte), „Spuren löschen“ (`forget_traces`). Auswertung `shadow_report` (MCP) bzw.
+  `GET /api/v1/memory/shadow`. Graph: `mem` mit `core`, `snap`, `shadow`, `links`, `hits24`, Live-Ereignis mit
+  `schatten` (§10.4). Persönliches Backup nimmt nur den Schalter mit, Konto löschen alles. Vektoren
+  `tests/vectors/memory_shadow.json`, Reihe `tests/gedaechtnis_schatten.py`, Rig `tests/graph_schatten_rig.py`.
 - **Gedächtnis Stufe 3: Nickerchen und Aufwachen (2601, `memory2`, [docs/MEMORY.md](docs/MEMORY.md) §11):** das Modell
   legt bei der Verabschiedung und nach großen Runden mit `nap` (MCP und `POST /api/v1/memory/nap`) einen Schnappschuss
   ab – eine Zeile mit der Art-Option „Schnappschuss“ (Saga legt sie nie an; fehlt sie: `unknown_option`, nichts

@@ -5903,5 +5903,6 @@
  "Noch kein Nickerchen.": "Передышек пока не было.",
  "Letztes Nickerchen: {wann}.": "Последняя передышка: {wann}.",
  "Seitdem {n} {n:Seite|Seiten} geändert.": "С тех пор изменено: {n} {n:страница|страницы|страниц}.",
- "Aufwachen": "Пробуждение"
+ "Aufwachen": "Пробуждение",
+ "(gelöscht)": "(удалено)"
 }

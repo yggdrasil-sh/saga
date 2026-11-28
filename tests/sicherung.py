@@ -315,7 +315,8 @@ try:
             spec = importlib.util.spec_from_file_location("db_v250", v25_src)
             v25 = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(v25)
-    NEW26 = ("contact", "contact_addr", "job", "job_step", "job_wait", "job_event", "job_change", "user_status", "ai_units", "mem_vec")
+    NEW26 = ("contact", "contact_addr", "job", "job_step", "job_wait", "job_event", "job_change", "user_status", "ai_units", "mem_vec",
+             "mem_link", "mem_trace", "mem_link_log")                       # 2.6 (Bugs-DB 2603): Schattenmodus
     COL26 = (("note", "updated_actor"), ("note_version", "actor_kind"), ("note_version", "actor"),
              ("note_version", "on_behalf_of"), ("notification", "actor_kind"), ("notification", "actor"),
              ("notification", "on_behalf_of"), ("chat_call", "hold"), ("push_sub", "topic"), ("chat_call", "lim"))
@@ -372,6 +373,11 @@ try:
                       "INSERT INTO ai_units (uid, day, pool, units) VALUES ('rw-a', '2026-11-26', 'ask', 7)",
                       "INSERT INTO mem_vec (note_id, uid, model, dim, vec, text_hash, updated) VALUES (1, 'rw-a', 'm', 1, "
                       "'\\x0000803f', 'h', 1)",                      # 2.6 (Bugs-DB 2581): Gedaechtnis-Vektoren
+                      # 2.6 (Bugs-DB 2603): Schattenmodus - Verknuepfung, Spur, Handeingriff
+                      "INSERT INTO mem_link (a, b, uid, gewicht, untergrenze, zuletzt, angelegt, herkunft) VALUES (1, 2, 'rw-a', 0.3, 0.05, 1, 1, "
+                      "'aehnlich')",
+                      "INSERT INTO mem_trace (uid, at, quelle, frage_hash, lim, treffer) VALUES ('rw-a', 1, 'embeddings', 'h', 5, '[1]')",
+                      "INSERT INTO mem_link_log (uid, at, a, b, aktion, wer) VALUES ('rw-a', 1, 1, 2, 'pinnen', 'test')",
                       "UPDATE note SET title='nach dem Update', updated_actor='svc:kollegin' WHERE id=1",
                       "UPDATE push_sub SET topic='org.example.saga'",
                       "INSERT INTO setting (k, v) VALUES ('contact_fill', '1') ON CONFLICT (k) DO NOTHING"):

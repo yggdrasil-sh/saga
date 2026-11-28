@@ -55,6 +55,8 @@ def hook(inp, home, env=None, cfg=None):
 def main():
     U = "mem-hook-" + secrets.token_hex(3)
     auth.create_user(U, None, U)
+    from saga.core import set_user_lang
+    set_user_lang(U, "de")
     home = tempfile.mkdtemp(prefix="mem-hooks-")
     os.makedirs(os.path.join(home, ".config", "saga"))
     os.makedirs(os.path.join(home, "src", "saga", "unter"))
@@ -63,7 +65,8 @@ def main():
         tu = apitok.Tok(10 ** 9 + 2590, U, "mem", "sga_mem", apitok.SCOPES, None, None)
         dbid = api_struct.database_create(tu, {"title": "Hook-Gedaechtnis", "properties": [
             {"name": "Inhalt", "type": "text"}, {"name": "Projekt", "type": "select", "options": ["Saga", "Homelab"]},
-            {"name": "Wichtigkeit", "type": "number"}, {"name": "Datum", "type": "date"}]})[1]["id"]
+            {"name": "Wichtigkeit", "type": "number"}, {"name": "Datum", "type": "date"},
+            {"name": "Art", "type": "select", "options": ["Fakt", "Schnappschuss"]}]})[1]["id"]
         core = api_v1.page_create(tu, {"title": "Ich-Kern Hook", "markdown": "Ich bin Marin. Kernsatz: neugierig und direkt."})[1]["id"]
         memory.account_put(U, {"db": dbid, "core": core})
         auth.save_setting("ai_embed", dict(auth.DEFAULTS["ai_embed"]))          # Trigramme
@@ -86,6 +89,15 @@ def main():
         ok("SessionStart: exit 0, hookEventName SessionStart, Ich-Kern im saga-data-Rahmen", rc == 0 and hs.get("hookEventName") == "SessionStart"
            and "Kernsatz" in hs.get("additionalContext", "") and '<saga-data id="' in hs.get("additionalContext", "") and set(d) == {"hookSpecificOutput"},
            (rc, out[:300], err[:300]))
+        ctx0 = hs.get("additionalContext", "")
+        ok("SessionStart (2601): Aufwach-Teil ohne Schnappschuss („Noch kein Nickerchen.“)", "## Aufwachen" in ctx0
+           and "Noch kein Nickerchen." in ctx0, ctx0[-300:])
+        memory.nap(U, {"stimmung": "zufrieden", "gedanke": "Morgen den Leuchtturm-Bericht fertig machen.", "faeden": ["Fresnel-Linse"]}, tu)
+        rc, out, err, dt = hook({"hook_event_name": "SessionStart", "source": "compact", "cwd": home}, home, cfg=cfg)
+        ctx1 = ((json.loads(out) if out.strip() else {}).get("hookSpecificOutput") or {}).get("additionalContext", "")
+        ok("SessionStart (2601, auch compact): Aufwachen mit Zeit, geaenderten Seiten und Schnappschuss (Skript unveraendert)",
+           rc == 0 and "Letztes Nickerchen: gerade eben." in ctx1 and "Seitdem" in ctx1 and "Morgen den Leuchtturm-Bericht" in ctx1
+           and "- Fresnel-Linse" in ctx1 and ctx1.index("Kernsatz") < ctx1.index("## Aufwachen"), ctx1[-400:])
         q = "Wie war das nochmal mit der Wartung vom Leuchtturm und der Laterne?"
         rc, out, err, dt = hook({"hook_event_name": "UserPromptSubmit", "prompt": q, "cwd": os.path.join(home, "src", "saga", "unter")}, home)
         hs = (json.loads(out) if out.strip() else {}).get("hookSpecificOutput") or {}

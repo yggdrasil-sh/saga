@@ -62,7 +62,7 @@ def pg(sql, args=()):
 def cookie(uid):
     from itsdangerous import TimestampSigner
     s = TimestampSigner(os.environ["SESSION_SECRET"])
-    return s.sign(base64.b64encode(json.dumps({"uid": uid, "sec_at": int(time.time())}).encode())).decode()
+    return s.sign(base64.b64encode(json.dumps({"uid": uid, "name": uid, "pwc": time.time() + 5, "sec_at": int(time.time())}).encode())).decode()
 
 
 def req(m, p, b=None, uid=None, bearer=None):
@@ -380,6 +380,7 @@ def part_wake():
        and wb["since"] is None and wb["geaendert"] is None and wb["anzahl"] == 0, wb)
     U = f"gs-leer-{SUF}"
     auth.create_user(U, None, U)
+    score_.set_user_lang(U, "de")
     S["leer"] = U
     dbl = mkdb(U, "Leer", PROPS, 3)
     memory.account_put(U, {"db": dbl})
@@ -441,7 +442,7 @@ def part_http():
     ok("REST/MCP nap: genau 2 Zeilen mehr", n1 == n0 + 2, (n0, n1))
     st, d = req("GET", "/api/account/memory", uid=A)
     ok("GET /api/account/memory: snapshot count/latest", st == 200 and d["snapshot"]["found"] and d["snapshot"]["count"] >= 63
-       and d["snapshot"]["latest"], d.get("snapshot"))
+       and d["snapshot"]["latest"], (st, d.get("snapshot") or str(d)[:200]))
     # 8 Schnappschuesse bleiben alle (nichts geloescht)
     U2 = f"gs-acht-{SUF}"
     auth.create_user(U2, None, U2)

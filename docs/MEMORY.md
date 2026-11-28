@@ -134,6 +134,7 @@ ohne sie verliert nur die Zähler seit dem letzten Spiegeln (§4.3). Kein pgvect
 Konto im Prozess zwischengespeichert (Abgleich über Anzahl/letzte Änderung).
 
 Einbetten: beim Binden, bei Modell-/Adresswechsel und mit `python run.py gedaechtnis einbetten [--konto <name>]`
+(Verknüpfungen des Schattenmodus: `python run.py gedaechtnis verknuepfen [--konto <name>]`, §12.2)
 (Stapel à 32, Fortschritt im Log ohne Inhalte); laufend bei Zeile angelegt/geändert (entprellt 2 s); Papierkorb/
 Löschen/Archiv/andere Datenbank → Vektor weg. Beim recall werden bis zu 8 Zeilen ohne Vektor zusammen mit der Frage
 eingebettet, der Rest im Hintergrund. Vektoren eines anderen Modells zählen als veraltet.

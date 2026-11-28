@@ -363,7 +363,7 @@ if __name__ == "__main__":
         create_users(sys.argv[2:])
     elif cmd == "horn-koppeln":
         horn_pair(sys.argv[2:])
-    elif cmd == "gedaechtnis":                     # 2.6 (Bugs-DB 2581): Bestand einbetten (docs/MEMORY.md)
+    elif cmd == "gedaechtnis":                     # 2.6 (Bugs-DB 2581): Bestand einbetten; 2603: verknuepfen (docs/MEMORY.md)
         import db
         db.wait_ready()
         from saga import memory
