@@ -10,8 +10,9 @@ im Schattenteil werden gefangen (Log nur der Typ).
   Einschalten bzw. CLI "verknuepfen"), "gemeinsam" (Paar der Basis-Treffer in >= 3 Spuren der letzten 30 Tage) und ueber
   recall_used (einzige Verstaerkung - Auftauchen allein aendert nie ein Gewicht). Gewicht klingt lazy bis zur Untergrenze
   ab (w_eff, nie geschrieben). Nie zu Schnappschuessen/sensiblen Zeilen.
-- Je Konto ein Zwischenspeicher der Links (numpy, gerichtete Kanten), Abgleich ueber count/max(zuletzt)/max(angelegt);
-  zaehlt mit den Vektoren in SAGA_MEMORY_CACHE_MB.
+- Je Konto ein Zwischenspeicher der Links (numpy, gerichtete Kanten), Abgleich ueber count/max(zuletzt)/max(angelegt) -
+  hoechstens alle LINK_CHECK_S (eigene Schreibzugriffe verwerfen ihn sofort; Schreibzugriffe anderer Prozesse, z. B. CLI,
+  wirken im recall spaetestens nach 5 s; der Bericht liest immer frisch); zaehlt mit den Vektoren in SAGA_MEMORY_CACHE_MB.
 - mem_trace: nie der Fragetext - HMAC-SHA256 (Schluessel aus SECRET_KEY) und <= 8 Stichworte; 30 Tage (Aufraeumen
   stuendlich im Hintergrund von saga.memory), Links zu geloeschten Zeilen taeglich weg.
 Reine Formeln (g0_*, w_eff, reinforce, hub, spread, cap, classify) ohne Datenbank - gegen die Vektoren geprueft."""
