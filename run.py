@@ -363,11 +363,16 @@ if __name__ == "__main__":
         create_users(sys.argv[2:])
     elif cmd == "horn-koppeln":
         horn_pair(sys.argv[2:])
+    elif cmd == "gedaechtnis":                     # 2.6 (Bugs-DB 2581): Bestand einbetten (docs/MEMORY.md)
+        import db
+        db.wait_ready()
+        from saga import memory
+        memory.cli(sys.argv[2:])
     elif cmd in ("version", "--version"):
         from version import VERSION_LABEL
         import db
         print(f"Saga {VERSION_LABEL} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
-        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, einstellen, benutzer-anlegen, horn-koppeln, version)")
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, einstellen, benutzer-anlegen, horn-koppeln, gedaechtnis, version)")
     else:
         asyncio.run(main())

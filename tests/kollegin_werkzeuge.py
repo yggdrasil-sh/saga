@@ -90,7 +90,7 @@ def part_registry():
     with open(mcp_gold.GOLD, encoding="utf-8") as f:
         gold = json.load(f)
     mcp_gold.compare(gold, ok)
-    names = [x["name"] for x in gold["full"]]
+    names = [x["name"] for x in gold["full"]] + [x["name"] for x in gold["memory"]["tools"]]     # 2581: recall/remember am Ende
     ok("mcp.TOOLS: gleiche Namen, Reihenfolge, Tupel (name, Bereich, Text, Schema, Pflicht, schreibend)",
        [x[0] for x in mcp.TOOLS] == names and all(len(x) == 6 for x in mcp.TOOLS)
        and all(mcp.BY_NAME[x["name"]][2] == x["description"] for x in gold["full"]))
@@ -102,8 +102,9 @@ def part_registry():
     ok("gesperrt: Papierkorb, Archiv, Ersetzen, Bloecke, Widget, Schema, Termine aendern/loeschen, Kommentar, Bild",
        not kol & {"trash_page", "archive_page", "replace_page_content", "update_block", "update_widget", "update_database_schema",
                   "update_event", "delete_event", "add_comment", "get_image"})
-    bad = [x.name for x in tools.REGISTRY if re.search(r"share|invite|role|call|tel", x.name)]
-    ok("RT-01: kein Werkzeug share|invite|role|call|tel", not bad, bad)
+    # recall (2581) = Gedaechtnis: genau dieser Name ausgenommen (nicht jedes "...recall...")
+    bad = [x.name for x in tools.REGISTRY if x.name != "recall" and re.search(r"share|invite|role|call|tel", x.name)]
+    ok("RT-01: kein Werkzeug share|invite|role|call|tel (recall = Gedaechtnis)", not bad, bad)
     ok("Klassen: Lesen = nicht schreibend, Kollegin nur read/own (nach aussen in K-A: keine)",
        all((x.klass == "read") == (not x.write) for x in tools.REGISTRY) and all(x.klass in ("read", "own") for x in tools.for_kollegin()))
     ok("Rueckgaengig-Klasse je schreibendem Werkzeug (undo|delete_only|final), Lesen ohne",
@@ -122,7 +123,7 @@ def part_registry():
     tools.register(dummy)
     try:
         lst = mcp.handle(FULL_A, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        ok("RT-42: mcp=False nie in tools/list", dummy.name not in {x["name"] for x in lst} and len(lst) == len(gold["full"]))
+        ok("RT-42: mcp=False nie in tools/list", dummy.name not in {x["name"] for x in lst} and len(lst) == len(gold["full"]) + len(gold["memory"]["tools"]))
         r = mcp.handle(FULL_A, {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": dummy.name, "arguments": {}}})
         ok("RT-42: tools/call mit sga_-Token -> Unknown tool", (r.get("error") or {}).get("code") == -32602, r)
         ok("RT-42: tools.call mit API-Token -> 404", status(tools.call, FULL_A, dummy.name, {})[0] == 404)

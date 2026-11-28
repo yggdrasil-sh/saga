@@ -248,6 +248,24 @@ _RAW = [
     ("complete_task", "write:tasks", "Aufgabe abhaken.", {"id": _s("integer", "ID der Aufgabe")}, ["id"], True),
     ("add_comment", "write:comments", "Kommentar zu einer Seite schreiben.",
      {"page_id": _s("integer", "ID der Seite"), "text": _s("string", "Kommentar")}, ["page_id", "text"], True),
+    # 2.6 (Bugs-DB 2581, docs/MEMORY.md): Gedaechtnis - nur mit Bereich "memory", nie fuer die Kollegin. Am Ende der Liste:
+    # tools/list ohne Bereich "memory" bleibt byteweise wie bisher (tests/mcp_gold.py)
+    ("recall", "memory", "Erinnerungen aus dem eigenen Gedächtnis holen (gebundene Datenbank, Einstellungen › "
+     "Gedächtnis): die bis zu 5 passendsten Einträge zu text – nach Bedeutung (Embeddings) bzw. Wortähnlichkeit, gewichtet "
+     "mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm.",
+     {"text": _s("string", "Worum es geht (Frage, Stichworte oder Gesprächsausschnitt, höchstens 4000 Zeichen)"),
+      "projekt": _s("string", "Projekt (passende Einträge bekommen einen Bonus)"),
+      "limit": _s("integer", "Höchstzahl Treffer (1-5)", minimum=1, maximum=5)}, ["text"], True),
+    ("remember", "memory", "Neue Erinnerung im eigenen Gedächtnis anlegen (Datum Standard heute). projekt, art und "
+     "schlagworte nur mit vorhandenen Auswahl-Werten – Unbekanntes wird gemeldet, nichts angelegt. aehnlich nennt "
+     "vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row).",
+     {"titel": _s("string", "Kurzer Titel"), "inhalt": _s("string", "Die Erinnerung selbst (höchstens 2000 Zeichen)"),
+      "projekt": _s("string", "Projekt (vorhandene Option)"), "art": _s("string", "Art (vorhandene Option)"),
+      "schlagworte": _s("array", "Schlagworte (vorhandene Optionen)", items={"type": "string"}),
+      "wichtigkeit": _s("number", "Wichtigkeit 0-10", minimum=0, maximum=10),
+      "valenz": _s("number", "Gefühlston -1 (negativ) bis 1 (positiv)", minimum=-1, maximum=1),
+      "erregung": _s("number", "Erregung 0 (ruhig) bis 1 (aufgewühlt)", minimum=0, maximum=1),
+      "datum": _s("string", "Datum (JJJJ-MM-TT, Standard heute)")}, ["titel", "inhalt"], True),
 ]
 
 
@@ -320,6 +338,9 @@ _META = {
     "complete_task": ("own", "undo", True, _id("id", kind="task")),
     # Kommentar: andere Menschen sehen ihn (Erwaehnungen, Mitteilungen) -> nach aussen; in K-A fuer die Kollegin gesperrt
     "add_comment": ("out", "delete_only", False, _id("page_id")),
+    # 2.6 (Bugs-DB 2581): Gedaechtnis gehoert der Person bzw. ihrem eigenen Assistenten - nie die Kollegin (F10)
+    "recall": ("own", "final", False, _fixed("memory")),
+    "remember": ("own", "delete_only", False, _fixed("memory")),
 }
 
 REGISTRY = []
@@ -638,6 +659,12 @@ def _dispatch(tok, name, a):
     if name == "complete_task":
         api_v1.task_change(tok, _int(a, "id"), {"done": True})
         return t("Aufgabe erledigt.")
+    if name == "recall":                         # 2.6 (Bugs-DB 2581): saga/memory.py, Ausgabe im Daten-Rahmen
+        from saga import memory
+        return memory.mcp_recall(tok, a)
+    if name == "remember":
+        from saga import memory
+        return memory.mcp_remember(tok, a)
     if name == "add_comment":
         _, d = api_v1.comment_create(tok, _int(a, "page_id"), {"text": a.get("text"), "block_id": ""})
         return t("Kommentar gespeichert (ID {id}).", id=d["id"])

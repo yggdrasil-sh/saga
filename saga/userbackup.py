@@ -70,7 +70,8 @@ IMPORT_FILES_MAX = max(1, int(E.get("USER_BACKUP_FILES_MAX", "20000")))
 KEY_TTL = 900
 MB = backups.MB
 KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online",
-           "task_due", "contacts.cc")       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
+           "task_due", "contacts.cc",       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
+           "memory.db", "memory.core", "memory.map", "memory.weights")   # 2.6 (Bugs-DB 2581): Gedaechtnis, IDs beim Einspielen umgeschrieben
 CATS = ("pages", "templates", "archive", "trash", "versions", "files", "comments", "comments_others", "tasks", "bookmarks", "settings")
 CAT_DEFAULT = {k: k != "comments_others" for k in CATS}
 SCHEDULES = ("off", "weekly", "daily")
@@ -1142,6 +1143,7 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
         srcs = 0
         if opts.get("tasks"):
             srcs = _import_task_sources(c, uid, data, nmap, set(made))
+        _import_memory(c, uid, data, nmap, set(made))
         if opts.get("bookmarks"):
             from saga.links import _ICON_RE, logo_error
             for x in data.get("bookmarks") or []:
@@ -1176,6 +1178,45 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
             tree_changed(c, uid, ([folder] if folder else []) + made, "created")
     return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "task_sources": srcs, "bookmarks": bms,
             "contacts": ncon, "address_book": nbook, "skipped": skipped, "folder": folder}
+
+
+def _import_memory(c, uid, data, nmap, made):
+    """2.6 (Bugs-DB 2581): Gedaechtnis-Bindung einspielen - nur, wenn das Konto noch keine hat. memory.db/memory.core sind
+    Seiten-IDs des Backups: sie gelten nur ueber nmap (alte -> neue ID) und nur, wenn genau diese Seite jetzt angelegt
+    wurde (eigene Datenbank bzw. Seite aus DIESEM Backup); sonst faellt die ID weg (nie eine fremde oder zufaellig gleiche
+    ID binden). memory.map/memory.weights nur zusammen mit einer so abgebildeten Datenbank, gegen saga.memory geprueft."""
+    from saga import memory
+    st = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    if not isinstance(st.get("memory.db"), str) or c.execute("SELECT 1 FROM user_kv WHERE uid=? AND k='memory.db'", (uid,)).fetchone():
+        return False
+    ids = {}
+    for k in ("memory.db", "memory.core"):
+        try:
+            old = int(st.get(k)) if isinstance(st.get(k), str) else None
+        except ValueError:
+            old = None
+        new = nmap.get(old) if old is not None else None
+        if new is not None and new in made:
+            ids[k] = new
+    if "memory.db" not in ids or not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database'",
+                                               (ids["memory.db"], uid)).fetchone():
+        return False
+    rows = {k: str(v) for k, v in ids.items()}
+    m = _json_load(st.get("memory.map"), {}) if isinstance(st.get("memory.map"), str) else {}
+    m = m if isinstance(m, dict) else {}             # manipuliertes Backup ("[1]") darf den Restore nicht abbrechen
+    m = {k: v.strip()[:100] for k, v in m.items() if k in memory.FIELDS and isinstance(v, str) and v.strip()}
+    if m:
+        rows["memory.map"] = json.dumps(m, ensure_ascii=False)
+    w = _json_load(st.get("memory.weights"), {}) if isinstance(st.get("memory.weights"), str) else {}
+    w = w if isinstance(w, dict) else {}
+    w = {k: float(v) for k, v in memory.weights(w).items() if k in w and float(v) != memory.WEIGHTS[k]}
+    if w:
+        rows["memory.weights"] = json.dumps(w)
+    for k, v in rows.items():
+        c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO NOTHING", (uid, k, v))
+    dbid = ids["memory.db"]
+    c.after_commit(lambda: memory.bind_restored(uid, dbid))
+    return True
 
 
 def _import_task_sources(c, uid, data, nmap, made):

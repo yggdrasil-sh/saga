@@ -1086,6 +1086,149 @@
    }
   }
  ],
+ "memory": {
+  "tools": [
+   {
+    "name": "recall",
+    "description": "Erinnerungen aus dem eigenen Gedächtnis holen (gebundene Datenbank, Einstellungen › Gedächtnis): die bis zu 5 passendsten Einträge zu text – nach Bedeutung (Embeddings) bzw. Wortähnlichkeit, gewichtet mit Frische, Häufigkeit, Wichtigkeit und Projekt (gruende). Jeder Treffer zählt als Abruf. quelle: embeddings | trigramm.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "text": {
+       "type": "string",
+       "description": "Worum es geht (Frage, Stichworte oder Gesprächsausschnitt, höchstens 4000 Zeichen)"
+      },
+      "projekt": {
+       "type": "string",
+       "description": "Projekt (passende Einträge bekommen einen Bonus)"
+      },
+      "limit": {
+       "type": "integer",
+       "description": "Höchstzahl Treffer (1-5)",
+       "minimum": 1,
+       "maximum": 5
+      }
+     },
+     "required": [
+      "text"
+     ]
+    },
+    "annotations": {
+     "readOnlyHint": false,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
+   },
+   {
+    "name": "remember",
+    "description": "Neue Erinnerung im eigenen Gedächtnis anlegen (Datum Standard heute). projekt, art und schlagworte nur mit vorhandenen Auswahl-Werten – Unbekanntes wird gemeldet, nichts angelegt. aehnlich nennt vorhandene Erinnerungen mit sehr ähnlicher Bedeutung – dann lieber diese ergänzen (update_row).",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "titel": {
+       "type": "string",
+       "description": "Kurzer Titel"
+      },
+      "inhalt": {
+       "type": "string",
+       "description": "Die Erinnerung selbst (höchstens 2000 Zeichen)"
+      },
+      "projekt": {
+       "type": "string",
+       "description": "Projekt (vorhandene Option)"
+      },
+      "art": {
+       "type": "string",
+       "description": "Art (vorhandene Option)"
+      },
+      "schlagworte": {
+       "type": "array",
+       "description": "Schlagworte (vorhandene Optionen)",
+       "items": {
+        "type": "string"
+       }
+      },
+      "wichtigkeit": {
+       "type": "number",
+       "description": "Wichtigkeit 0-10",
+       "minimum": 0,
+       "maximum": 10
+      },
+      "valenz": {
+       "type": "number",
+       "description": "Gefühlston -1 (negativ) bis 1 (positiv)",
+       "minimum": -1,
+       "maximum": 1
+      },
+      "erregung": {
+       "type": "number",
+       "description": "Erregung 0 (ruhig) bis 1 (aufgewühlt)",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "datum": {
+       "type": "string",
+       "description": "Datum (JJJJ-MM-TT, Standard heute)"
+      }
+     },
+     "required": [
+      "titel",
+      "inhalt"
+     ]
+    },
+    "annotations": {
+     "readOnlyHint": false,
+     "destructiveHint": false,
+     "openWorldHint": false
+    }
+   }
+  ],
+  "only": {
+   "sha256": "4077e28d216176ec42393ec2d8343db0dffa06a422794003b096f16b9d1c9d97",
+   "names": [
+    "recall",
+    "remember"
+   ]
+  },
+  "full": {
+   "sha256": "5c4364dc44eb2cd236c9daec78e0999b95dd858d36dfcd7f978e5100400f414c",
+   "names": [
+    "search_pages",
+    "get_page",
+    "get_image",
+    "create_page",
+    "append_to_page",
+    "update_page_title",
+    "replace_page_content",
+    "update_block",
+    "set_checkbox",
+    "trash_page",
+    "archive_page",
+    "create_database",
+    "update_database_schema",
+    "embed_database",
+    "add_widget",
+    "update_widget",
+    "get_widgets",
+    "list_databases",
+    "get_database_schema",
+    "query_database",
+    "create_row",
+    "update_row",
+    "list_calendars",
+    "list_events",
+    "create_event",
+    "update_event",
+    "delete_event",
+    "list_tasks",
+    "create_task",
+    "complete_task",
+    "add_comment",
+    "recall",
+    "remember"
+   ]
+  }
+ },
  "combos": {
  "pages=-,db=-,tasks=-,files=-,comments=-,calendar=-": {"sha256": "46774bb22e170f6c8d5db6bcafe5706d1161e02dbd3e1eb86e88d2e07fde6864", "names": []},
  "pages=-,db=-,tasks=-,files=-,comments=-,calendar=r": {"sha256": "04e439c8e3ee589b2e6de65dfbb1ba49bc01fe5851effdf62b70a03ca99a20cb", "names": ["list_calendars", "list_events"]},

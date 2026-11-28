@@ -315,7 +315,7 @@ try:
             spec = importlib.util.spec_from_file_location("db_v250", v25_src)
             v25 = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(v25)
-    NEW26 = ("contact", "contact_addr", "job", "job_step", "job_wait", "job_event", "job_change", "user_status", "ai_units")
+    NEW26 = ("contact", "contact_addr", "job", "job_step", "job_wait", "job_event", "job_change", "user_status", "ai_units", "mem_vec")
     COL26 = (("note", "updated_actor"), ("note_version", "actor_kind"), ("note_version", "actor"),
              ("note_version", "on_behalf_of"), ("notification", "actor_kind"), ("notification", "actor"),
              ("notification", "on_behalf_of"), ("chat_call", "hold"), ("push_sub", "topic"), ("chat_call", "lim"))
@@ -370,6 +370,8 @@ try:
                       "INSERT INTO job_change (job_id, step_n, idem_key, target, at) SELECT max(id), 1, 'k', 't', 1 FROM job",
                       "INSERT INTO user_status (uid, state, since, updated) VALUES ('rw-a', 'dnd', 1, 1)",
                       "INSERT INTO ai_units (uid, day, pool, units) VALUES ('rw-a', '2026-11-26', 'ask', 7)",
+                      "INSERT INTO mem_vec (note_id, uid, model, dim, vec, text_hash, updated) VALUES (1, 'rw-a', 'm', 1, "
+                      "'\\x0000803f', 'h', 1)",                      # 2.6 (Bugs-DB 2581): Gedaechtnis-Vektoren
                       "UPDATE note SET title='nach dem Update', updated_actor='svc:kollegin' WHERE id=1",
                       "UPDATE push_sub SET topic='org.example.saga'",
                       "INSERT INTO setting (k, v) VALUES ('contact_fill', '1') ON CONFLICT (k) DO NOTHING"):

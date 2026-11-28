@@ -20,6 +20,29 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Gedächtnis Stufe 2: recall/remember (2581, `memory1`, [docs/MEMORY.md](docs/MEMORY.md)):** jede Person bindet unter
+  Einstellungen › Gedächtnis *eine eigene* Datenbank als Gedächtnis und eine Seite als Ich-Kern (`GET/PUT
+  /api/account/memory`, Spalten nach Namen, Gewichte/Schwellen je Konto). `POST /api/v1/memory/recall` holt die bis zu
+  5 passendsten Einträge nach Bedeutung (Embeddings) bzw. ohne Endpunkt nach Trigramm-Ähnlichkeit – Bewertung aus
+  Relevanz, Frische (Halbwertszeit 30 Tage), Häufigkeit, Wichtigkeit und Projekt mit Relevanz- und Score-Tor
+  (Vektoren `tests/vectors/memory_score.json`; Schwellen nach Kalibrierung mit bge-m3: Relevanz 0,45, Score 0,375); `POST /api/v1/memory/remember` legt an (unbekannte Auswahl-Werte werden
+  gemeldet, nicht angelegt; `aehnlich` ab 0,90), `GET /api/v1/memory/core` liefert den Ich-Kern. Neuer Token-Bereich
+  `memory`, MCP-Werkzeuge `recall`/`remember` (nie für die Kollegin), Ausgaben im `saga-data`-Rahmen, 60 recall/min je
+  Token. Abrufe zählen sofort in der neuen Tabelle `mem_vec` (Migration 42) und erscheinen gebündelt höchstens alle
+  10 min in den Spalten „Abrufe“/„Letzter Abruf“ – ohne `rev`/„zuletzt geändert“, Version, Live-Ereignis oder Webhook.
+  Admin › KI › Embeddings (`/api/ai/embed`, Verbindungstest): eigener Endpunkt getrennt vom Chat-Anbieter, Ollama nativ
+  mit `keep_alive` (Standard 30 min) oder OpenAI-kompatibel, Netz-Schutz wie beim KI-Endpunkt; Einbetten im
+  Hintergrund (entprellt, Papierkorb/Löschen räumt auf, Modellwechsel rechnet neu) und `python run.py gedaechtnis
+  einbetten [--konto …]`. Neue Abhängigkeit numpy. Claude-Code-Hooks `tools/claude-code/saga_hooks.py` (SessionStart:
+  Ich-Kern, UserPromptSubmit: Erinnerungen; 1,5 s, nie blockierend) mit Anleitung [docs/CLAUDE-CODE-HOOKS.md](docs/CLAUDE-CODE-HOOKS.md).
+- **Gedächtnis im Web (2581):** Einstellungen › Konto › **Gedächtnis** (`?settings=memory`, eigener Bereich nach „Saga“,
+  auch wenn die KI für die Person aus ist): Schalter, Auswahl „Datenbank fürs Gedächtnis“ (nur eigene) und
+  „Ich-Kern-Seite“, erkannte Spalten (gefunden / fehlt / falscher Typ, je Spalte ⓘ), Stand „n von m Einträgen
+  eingebettet“ mit „Jetzt einbetten“ und Fortschritt, Hinweis beim Rückfall auf ähnliche Wörter; Fachwörter nur hinter ⓘ
+  (`static/gedaechtnis.js`). Admin › KI-Assistent › **Embeddings**: Schalter, Anbieter (Ollama/OpenAI-kompatibel),
+  Adresse, Modell, Schlüssel (nur „gespeichert ✓“, nie zurückgegeben), „Modell geladen halten“ (keep_alive, nur Ollama),
+  Zeitlimits, Stand über alle Konten, „Verbindung testen“; Warnung, wenn der Endpunkt im Internet liegt („Erinnerungen
+  verlassen dann den Server“), schon beim Tippen als Vorab-Hinweis. Klartexte de/en/es/ru/th.
 - **Kollegin: Tageszeile „Kurz gesagt“ auf „Heute“ (2271, `aitoday1`):** höchstens drei Dinge des Tages beim Namen
   (nächster Termin, wichtigste überfällige bzw. heute fällige Aufgabe samt Aufgabenquellen, ab 18:00 der erste Termin
   von morgen) und „Wartet auf dich“ für Aufträge – ohne Modell und ohne Netz beim Abruf berechnet, Termine nur aus dem

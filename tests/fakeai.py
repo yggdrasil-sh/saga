@@ -42,16 +42,25 @@ Websuche (2.1): Vorab-Entscheidung ("You decide whether answering a message need
   "langfrage" -> zu lange Suchanfrage (verworfen), sonst NONE. Zaehler GET /_count {decide}. Antworten mit Webtreffern
   ("[n] Web: ...") zitieren den ersten Webtreffer.
 /v1/models liefert zusaetzlich 25 Fuell-Modelle fake-x00..fake-x24 (Liste > 20 im Admin-Test).
+Embeddings (2.6, Bugs-DB 2581, tests/gedaechtnis.py): POST /v1/embeddings (OpenAI: {data: [{index, embedding}]}) und
+/api/embed (Ollama nativ: {embeddings: [...]}, keep_alive landet in /_last). Deterministisch: jedes Wort (>= 3 Zeichen,
+klein) zaehlt +1 in einer Hash-Stelle mit Vorzeichen (SHA-256), Laenge 1 - gleiche Woerter = aehnliche Vektoren.
+  fake-embed (256 Dim.), fake-embed-1024 (1024 Dim., Leistung), fake-embed-b (anderes Modell: andere Stellen),
+  fake-embed-slow (3 s Pause), fake-embed-500 (HTTP 500), fake-embed-auth (verlangt Bearer sk-test-123),
+  fake-embed-bad (falsche Anzahl Vektoren), fake-embed-drip (Antwort in Stuecken alle 0,3 s ueber ~3 s - kein einzelner
+  Lesevorgang dauert lange, nur die Summe: prueft die Gesamtfrist). Zaehler GET /_count {embed (Anfragen), embed_inputs (Texte)}.
 Pruefhilfen: GET /_last (letzte Anfrage: Pfad, Authorization, JSON), GET /_count, POST /_reset.
 Aufruf: python fakeai.py <port>"""
+import hashlib
 import json
+import math
 import re
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-LOG = {"last": None, "n": 0, "decide": 0, "plan": 0}
+LOG = {"last": None, "n": 0, "decide": 0, "plan": 0, "embed": 0, "embed_inputs": 0}
 LOCK = threading.Lock()
 
 
@@ -301,6 +310,25 @@ def pieces(text, k=4):
     return ["".join(words[i:i + step]) for i in range(0, len(words), step)] or [""]
 
 
+def fake_embed(text, model):
+    """Deterministischer Vektor (Liste) fuer text - siehe Modul-Text."""
+    dim = 1024 if model == "fake-embed-1024" else 256
+    salt = "b|" if model == "fake-embed-b" else ""
+    v = [0.0] * dim
+    for w in re.findall(r"[^\W_]+", str(text).casefold()):
+        if len(w) < 3:
+            continue
+        h = hashlib.sha256((salt + w).encode()).digest()
+        v[int.from_bytes(h[:4], "big") % dim] += 1.0 if h[4] & 1 else -1.0
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    if n == 1.0 and not any(v):
+        v[0] = 1.0
+    return [x / n for x in v]
+
+
+EMBED_PATHS = ("/v1/embeddings", "/embeddings", "/api/embed")
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -319,7 +347,8 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/_last":
             return self._json(200, LOG["last"] or {})
         if self.path == "/_count":
-            return self._json(200, {"n": LOG["n"], "decide": LOG["decide"], "plan": LOG["plan"]})
+            return self._json(200, {"n": LOG["n"], "decide": LOG["decide"], "plan": LOG["plan"], "embed": LOG["embed"],
+                                    "embed_inputs": LOG["embed_inputs"]})
         if self.path in ("/v1/models", "/models"):
             names = ["fake", "fake-demo", "fake-slow", "fake-auth"] + [f"fake-x{i:02d}" for i in range(25)]
             return self._json(200, {"object": "list", "data": [{"id": m} for m in names]})
@@ -332,7 +361,7 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(ln) if ln else b""
         if self.path == "/_reset":
             with LOCK:
-                LOG.update(last=None, n=0, decide=0, plan=0)
+                LOG.update(last=None, n=0, decide=0, plan=0, embed=0, embed_inputs=0)
             return self._json(200, {})
         try:
             body = json.loads(raw or b"{}")
@@ -342,6 +371,8 @@ class H(BaseHTTPRequestHandler):
             LOG["last"] = {"path": self.path, "auth": self.headers.get("Authorization"), "body": body}
             LOG["n"] += 1
         model = body.get("model")
+        if self.path in EMBED_PATHS:
+            return self.embeddings(body, model)
         if model == "fake-redirect":
             self.send_response(302)
             self.send_header("Location", "http://127.0.0.1:8099/healthz")
@@ -425,6 +456,47 @@ class H(BaseHTTPRequestHandler):
                 send("data: [DONE]\n\n")
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def embeddings(self, body, model):
+        inp = body.get("input")
+        inp = [inp] if isinstance(inp, str) else inp
+        if not isinstance(inp, list) or not str(model or "").startswith("fake-embed"):
+            return self._json(400 if isinstance(inp, list) else 422, {"error": "bad input or model"})
+        with LOCK:
+            LOG["embed"] += 1
+            LOG["embed_inputs"] += len(inp)
+        if model == "fake-embed-500":
+            return self._json(500, {"error": "kaputt"})
+        if model == "fake-embed-auth" and self.headers.get("Authorization") != "Bearer sk-test-123":
+            return self._json(401, {"error": "unauthorized"})
+        if model == "fake-embed-slow":
+            time.sleep(3)
+        vecs = [fake_embed(x, model) for x in inp]
+        if model == "fake-embed-bad":
+            vecs = vecs[:-1]
+        if model == "fake-embed-drip":
+            body = json.dumps({"model": model, "embeddings": vecs} if self.path == "/api/embed" else
+                              {"data": [{"index": i, "embedding": v} for i, v in enumerate(vecs)]}).encode()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                step = max(1, len(body) // 10)
+                for i in range(0, len(body), step):
+                    self.wfile.write(body[i:i + step])
+                    self.wfile.flush()
+                    time.sleep(0.3)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+        try:
+            if self.path == "/api/embed":
+                return self._json(200, {"model": model, "embeddings": vecs})
+            return self._json(200, {"object": "list", "model": model,
+                                    "data": [{"object": "embedding", "index": i, "embedding": v} for i, v in enumerate(vecs)]})
         except (BrokenPipeError, ConnectionResetError):
             pass
 

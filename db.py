@@ -1192,6 +1192,17 @@ CREATE TABLE IF NOT EXISTS user_status (
     prefs JSONB NOT NULL DEFAULT '{}', exc JSONB NOT NULL DEFAULT '[]',
     CHECK (state IN ('available', 'busy', 'dnd')), CHECK (source IN ('manual', 'focus', 'system')));
 CREATE INDEX IF NOT EXISTS user_status_until ON user_status (until) WHERE until IS NOT NULL;
+-- Gedaechtnis (2.6, Bugs-DB 2581, saga/memory.py, docs/MEMORY.md): Embedding je Zeile der gebundenen Gedaechtnis-
+-- Datenbank eines Kontos. vec = float32 (Little Endian, Laenge 1), text_hash = SHA-256 des eingebetteten Texts, model/dim
+-- des Endpunkts (anderes Modell = veraltet). hits/last_hit = Abruf-Zaehler (Wahrheit; in die Spalten "Abrufe"/"Letzter
+-- Abruf" gebuendelt gespiegelt, mirrored = letzte Spiegelung). Nur Ableitung - fehlt sie, rechnet Saga neu. Ohne
+-- Fremdschluessel auf note (Rueckweg: eine aeltere Version muss das Backup trotz neuer Tabelle zurueckspielen koennen,
+-- tests/sicherung.py) - verwaiste Zeilen raeumt der Abgleich (saga.memory.sync) auf.
+CREATE TABLE IF NOT EXISTS mem_vec (
+    note_id BIGINT PRIMARY KEY, uid TEXT NOT NULL, model TEXT NOT NULL,
+    dim INTEGER NOT NULL, vec BYTEA NOT NULL, text_hash TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0,
+    last_hit DOUBLE PRECISION, mirrored DOUBLE PRECISION, updated DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS mem_vec_uid ON mem_vec (uid);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -1570,6 +1581,17 @@ ALTER TABLE api_token ADD COLUMN IF NOT EXISTS grant_id BIGINT;
 ALTER TABLE oauth_refresh ADD COLUMN IF NOT EXISTS parent TEXT;
 CREATE INDEX IF NOT EXISTS api_token_grant ON api_token (grant_id) WHERE grant_id IS NOT NULL;
 SELECT 1 FROM oauth_client, oauth_grant, oauth_code, oauth_refresh LIMIT 0;
+""",
+    # 2.6 (Bugs-DB 2581, Gedaechtnis Stufe 2, saga/memory.py): Tabelle mem_vec (Embeddings der Gedaechtnis-Datenbank je
+    # Konto) legt SCHEMA oben an (hier nochmal, falls SCHEMA aelter waere). Nichts an bestehenden Tabellen. Bestand: leer
+    # (ab Werk ist kein Gedaechtnis gebunden). Beliebig oft ausfuehrbar.
+    42: """
+CREATE TABLE IF NOT EXISTS mem_vec (
+    note_id BIGINT PRIMARY KEY, uid TEXT NOT NULL, model TEXT NOT NULL,
+    dim INTEGER NOT NULL, vec BYTEA NOT NULL, text_hash TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0,
+    last_hit DOUBLE PRECISION, mirrored DOUBLE PRECISION, updated DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS mem_vec_uid ON mem_vec (uid);
+SELECT 1 FROM mem_vec LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

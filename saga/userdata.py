@@ -14,7 +14,8 @@ from saga.sharing import delete_account, share_counts
 # --- Konto loeschen (Admin-Bereich): ALLE Daten des Benutzers entfernen -------------------------------
 # Wichtig: uid = Benutzername. Blieben Daten liegen, bekaeme ein spaeter neu angelegtes Konto mit
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
-USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
+USER_TABLES = ("mem_vec",                                    # 2.6 (Bugs-DB 2581): vor note (Gedaechtnis-Vektoren)
+               "task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
                "immich_key", "bookorbit_link", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
                "chat_identity", "chat_device", "chat_link", "ai_act_token", "push_sub", "push_queue", "ai_history", "ai_usage", "ai_units", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",

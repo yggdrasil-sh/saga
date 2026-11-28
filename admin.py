@@ -1860,7 +1860,17 @@ def ai_page(request: Request):
                  caps_act_text=", ".join(cp.get("ai_act") or []), caps_ideas_text=", ".join(cp.get("ai_ideas") or []),
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL, units=ai.units_today(), cache=ai.cache_view(),
                  models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx(), **_plan_ctx(),
-                 hint=_ai_hint(a))       # 2.6 (K-I 2269, M4): Anbieter-Hinweis, wie ihn die Personen sehen
+                 hint=_ai_hint(a),       # 2.6 (K-I 2269, M4): Anbieter-Hinweis, wie ihn die Personen sehen
+                 emb=_emb_view())        # 2.6 (Bugs-DB 2581): Embeddings fuer das Gedaechtnis (docs/MEMORY.md 1.1)
+
+
+def _emb_view():
+    from saga import memory
+    try:
+        return memory.admin_view()
+    except Exception as ex:  # noqa: BLE001 - Anzeige
+        print(f"admin: Embeddings-Ansicht {type(ex).__name__}", flush=True)
+        return None
 
 
 def _plan_ctx():
@@ -2013,6 +2023,52 @@ async def api_ai_selftest(request: Request):
         print(f"admin: Selbsttest {type(ex).__name__}", flush=True)
         return JSONResponse({"error": t("Der Selbsttest ist gescheitert – ist das Modell erreichbar?")}, status_code=502)
     print(f"admin: {me['username']} Selbsttest KI -> {out['level']} ({out['valid']}/{out['total']})", flush=True)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+# --- Embeddings fuer das Gedaechtnis (2.6, Bugs-DB 2581, saga/memory.py, docs/MEMORY.md 1.1) ----------------------
+@admin.get("/api/ai/embed")
+def api_ai_embed(request: Request):
+    from saga import memory
+    me, err = _api_admin(request)
+    if err:
+        return err
+    return JSONResponse(memory.admin_view(), headers={"Cache-Control": "no-store"})
+
+
+@admin.put("/api/ai/embed")
+async def api_ai_embed_put(request: Request):
+    """{enabled, provider, url, model, api_key?, clear_key?, keep_alive, timeout, query_timeout_ms} -> wie GET (400 {error})."""
+    from saga import memory
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = json.loads(await request.body() or b"{}")
+    except ValueError:
+        b = None
+    st, out = await run_in_threadpool(memory.admin_save, b)
+    if st == 200:
+        s = out["settings"]
+        print(f"admin: {me['username']} speichert Embeddings (aktiv={s['enabled']}, Anbieter={s['provider']})", flush=True)
+    return JSONResponse(out, status_code=st, headers={"Cache-Control": "no-store"})
+
+
+@admin.post("/api/ai/embed/test")
+async def api_ai_embed_test(request: Request):
+    """Verbindungstest mit den Werten aus dem Formular (ungespeichert) -> {ok, lines, dim?, ms?}."""
+    from saga import memory
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = json.loads(await request.body() or b"{}")
+    except ValueError:
+        b = {}
+    try:
+        out = await run_in_threadpool(memory.admin_test, b if isinstance(b, dict) else {})
+    except Exception as ex:  # noqa: BLE001
+        out = {"ok": False, "lines": [f"✗ {type(ex).__name__}"]}
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 

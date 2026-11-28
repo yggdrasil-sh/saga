@@ -66,6 +66,7 @@ from saga import ai_saga                      # 2.6 (K-I 2269): Ort "Saga", Einw
 from saga import ai_notify  # noqa: F401 - 2.6 (K-C 2270): Glocke/Push zu Auftraegen, Knoepfe (saga/ai_act.py)
 from saga import ai_today                     # 2.6 (K-D 2271): Tageszeile /api/ai/today, /api/ai/today/quiet
 from saga import widget_push                  # 2.6 (Bugs-DB 2188): stiller Widget-Push, /api/app/widgets
+from saga import memory                       # 2.6 (Bugs-DB 2581): Gedaechtnis /api/v1/memory/..., /api/account/memory
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -106,6 +107,7 @@ async def lifespan(_app):
     ai_notify.register()                                     # 2.6 (K-C 2270): Haken fuer job.* in saga.push
     jobs.start()                                             # 2.6 (K-A2): Auftraege der Kollegin (nicht bei SAGA_RESTORE_TEST)
     user_status.start()                                      # 2.6 (Bugs-DB 2029): abgelaufene Status zuruecksetzen (30 s)
+    memory.start()                                           # 2.6 (Bugs-DB 2581): Gedaechtnis einbetten (entprellt), Zaehler spiegeln
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
     await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
@@ -150,6 +152,7 @@ async def lifespan(_app):
     await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
     jobs.stop()
     user_status.stop()
+    await asyncio.to_thread(memory.stop)                     # 2.6 (Bugs-DB 2581): faellige Spiegelungen noch schreiben
     mentions.stop()
     bookorbit.stop()
     await asyncio.to_thread(diagstore.stop)                  # 2.5: gepufferte Diagnose-Meldungen noch schreiben
@@ -398,4 +401,5 @@ app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/ap
 app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)
 app.include_router(webhooks.router)          # 2.5 (Paket 1 E6): /api/v1/webhooks, /api/account/webhooks
 app.include_router(mcp.router)               # 2.5 (Paket 1 E7): MCP-Server POST /mcp (Streamable HTTP, Bearer-Token)
+app.include_router(memory.router)            # 2.6 (Bugs-DB 2581): /api/v1/memory/{core,recall,remember}, /api/account/memory
 app.include_router(oauth.router)             # 2.6 (Bugs-DB 2264): OAuth fuer MCP-Clients, /api/account/oauth-apps

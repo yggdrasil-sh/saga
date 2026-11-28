@@ -81,6 +81,11 @@ DEFAULTS = {
     # context = Zeichen Seiteninhalt je Anfrage, history = Personen duerfen einen Verlauf einschalten
     "ai": {"enabled": False, "provider": "openai", "url": "", "model": "", "api_key": "", "groups": [], "timeout": 60,
            "quota": 50, "context": 8000, "history": True, "pinned": [], "chat": False},
+    # Gedaechtnis (2.6, Bugs-DB 2581, saga/memory.py, docs/MEMORY.md 1.1): Embedding-Endpunkt getrennt vom Chat-Anbieter.
+    # provider ollama (POST <url>/api/embed mit keep_alive) | openai (POST <url>/embeddings), pinned wie bei "ai",
+    # timeout = Sekunden je Stapel, query_timeout_ms = Einbetten der Frage beim recall (danach Trigramm-Rueckfall)
+    "ai_embed": {"enabled": False, "provider": "ollama", "url": "", "model": "bge-m3", "api_key": "", "keep_alive": "30m",
+                 "timeout": 15, "query_timeout_ms": 1200, "pinned": []},
     # Persona der KI (2.1): Name (leer = "Saga KI"), Tonfall als Stil-Zusatz im System-Prompt; das Bild liegt in avatar_img
     "ai_persona": {"name": "", "tone": ""},
     # Zweiter Faktor (2.1, saga/mfa.py): require = none | admins | all (wer verlangt wird und keinen hat, wird nach der
@@ -138,7 +143,7 @@ DEFAULTS = {
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),
                  ("backup", "s3_secret"), ("horn", "sign_sk"), ("horn_cf", "token"),
-                 ("weather", "api_key")}
+                 ("weather", "api_key"), ("ai_embed", "api_key")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

@@ -194,17 +194,18 @@ def left_home(c):
     return m
 
 
-def mark_left_home(c, ip):
+def mark_left_home(c, ip, key="ai"):
     """Der Name loest jetzt (auch) oeffentlich auf, festgehalten waren nur private IPs (ai.ip_checker verweigert die
     Verbindung). Markierung in der gespeicherten KI-Einstellung -> endpoint_hint sagt "im Internet", consent() "stale"
     (Kennenlernen-Karte erneut wie beim Host-Wechsel). Nur wenn c die gespeicherte Einstellung ist (Adresse und
-    festgehaltene IPs gleich) - ein Verbindungstest mit ungespeicherten Werten aendert nichts."""
+    festgehaltene IPs gleich) - ein Verbindungstest mit ungespeicherten Werten aendert nichts.
+    key: Einstellung (2.6, Bugs-DB 2581: "ai_embed" fuer den Embedding-Endpunkt des Gedaechtnisses, saga/memory.py)."""
     import auth
     if left_home(c):
         return
     try:
         with _db() as cc, cc:
-            r = cc.execute("SELECT v FROM setting WHERE k='ai'").fetchone()
+            r = cc.execute("SELECT v FROM setting WHERE k=?", (key,)).fetchone()
             st = json.loads(r[0]) if r and r[0] else None
             if not isinstance(st, dict) or st.get("url") != c.get("url") or sorted(_pins(st)) != sorted(_pins(c)) \
                     or left_home(st):
@@ -212,9 +213,13 @@ def mark_left_home(c, ip):
             st["left_home"] = {"url": st.get("url"), "pinned": _pins(st), "ip": str(ip), "at": time.time()}
             # nur, wenn die Einstellung seit dem Lesen unveraendert ist: speichert der Admin gleichzeitig (neue Adresse,
             # neuer Schluessel), bliebe sonst die alte Fassung stehen (Pruefer prr1)
-            n = cc.execute("UPDATE setting SET v=? WHERE k='ai' AND v=?", (json.dumps(st, ensure_ascii=False), r[0])).rowcount
+            n = cc.execute("UPDATE setting SET v=? WHERE k=? AND v=?", (json.dumps(st, ensure_ascii=False), key, r[0])).rowcount
         auth._settings_cache["v"] = None
         if n != 1:
+            return
+        if key != "ai":
+            print(f"{key}: Endpunkt loest oeffentlich auf ({urlparse(c.get('url') or '').hostname}), festgehalten waren "
+                  "nur private IPs - Verbindung verweigert, Hinweis 'im Internet'", flush=True)
             return
         print(f"ai: Modell-Endpunkt loest oeffentlich auf ({urlparse(c.get('url') or '').hostname}), festgehalten waren "
               "nur private IPs - Verbindung verweigert, Hinweis 'im Internet', Einwilligung neu", flush=True)

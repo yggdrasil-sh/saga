@@ -1,0 +1,838 @@
+{
+ "note": "Bewertung Gedaechtnis (Bugs-DB 2581, docs/MEMORY.md 4) - Referenz unabhaengig von saga/memory.py; Zahlen auf 6 Stellen",
+ "weights": {
+  "rel": 0.55,
+  "fresh": 0.15,
+  "freq": 0.1,
+  "imp": 0.2,
+  "proj": 0.1,
+  "rel_min": 0.45,
+  "rel_min_trgm": 0.25,
+  "score_min": 0.375,
+  "half_life_days": 30
+ },
+ "now": 1795000000.0,
+ "cases": [
+  {
+   "name": "neu, sehr relevant, wichtig",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.9,
+    "last_hit": null,
+    "datum": "2026-11-17",
+    "wichtigkeit": 8
+   },
+   "out": {
+    "rel": 0.9,
+    "fresh": 0.966763,
+    "freq": 0.0,
+    "imp": 0.8,
+    "proj": 0.0,
+    "score": 0.800014,
+    "hit": true
+   }
+  },
+  {
+   "name": "alles fehlt: Anlage vor 400 Tagen, imp neutral",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.7
+   },
+   "out": {
+    "rel": 0.7,
+    "fresh": 9.7e-05,
+    "freq": 0.0,
+    "imp": 0.5,
+    "proj": 0.0,
+    "score": 0.485015,
+    "hit": true
+   }
+  },
+  {
+   "name": "Halbwertszeit genau 30 Tage ueber last_hit",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.6,
+    "last_hit": 1792408000.0,
+    "wichtigkeit": 5
+   },
+   "out": {
+    "rel": 0.6,
+    "fresh": 0.5,
+    "freq": 0.0,
+    "imp": 0.5,
+    "proj": 0.0,
+    "score": 0.505,
+    "hit": true
+   }
+  },
+  {
+   "name": "Letzter Abruf (Spalte) juenger als last_hit zaehlt",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.6,
+    "last_hit": 1789816000.0,
+    "letzter_abruf": "2026-11-16T10:00+01:00"
+   },
+   "out": {
+    "rel": 0.6,
+    "fresh": 0.952903,
+    "freq": 0.0,
+    "imp": 0.5,
+    "proj": 0.0,
+    "score": 0.572935,
+    "hit": true
+   }
+  },
+  {
+   "name": "Datum als Zeitraum: Ende zaehlt",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.6,
+    "datum": "2026-10-01/2026-11-10"
+   },
+   "out": {
+    "rel": 0.6,
+    "fresh": 0.822394,
+    "freq": 0.0,
+    "imp": 0.5,
+    "proj": 0.0,
+    "score": 0.553359,
+    "hit": true
+   }
+  },
+  {
+   "name": "Datum in der Zukunft: fresh 1",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "datum": "2027-01-01",
+    "wichtigkeit": 6
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 1.0,
+    "freq": 0.0,
+    "imp": 0.6,
+    "proj": 0.0,
+    "score": 0.545,
+    "hit": true
+   }
+  },
+  {
+   "name": "20 Abrufe = freq voll",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 20,
+    "rel": 0.5,
+    "last_hit": 1794827200.0,
+    "wichtigkeit": 4
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.954842,
+    "freq": 1.0,
+    "imp": 0.4,
+    "proj": 0.0,
+    "score": 0.598226,
+    "hit": true
+   }
+  },
+  {
+   "name": "100 Abrufe begrenzt auf 1",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 100,
+    "rel": 0.5,
+    "last_hit": 1794827200.0
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.954842,
+    "freq": 1.0,
+    "imp": 0.5,
+    "proj": 0.0,
+    "score": 0.618226,
+    "hit": true
+   }
+  },
+  {
+   "name": "3 Abrufe",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 3,
+    "rel": 0.55,
+    "last_hit": 1794136000.0,
+    "wichtigkeit": 3
+   },
+   "out": {
+    "rel": 0.55,
+    "fresh": 0.793701,
+    "freq": 0.45534,
+    "imp": 0.3,
+    "proj": 0.0,
+    "score": 0.527089,
+    "hit": true
+   }
+  },
+  {
+   "name": "Projekt-Bonus (Gross/Klein, Leerraum egal)",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "projekt_q": " saga ",
+    "projekt_row": "Saga",
+    "wichtigkeit": 3,
+    "datum": "2026-11-01"
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.667991,
+    "freq": 0.0,
+    "imp": 0.3,
+    "proj": 1.0,
+    "score": 0.535199,
+    "hit": true
+   }
+  },
+  {
+   "name": "Projekt verschieden: kein Bonus",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "projekt_q": "Homelab",
+    "projekt_row": "Saga",
+    "wichtigkeit": 3,
+    "datum": "2026-11-01"
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.667991,
+    "freq": 0.0,
+    "imp": 0.3,
+    "proj": 0.0,
+    "score": 0.435199,
+    "hit": true
+   }
+  },
+  {
+   "name": "Relevanz-Tor: wichtig+frisch, aber rel 0,44",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 20,
+    "rel": 0.44,
+    "wichtigkeit": 10,
+    "last_hit": 1794999940.0,
+    "datum": "2026-11-17"
+   },
+   "out": {
+    "rel": 0.44,
+    "fresh": 0.999984,
+    "freq": 1.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.691998,
+    "hit": false
+   }
+  },
+  {
+   "name": "Relevanz-Tor genau 0,45: Treffer",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.45,
+    "wichtigkeit": 10,
+    "last_hit": 1794999940.0,
+    "datum": "2026-11-17"
+   },
+   "out": {
+    "rel": 0.45,
+    "fresh": 0.999984,
+    "freq": 0.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.597498,
+    "hit": true
+   }
+  },
+  {
+   "name": "Score-Tor: rel 0,5, alt, unwichtig",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "wichtigkeit": 0,
+    "datum": "2025-01-01"
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.0,
+    "freq": 0.0,
+    "imp": 0.0,
+    "proj": 0.0,
+    "score": 0.275,
+    "hit": false
+   }
+  },
+  {
+   "name": "Score-Tor knapp darunter (0,375)",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "wichtigkeit": 3,
+    "datum": "2026-09-15"
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.225506,
+    "freq": 0.0,
+    "imp": 0.3,
+    "proj": 0.0,
+    "score": 0.368826,
+    "hit": false
+   }
+  },
+  {
+   "name": "Score-Tor knapp darueber (0,375)",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.5,
+    "wichtigkeit": 3,
+    "datum": "2026-10-05"
+   },
+   "out": {
+    "rel": 0.5,
+    "fresh": 0.357968,
+    "freq": 0.0,
+    "imp": 0.3,
+    "proj": 0.0,
+    "score": 0.388695,
+    "hit": true
+   }
+  },
+  {
+   "name": "negativer Kosinus -> 0",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": -0.3,
+    "wichtigkeit": 10
+   },
+   "out": {
+    "rel": 0.0,
+    "fresh": 9.7e-05,
+    "freq": 0.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.200015,
+    "hit": false
+   }
+  },
+  {
+   "name": "Wichtigkeit > 10 begrenzt",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.6,
+    "wichtigkeit": 14,
+    "datum": "2026-11-17"
+   },
+   "out": {
+    "rel": 0.6,
+    "fresh": 0.966763,
+    "freq": 0.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.675014,
+    "hit": true
+   }
+  },
+  {
+   "name": "Trigramm: 0,3 ueber dem Tor 0,25",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 5,
+    "rel": 0.3,
+    "quelle": "trigramm",
+    "wichtigkeit": 10,
+    "datum": "2026-11-17"
+   },
+   "out": {
+    "rel": 0.3,
+    "fresh": 0.966763,
+    "freq": 0.588519,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.568866,
+    "hit": true
+   }
+  },
+  {
+   "name": "Trigramm: 0,24 unter dem Tor",
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.24,
+    "quelle": "trigramm",
+    "wichtigkeit": 10,
+    "datum": "2026-11-17"
+   },
+   "out": {
+    "rel": 0.24,
+    "fresh": 0.966763,
+    "freq": 0.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.477014,
+    "hit": false
+   }
+  }
+ ],
+ "custom": [
+  {
+   "name": "eigene Gewichte: H 7 Tage, imp 0",
+   "weights": {
+    "rel": 0.8,
+    "fresh": 0.15,
+    "freq": 0.1,
+    "imp": 0.0,
+    "proj": 0.1,
+    "rel_min": 0.45,
+    "rel_min_trgm": 0.25,
+    "score_min": 0.4,
+    "half_life_days": 7
+   },
+   "in": {
+    "now": 1795000000.0,
+    "created": 1760440000.0,
+    "hits": 0,
+    "rel": 0.6,
+    "last_hit": 1794395200.0,
+    "wichtigkeit": 10
+   },
+   "out": {
+    "rel": 0.6,
+    "fresh": 0.5,
+    "freq": 0.0,
+    "imp": 1.0,
+    "proj": 0.0,
+    "score": 0.555,
+    "hit": true
+   }
+  }
+ ],
+ "rank": [
+  {
+   "limit": 5,
+   "projekt": null,
+   "items": [
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 1,
+     "rel": 0.8,
+     "wichtigkeit": 5,
+     "datum": "2026-11-10"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 2,
+     "rel": 0.7,
+     "wichtigkeit": 9,
+     "datum": "2026-11-16"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 3,
+     "rel": 0.95,
+     "wichtigkeit": 2,
+     "datum": "2025-06-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 4,
+     "rel": 0.46,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 5,
+     "rel": 0.44,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 7,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 6,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 8,
+     "rel": 0.5,
+     "wichtigkeit": 1,
+     "datum": "2024-01-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 9,
+     "rel": 0.65,
+     "wichtigkeit": 6,
+     "datum": "2026-11-12",
+     "projekt_row": "Saga"
+    }
+   ],
+   "order": [
+    6,
+    7,
+    2,
+    4,
+    1
+   ]
+  },
+  {
+   "limit": 3,
+   "projekt": null,
+   "items": [
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 1,
+     "rel": 0.8,
+     "wichtigkeit": 5,
+     "datum": "2026-11-10"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 2,
+     "rel": 0.7,
+     "wichtigkeit": 9,
+     "datum": "2026-11-16"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 3,
+     "rel": 0.95,
+     "wichtigkeit": 2,
+     "datum": "2025-06-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 4,
+     "rel": 0.46,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 5,
+     "rel": 0.44,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 7,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 6,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 8,
+     "rel": 0.5,
+     "wichtigkeit": 1,
+     "datum": "2024-01-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 9,
+     "rel": 0.65,
+     "wichtigkeit": 6,
+     "datum": "2026-11-12",
+     "projekt_row": "Saga"
+    }
+   ],
+   "order": [
+    6,
+    7,
+    2
+   ]
+  },
+  {
+   "limit": 5,
+   "projekt": "Saga",
+   "items": [
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 1,
+     "rel": 0.8,
+     "wichtigkeit": 5,
+     "datum": "2026-11-10"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 2,
+     "rel": 0.7,
+     "wichtigkeit": 9,
+     "datum": "2026-11-16"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 3,
+     "rel": 0.95,
+     "wichtigkeit": 2,
+     "datum": "2025-06-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 4,
+     "rel": 0.46,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 5,
+     "rel": 0.44,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 7,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 6,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 8,
+     "rel": 0.5,
+     "wichtigkeit": 1,
+     "datum": "2024-01-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 9,
+     "rel": 0.65,
+     "wichtigkeit": 6,
+     "datum": "2026-11-12",
+     "projekt_row": "Saga"
+    }
+   ],
+   "order": [
+    6,
+    7,
+    2,
+    9,
+    4
+   ]
+  },
+  {
+   "limit": 1,
+   "projekt": null,
+   "items": [
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 1,
+     "rel": 0.8,
+     "wichtigkeit": 5,
+     "datum": "2026-11-10"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 2,
+     "rel": 0.7,
+     "wichtigkeit": 9,
+     "datum": "2026-11-16"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 3,
+     "rel": 0.95,
+     "wichtigkeit": 2,
+     "datum": "2025-06-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 4,
+     "rel": 0.46,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 20,
+     "id": 5,
+     "rel": 0.44,
+     "wichtigkeit": 10,
+     "datum": "2026-11-17",
+     "last_hit": 1795000000.0
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 7,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 6,
+     "rel": 0.85,
+     "wichtigkeit": 8,
+     "datum": "2026-11-15"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 8,
+     "rel": 0.5,
+     "wichtigkeit": 1,
+     "datum": "2024-01-01"
+    },
+    {
+     "now": 1795000000.0,
+     "created": 1760440000.0,
+     "hits": 0,
+     "id": 9,
+     "rel": 0.65,
+     "wichtigkeit": 6,
+     "datum": "2026-11-12",
+     "projekt_row": "Saga"
+    }
+   ],
+   "order": [
+    6
+   ]
+  }
+ ]
+}
