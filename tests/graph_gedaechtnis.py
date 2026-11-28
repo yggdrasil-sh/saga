@@ -186,7 +186,7 @@ def main():
         ok("Graph: nur abgerufene Zeilen in rows", set(mr) == set(hit), (mr, hit))
         ok("Graph: keine Seite ausserhalb der Gedaechtnis-Datenbank in rows", other not in mr and mem not in mr, mr)
         # zweiter Abruf binnen 10 min: Spalte "Abrufe" bleibt 1 (gebuendelt), der Graph zeigt live 2
-        n1 = len(s1.all("memory.recalled"))
+        n1 = len(s1.ev)
         req("POST", "/api/v1/memory/recall", body={"text": "Tomaten Sonne Wasser"}, bearer=ta)
         s1.wait("memory.recalled", since=n1)
         pid = {p["name"]: p["id"] for p in json.loads(pg("SELECT schema FROM note WHERE id=?", (mem,))[0][0])["props"]}
@@ -200,7 +200,7 @@ def main():
         ok("recall ohne Treffer: kein Ereignis", st == 200 and r.get("treffer") == [] and len(s1.all("memory.recalled")) == n1, (st, r))
         # MCP recall meldet ebenso
         tm = token(A, ["mcp", "memory"])
-        n1 = len(s1.all("memory.recalled"))
+        n1 = len(s1.ev)                                   # Index in alle Ereignisse (wait zaehlt ab hier)
         st, r = req("POST", "/mcp", body={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "recall", "arguments":
                                           {"text": "Nachtzug Wien Flug"}}}, bearer=tm)
         e = s1.wait("memory.recalled", since=n1)

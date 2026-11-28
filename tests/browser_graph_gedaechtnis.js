@@ -21,6 +21,8 @@ function rig(a) {
 }
 async function session(br, user, pass, opts) {
   const ctx = await br.newContext(Object.assign({ viewport: { width: 1280, height: 860 }, locale: 'de-DE' }, opts || {}));
+  // Live-Kanal mitschreiben (live.js meldet 'live.hello', sobald /api/events verbunden ist)
+  await ctx.addInitScript(() => { window.__live = []; document.addEventListener('hk-live', (e) => { window.__live.push(e.detail && e.detail.type); }); });
   const p = await ctx.newPage(); p.errs = [];
   p.on('pageerror', (e) => p.errs.push(e.message));
   await p.goto(BASE + '/login');
@@ -31,10 +33,12 @@ async function session(br, user, pass, opts) {
   return p;
 }
 async function shot(p, n, clip) { if (E.SHOTS) await p.screenshot({ path: E.SHOTS + '/' + PRE + '-' + n + '.png', clip: clip }); }
+const liveUp = (p) => until(() => p.evaluate(() => (window.__live || []).indexOf('live.hello') >= 0), 10000);
 async function openGraph(p) {
   await p.goto(BASE + '/notes?t=' + Date.now()); await p.waitForSelector('#pg-graph-btn'); await sleep(800);
   await p.click('#pg-graph-btn'); await p.waitForSelector('.gr-full'); await sleep(600);
   await until(() => p.evaluate(() => { const g = HKGraph.current(); return g && g.view.nodes.length > 5 && g.view.alpha < 0.05; }), 12000);
+  await liveUp(p);
   await p.evaluate(() => { const v = HKGraph.current().view; v.user(); v.fit(true); }); await sleep(400);
 }
 // Knoten nach Titel: Bildschirm-Position, Radius (Welt) und mittlere Deckkraft im oberen Halbring knapp ausserhalb
